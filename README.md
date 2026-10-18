@@ -6,12 +6,13 @@ Godot 4.7 宿主 + 自研 C++17 模拟层（零 Godot 依赖），64 tick，目�
 > 设计文档：`docs/计划书_v0.3.md`
 > 约束：`docs/AGENTS.md`　进度：`docs/PROGRESS.md`　事故：`docs/pitfalls/`
 
-## 现在能做什么（M1 已完成）
+## 现在能做什么（M1–M3 已完成）
 
 - 读 TrenchBroom 的 `.map`（Standard / Quake 2 四点面），**入口一次**把 Quake unit 转成米
 - brush 平面求交成凸体，盒体扫掠 trace（Minkowski 扩张，不是点采样）
 - 分步 `slide_move`：按最小墙厚切步，20 m/s 撞 0.1 m 墙 100 次 0 穿透
 - 基础 pmove：地面加速/摩擦、空中控制、跳跃、蹲、**step-up 上台阶**、蹲下空间检查
+- parkour 五件套：**滑铲 / 冲刺 / 墙跑 / 爬墙 / 翻越**，全部走整数 tick 状态机
 - 无状态 RNG、逐 tick 世界哈希
 - `move_metrics` 四张表（CSV），可与 Q3 的数值对比
 
@@ -31,6 +32,7 @@ build\headless_sim.exe --selftest --ticks 600       # 同输入双跑，逐 tick
 build\headless_sim.exe --test-wall                  # 5 个速度档 × 100 次穿墙测试
 build\headless_sim.exe --test-ray                   # 点/盒的单段扫掠
 build\headless_sim.exe --test-step                  # 台阶 / 挡墙 / 蹲下空间
+build\headless_sim.exe --test-parkour               # 滑铲 / 冲刺 / 墙跑 / 爬墙 / 翻越
 build\headless_sim.exe --bench 1000                 # 单 tick 耗时 p99
 build\move_metrics.exe                              # 四张手感表
 ```
@@ -40,10 +42,10 @@ build\move_metrics.exe                              # 四张手感表
 ```
 sim/core/        tick 时钟、世界状态与哈希、无状态 RNG、向量
 sim/collision/   .map 解析、brush 凸体、盒体扫掠、分步 slide
-sim/move/        pmove（地面/空中/跳跃/蹲；parkour 待 M3）
+sim/move/        pmove（地面/空中/跳跃/蹲 + parkour 五件套）
 sim/data/        movement.toml（唯一手感数值来源）、maps/*.map
 tools/           headless_sim、move_metrics、build/smoke/setup 脚本
-docs/            AGENTS / PROGRESS / pitfalls / 计划书
+docs/            AGENTS / PROGRESS / pitfalls / keymap / 计划书
 ```
 
 ## 两条别踩的线

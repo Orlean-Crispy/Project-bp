@@ -33,6 +33,8 @@ struct MovementParams {
     float slide_min_speed = 5.08f;
     float slide_friction_scale = 0.35f;
     float slide_jump_boost = 1.15f;
+    float slide_entry_boost = 1.15f;
+    float slide_max_duration = 1.5f;
 
     // wallrun
     float wallrun_min_approach_speed = 6.35f;

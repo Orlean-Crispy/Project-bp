@@ -25,6 +25,8 @@ entry_window   = 0.15
 min_speed      = 5.08
 friction_scale = 0.35
 jump_boost     = 1.15
+entry_boost    = 1.15   # speed multiplier applied when the slide starts
+max_duration   = 1.5    # seconds before the slide ends on its own
 
 [wallrun]
 min_approach_speed = 6.35

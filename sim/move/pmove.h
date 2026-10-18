@@ -11,7 +11,22 @@ struct MoveInput {
     float yaw = 0.0f;      // radians
     bool jump = false;
     bool crouch = false;
+    bool slide = false;
     bool dash = false;
+    bool wallrun = false;
+    bool wallclimb = false;
+    bool vault = false;
+};
+
+// Timed abilities are counted in whole ticks, never in accumulated float time
+// (iron law B): a rollback replay must land on exactly the same tick.
+enum class ParkourState : uint8_t {
+    Ground = 0,
+    Air,
+    Slide,
+    WallRun,
+    WallClimb,
+    Vault,
 };
 
 struct PlayerState {
@@ -21,6 +36,18 @@ struct PlayerState {
     bool crouched = false;
     int impulses = 4;
     uint32_t tick = 0;
+
+    ParkourState state = ParkourState::Ground;
+    int state_ticks = 0;        // ticks spent in the current timed state
+    int dash_cooldown = 0;      // ticks until dash is available again
+    Vec3 wall_normal;           // valid while wall running / climbing
+    bool slide_was_down = false;
+    bool dash_was_down = false;
+    bool wallrun_was_down = false;
+    bool wallclimb_was_down = false;
+    bool vault_was_down = false;
+    Vec3 vault_dir;      // horizontal direction of the vault in progress
+    float vault_rise = 0.0f;  // metres to climb during the vault
 
     // Multipliers from weapon (5.10) and damage (6.10). Kept in the state so the
     // rollback snapshot can never silently replay with a different max speed.

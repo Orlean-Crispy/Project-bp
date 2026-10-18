@@ -104,7 +104,7 @@ Godot 4.7 宿主 + 自研 C++17 模拟层（无 Godot 依赖），64 tick，目�
 1. **Godot 4.7 / godot-cpp 未安装** — lead：M5 之前必须解决；当前只验证纯 C++ 模拟层（M0–M4 不需要引擎）。
 2. **交叉编译器**：sim 用 MinGW GCC，godot-cpp 官方支持 MSVC。lead：M5 前二选一（装 VS Build Tools，或验证 mingw 构建 godot-cpp）。
 3. **HP / 护甲未定值** — 计划书只有「如 100」。lead：M6 前定，否则爆头 ×5 与 TTK 0.6–1.2 s 无法互相验证。
-4. **键位表未定** — Q 键三用已被否决，但新键位没有落地。lead：M3 前必须定（「按键分离验证」没有依据）。
+4. **键位表** — 已给出建议稿 `docs/keymap.md`（Q 墙跑 / E 爬墙 / V 翻越 / F 冲刺），**待试玩确认**。lead：M4 前。
 5. **穿透两套模型** — `.map` 的 `_penetrable` 与 `penetration_count` 谁优先未定。lead：M6。
 6. **中文本地路径** `G:\自制游戏` — 已定：编译可用，**链接不可用**，所以工具链必须在 ASCII 路径（见 §7）。任何新引入的工具（godot-cpp、TrenchBroom 的 CLI、Python 脚本）第一次接入都要先验「能不能在这个路径下跑」。
 7. ~~缺少 step-up~~ — 已在 M2 完成（`--test-step`：0.20 / 0.35 / 三级 0.15 台阶可上，0.55 m 挡住，蹲下空间有效）。
@@ -119,6 +119,7 @@ Godot 4.7 宿主 + 自研 C++17 模拟层（无 Godot 依赖），64 tick，目�
 | 2 | 工具链必须在物理 ASCII 路径；junction/subst/8.3 都不能绕过。案例：`pitfalls/toolchain-nonascii.md` |
 | 3 | 会跑一次的测试不算测试：穿墙类判据至少 100 次 × 5 个速度档。 |
 | 4 | 碰撞判据必须成对：**不能穿**（100 次）与**不能卡**（贴墙静止 / 沿墙滑动）同时验。案例：`pitfalls/contact-epsilon.md` |
+| 5 | 「面前有没有东西」的探测一律**从后退 5 cm 处起扫**；投影/裁剪后的速度不能当探测方向。 |
 
 ## 6. 开场协议
 
@@ -141,7 +142,7 @@ Godot 4.7 宿主 + 自研 C++17 模拟层（无 Godot 依赖），64 tick，目�
 | 工具链 | `C:\bp-toolchain`：mingw64 / cmake-4.4.4-windows-x86_64 / ninja |
 | 重建工具链 | `powershell -File tools\setup_toolchain.ps1` |
 | 构建 | `powershell -File tools\build.ps1`（输出在 `build/`） |
-| 冒烟 | `powershell -File tools\smoke.ps1`（info / determinism / wall / ray / bench） |
+| 冒烟 | `powershell -File tools\smoke.ps1`（info / determinism / wall / ray / step / parkour / bench） |
 | Shell | Windows PowerShell **5.1**，不是 pwsh 7 |
 | 运行时 | exe 静态链接 libgcc/libstdc++，不需要把 mingw 加进 PATH |
 

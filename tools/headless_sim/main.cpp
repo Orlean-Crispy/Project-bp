@@ -33,6 +33,7 @@ struct Options {
     bool test_wall = false;
     bool test_ray = false;
     bool test_step = false;
+    bool test_parkour = false;
     bool map_explicit = false;
     bool bench = false;
     bool info = false;
@@ -53,6 +54,7 @@ void usage() {
         "  --test-wall       fire a player at a 0.1 m wall 100 times, count penetrations\n"
         "  --test-ray        sweep point and box traces across the thin wall in one segment\n"
         "  --test-step       stair stepping and crouch headroom (uses step_test.map)\n"
+        "  --test-parkour    slide tunnel and dash (uses parkour_test.map)\n"
         "  --bench [n]       time n ticks and report mean/p99/max\n");
 }
 
@@ -388,6 +390,178 @@ int run_step_test(const Options& opt) {
     return 0;
 }
 
+int run_parkour_test(const Options& opt) {
+    Options local = opt;
+    if (!opt.map_explicit) local.map_path = "sim/data/maps/parkour_test.map";
+
+    std::string error;
+    World world;
+    if (!load_world(local, world, error)) {
+        std::fprintf(stderr, "error: %s\n", error.c_str());
+        return 1;
+    }
+
+    int failures = 0;
+
+    auto reset = [&](float x, float y) {
+        PlayerState p;
+        p.pos = sim::Vec3(x, y, 0.01f);
+        p.impulses = world.params.max_impulses;
+        world.players.assign(1, p);
+        world.tick = 0;
+    };
+
+    // Control: a standing run must be stopped by the 1.0 m low ceiling.
+    reset(-5.0f, 0.5f);
+    for (int i = 0; i < 80; ++i) {
+        MoveInput in;
+        in.forward = 1.0f;
+        world.step({in}, kDt);
+    }
+    {
+        const PlayerState& p = world.players[0];
+        const bool blocked = p.pos.x < 0.1f && p.pos.z < 0.1f;
+        if (!blocked) ++failures;
+        std::printf("  %-34s x=%.3f z=%.3f  %s\n", "standing run blocked by low ceiling",
+                    static_cast<double>(p.pos.x), static_cast<double>(p.pos.z), blocked ? "ok" : "FAIL");
+    }
+
+    // Slide: build speed, then slide under the same ceiling.
+    reset(-5.0f, 0.5f);
+    bool slid = false;
+    bool crouched_under = false;
+    for (int i = 0; i < 130; ++i) {
+        MoveInput in;
+        in.forward = 1.0f;
+        in.slide = (i >= 30);
+        world.step({in}, kDt);
+        const PlayerState& p = world.players[0];
+        if (p.state == sim::ParkourState::Slide) slid = true;
+        if (p.pos.x > 0.6f && p.pos.x < 2.0f && p.crouched) crouched_under = true;
+    }
+    {
+        const PlayerState& p = world.players[0];
+        const bool passed = p.pos.x > 0.8f;
+        if (!slid || !passed || !crouched_under) ++failures;
+        std::printf("  %-34s slid=%d crouched=%d x=%.3f  %s\n", "slide under low ceiling",
+                    slid ? 1 : 0, crouched_under ? 1 : 0, static_cast<double>(p.pos.x),
+                    (slid && passed && crouched_under) ? "ok" : "FAIL");
+    }
+
+    // Dash: same start, same tick count, with and without the dash.
+    auto run_dash = [&](bool dash, double& distance) {
+        reset(-10.0f, 7.0f);
+        double peak = 0.0;
+        for (int i = 0; i < 12; ++i) {
+            MoveInput in;
+            in.forward = 1.0f;
+            in.dash = dash && i == 2;
+            world.step({in}, kDt);
+            const sim::Vec3& v = world.players[0].vel;
+            peak = std::max(peak, std::sqrt(static_cast<double>(v.x) * v.x + static_cast<double>(v.y) * v.y));
+        }
+        distance = world.players[0].pos.x + 10.0f;
+        return peak;
+    };
+    double plain_dist = 0.0;
+    double dash_dist = 0.0;
+    const double plain_peak = run_dash(false, plain_dist);
+    const double dash_peak = run_dash(true, dash_dist);
+    {
+        // The dash must (a) reach its configured speed and (b) actually cover
+        // more ground in the same number of ticks.
+        const bool ok = dash_peak >= world.params.dash_speed * 0.95 &&
+                        dash_peak > plain_peak * 1.25 && dash_dist > plain_dist * 1.2;
+        if (!ok) ++failures;
+        std::printf("  %-34s peak %.2f vs %.2f m/s, %.3f vs %.3f m  %s\n", "dash burst",
+                    dash_peak, plain_peak, dash_dist, plain_dist, ok ? "ok" : "FAIL");
+    }
+
+    // Wall run: airborne next to a runnable wall, holding the key.
+    auto run_wallrun = [&](bool use_wallrun, float& end_z, bool& entered) {
+        PlayerState p;
+        p.pos = sim::Vec3(3.0f, -2.55f, 4.0f);
+        p.vel = sim::Vec3(8.0f, -3.0f, 0.0f);
+        p.on_ground = false;
+        p.impulses = world.params.max_impulses;
+        world.players.assign(1, p);
+        world.tick = 0;
+        entered = false;
+        for (int i = 0; i < 50; ++i) {
+            MoveInput in;
+            in.forward = 1.0f;
+            in.wallrun = use_wallrun;
+            world.step({in}, kDt);
+            if (world.players[0].state == sim::ParkourState::WallRun) entered = true;
+        }
+        end_z = world.players[0].pos.z;
+    };
+    {
+        float run_z = 0.0f;
+        float fall_z = 0.0f;
+        bool entered = false;
+        run_wallrun(true, run_z, entered);
+        bool ignored = false;
+        run_wallrun(false, fall_z, ignored);
+        const bool ok = entered && run_z > 1.0f && run_z > fall_z + 0.8f;
+        if (!ok) ++failures;
+        std::printf("  %-34s entered=%d z %.2f vs %.2f  %s\n", "wall run slows the fall",
+                    entered ? 1 : 0, static_cast<double>(run_z), static_cast<double>(fall_z),
+                    ok ? "ok" : "FAIL");
+    }
+
+    // Wall climb: grounded against a climbable wall, holding the key.
+    {
+        PlayerState p;
+        p.pos = sim::Vec3(15.5f, 4.0f, 0.01f);
+        p.impulses = world.params.max_impulses;
+        world.players.assign(1, p);
+        world.tick = 0;
+        bool entered = false;
+        for (int i = 0; i < 40; ++i) {
+            MoveInput in;
+            in.wallclimb = true;
+            world.step({in}, kDt);
+            if (world.players[0].state == sim::ParkourState::WallClimb) entered = true;
+        }
+        const float z = world.players[0].pos.z;
+        const bool ok = entered && z > 2.0f;
+        if (!ok) ++failures;
+        std::printf("  %-34s entered=%d z=%.2f m  %s\n", "wall climb gains height",
+                    entered ? 1 : 0, static_cast<double>(z), ok ? "ok" : "FAIL");
+    }
+
+    // Vault: run at a 1.0 m platform and climb over it.
+    {
+        PlayerState p;
+        p.pos = sim::Vec3(8.5f, 9.5f, 0.01f);
+        p.impulses = world.params.max_impulses;
+        world.players.assign(1, p);
+        world.tick = 0;
+        bool entered = false;
+        for (int i = 0; i < 90; ++i) {
+            MoveInput in;
+            in.forward = 1.0f;
+            in.vault = (i >= 25 && i < 45);
+            world.step({in}, kDt);
+            if (world.players[0].state == sim::ParkourState::Vault) entered = true;
+        }
+        const PlayerState& q = world.players[0];
+        const bool ok = entered && q.pos.z > 0.9f && q.pos.x > 10.0f;
+        if (!ok) ++failures;
+        std::printf("  %-34s entered=%d x=%.2f z=%.2f  %s\n", "vault onto 1.0 m platform",
+                    entered ? 1 : 0, static_cast<double>(q.pos.x), static_cast<double>(q.pos.z),
+                    ok ? "ok" : "FAIL");
+    }
+
+    if (failures != 0) {
+        std::printf("FAIL: %d parkour checks failed\n", failures);
+        return 1;
+    }
+    std::printf("PASS: slide / dash / wall run / wall climb / vault behave\n");
+    return 0;
+}
+
 int run_bench(const Options& opt) {
     std::string error;
     World world;
@@ -462,6 +636,8 @@ int main(int argc, char** argv) {
             opt.test_ray = true;
         } else if (arg == "--test-step") {
             opt.test_step = true;
+        } else if (arg == "--test-parkour") {
+            opt.test_parkour = true;
         } else if (arg == "--bench") {
             opt.bench = true;
             if (i + 1 < argc && argv[i + 1][0] != '-') opt.bench_ticks = std::atoi(argv[++i]);
@@ -480,6 +656,7 @@ int main(int argc, char** argv) {
     if (opt.test_wall) return run_wall_test(opt);
     if (opt.test_ray) return run_ray_test(opt);
     if (opt.test_step) return run_step_test(opt);
+    if (opt.test_parkour) return run_parkour_test(opt);
     if (opt.bench) return run_bench(opt);
 
     std::string error;

@@ -127,7 +127,8 @@ uint64_t MovementParams::hash() const {
      .f32(gravity).f32(jump_velocity).f32(step_height).f32(crouch_height)
      .f32(stand_height).f32(player_radius).f32(crouch_speed_scale);
     h.u32(static_cast<uint32_t>(max_impulses)).u32(recharge_on_ground ? 1u : 0u);
-    h.f32(slide_entry_window).f32(slide_min_speed).f32(slide_friction_scale).f32(slide_jump_boost);
+    h.f32(slide_entry_window).f32(slide_min_speed).f32(slide_friction_scale).f32(slide_jump_boost)
+     .f32(slide_entry_boost).f32(slide_max_duration);
     h.f32(wallrun_min_approach_speed).f32(wallrun_max_duration)
      .f32(wallrun_gravity_scale).f32(wallrun_normal_dot);
     h.f32(wallclimb_max_duration).f32(wallclimb_speed);
@@ -213,6 +214,8 @@ bool load_movement_params(const std::string& path, MovementParams& out,
     b.number("slide.min_speed", p.slide_min_speed);
     b.number("slide.friction_scale", p.slide_friction_scale);
     b.number("slide.jump_boost", p.slide_jump_boost);
+    b.number("slide.entry_boost", p.slide_entry_boost);
+    b.number("slide.max_duration", p.slide_max_duration);
 
     b.number("wallrun.min_approach_speed", p.wallrun_min_approach_speed);
     b.number("wallrun.max_duration", p.wallrun_max_duration);
