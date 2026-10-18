@@ -28,8 +28,28 @@ add_library(sim STATIC
   sim/data/config.cpp
   sim/input/keycodes.cpp
   sim/input/bindings.cpp
+  sim/demo/demo.cpp
 )
 target_include_directories(sim PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+
+# Demo headers carry the build id, so "a demo from yesterday" can say exactly
+# which binary recorded it (plan section 10.3 / B3).
+find_package(Git QUIET)
+set(BP_BUILD_ID "nogit")
+if(GIT_FOUND)
+  execute_process(COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
+                  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+                  OUTPUT_VARIABLE BP_GIT_HASH
+                  OUTPUT_STRIP_TRAILING_WHITESPACE
+                  ERROR_QUIET)
+  if(BP_GIT_HASH)
+    string(STRIP "${BP_GIT_HASH}" BP_BUILD_ID)
+  endif()
+endif()
+target_compile_definitions(sim PUBLIC
+  BP_BUILD_ID="${BP_BUILD_ID}"
+  BP_SIM_VERSION=1
+  BP_PROTOCOL_VERSION=1)
 
 add_executable(headless_sim tools/headless_sim/main.cpp)
 target_link_libraries(headless_sim PRIVATE sim)

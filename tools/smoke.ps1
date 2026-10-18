@@ -34,6 +34,10 @@ try {
     & $exe --test-bindings
     if ($LASTEXITCODE -ne 0) { throw 'keybind test failed' }
 
+    Write-Host '== demo replay ==' -ForegroundColor Cyan
+    & $exe --test-demo
+    if ($LASTEXITCODE -ne 0) { throw 'demo test failed' }
+
     Write-Host '== bench ==' -ForegroundColor Cyan
     & $exe --bench 1000
     if ($LASTEXITCODE -ne 0) { throw 'bench failed' }

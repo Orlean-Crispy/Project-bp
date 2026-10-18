@@ -194,3 +194,45 @@
 
 - [ ] 游戏内改键 UI（等 Godot 侧设置菜单，M5 之后）
 - [ ] 鼠标灵敏度 / ADS 缩放分开配置（M6）
+---
+
+## 2026-10-18 · S05 · M4 demo 录制 / 回放 / 跨机比对
+
+### 做了什么
+
+| 组件 | 文件 | 说明 |
+|---|---|---|
+| 格式 | `sim/demo/demo.h/.cpp` | 二进制：头部（build_id / sim 版本 / params_hash / geometry_hash / 地图 / 初始状态）+ 每 tick 输入 + 每 tick 世界哈希 |
+| 构建号 | `sim/core/version.h` + CMake | configure 时取 `git rev-parse --short HEAD` 注入 `BP_BUILD_ID` |
+| 录制 | `--record <file>` | 把脚本输入跑一遍并落盘（约 28 B/tick） |
+| 回放 | `--play <file>` | 重建世界、逐 tick 重算、比对哈希；头部不匹配只警告不拒绝 |
+| 导出 | `--dump <csv>` | 逐 tick 位置/速度，供跨机比对 |
+| 比对 | `--compare a.csv b.csv --tolerance 0.01` | 最大轴向偏差 |
+
+### 验收（`--test-demo`）
+
+| 检查 | 结果 |
+|---|---|
+| 同构建回放 400 tick | 全部命中 |
+| 改 `accel` 后回放 | 被检测到（头部 params 不一致 + 位置偏差 0.0662 m） |
+| 两个相同 dump | 偏差 0.000000 m |
+| 扰动 dump | 偏差 > 0.01 m |
+
+### 一个容易误判的细节
+
+`state_hash` 里包含 `params_hash`，所以改参数后**第一个 tick** 就报分叉——
+这会让「改了 movement.toml 能被抓出来」这条测试**恒真**。真正的物理验证靠
+`--dump` + `--compare`（0.0662 m 那个数），哈希只负责「同一构建内逐 tick 一致」。
+
+### 还没做的
+
+- **跨机实测**：需要第二台机器跑同一个 demo。流程写在 `docs/demo-format.md`。
+- 流式录制（现在整段缓存在内存）。
+- 回放时的「快进 / 逐帧」交互（等有客户端以后）。
+
+### 下一步（M5 网络）
+
+- [ ] netchan：不可靠 UDP + 序列号 + delta 快照
+- [ ] 时间基准（§7.0）：serverTime 估计、cmd.tick、时钟漂移
+- [ ] 预测与本地移动状态回滚（§7.6）
+- [ ] 这些都需要先有 Godot 宿主或至少两个进程——M4 的 demo 工具正好可以用来验证回滚重放的确定性

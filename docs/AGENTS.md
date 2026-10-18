@@ -97,6 +97,7 @@ Godot 4.7 宿主 + 自研 C++17 模拟层（无 Godot 依赖），64 tick，目�
 | 零警告 | 全量构建 `-Werror` 通过 | `tools/build.ps1` |
 | 冒烟 | 不崩 + 能读图 + 能跑 600 tick | `tools/smoke.ps1` |
 | 手感 | 单跳高/单跳远/strafe 增益/0→max tick 数 | `move_metrics` CSV |
+| demo 回放 | 同构建逐 tick 哈希一致；跨机最大偏差 < 0.01 m | `--test-demo` / `--compare` |
 
 ## 4. 未结案
 
@@ -121,6 +122,7 @@ Godot 4.7 宿主 + 自研 C++17 模拟层（无 Godot 依赖），64 tick，目�
 | 3 | 会跑一次的测试不算测试：穿墙类判据至少 100 次 × 5 个速度档。 |
 | 4 | 碰撞判据必须成对：**不能穿**（100 次）与**不能卡**（贴墙静止 / 沿墙滑动）同时验。案例：`pitfalls/contact-epsilon.md` |
 | 5 | 「面前有没有东西」的探测一律**从后退 5 cm 处起扫**；投影/裁剪后的速度不能当探测方向。 |
+| 6 | 被测的输入已经进了哈希时，「能检出差异」是恒真的；物理差异必须用位置 dump 比对来证明。案例：`docs/demo-format.md` 的 params_hash 说明。 |
 
 ## 6. 开场协议
 
@@ -143,7 +145,7 @@ Godot 4.7 宿主 + 自研 C++17 模拟层（无 Godot 依赖），64 tick，目�
 | 工具链 | `C:\bp-toolchain`：mingw64 / cmake-4.4.4-windows-x86_64 / ninja |
 | 重建工具链 | `powershell -File tools\setup_toolchain.ps1` |
 | 构建 | `powershell -File tools\build.ps1`（输出在 `build/`） |
-| 冒烟 | `powershell -File tools\smoke.ps1`（info / determinism / wall / ray / step / parkour / keybinds / bench） |
+| 冒烟 | `powershell -File tools\smoke.ps1`（info / determinism / wall / ray / step / parkour / keybinds / demo / bench） |
 | Shell | Windows PowerShell **5.1**，不是 pwsh 7 |
 | 运行时 | exe 静态链接 libgcc/libstdc++，不需要把 mingw 加进 PATH |
 
