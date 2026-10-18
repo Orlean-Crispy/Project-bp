@@ -43,6 +43,11 @@ void accelerate(Vec3& vel, const Vec3& wishdir, float wishspeed, float accel, fl
     vel += wishdir * accelspeed;
 }
 
+bool hull_fits(const CollisionWorld& world, const Vec3& pos, const Vec3& mins, const Vec3& maxs) {
+    const TraceResult tr = world.trace_box(pos, pos, mins, maxs);
+    return !tr.start_solid;
+}
+
 bool probe_ground(const PlayerState& player, const CollisionWorld& world,
                   const MovementParams& params, float& out_z) {
     Vec3 mins;
@@ -82,7 +87,15 @@ void pmove(PlayerState& player, const MoveInput& input, const CollisionWorld& wo
     player_hull(player, params, mins, maxs);
 
     // Crouch state first: the hull is needed by every trace below.
-    player.crouched = input.crouch;
+    // Standing up is refused when the standing hull would intersect geometry,
+    // otherwise the player pops through a low ceiling.
+    bool want_crouch = input.crouch;
+    if (!want_crouch && player.crouched) {
+        Vec3 stand_mins(-params.player_radius, -params.player_radius, 0.0f);
+        Vec3 stand_maxs(params.player_radius, params.player_radius, params.stand_height);
+        if (!hull_fits(world, player.pos, stand_mins, stand_maxs)) want_crouch = true;
+    }
+    player.crouched = want_crouch;
 
     float ground_z = player.pos.z;
     player.on_ground = probe_ground(player, world, params, ground_z);
@@ -108,9 +121,9 @@ void pmove(PlayerState& player, const MoveInput& input, const CollisionWorld& wo
         player.vel.z -= params.gravity * dt;
     }
 
-    const SlideResult moved = slide_move(world, player.pos, player.vel, mins, maxs, dt, params);
-    player.pos = moved.pos;
-    player.vel = moved.vel;
+    const StepResult moved = step_slide_move(world, player.pos, player.vel, mins, maxs, dt, params);
+    player.pos = moved.moved.pos;
+    player.vel = moved.moved.vel;
 
     if (probe_ground(player, world, params, ground_z)) {
         player.pos.z = ground_z;

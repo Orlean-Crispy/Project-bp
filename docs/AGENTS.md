@@ -107,7 +107,7 @@ Godot 4.7 宿主 + 自研 C++17 模拟层（无 Godot 依赖），64 tick，目�
 4. **键位表未定** — Q 键三用已被否决，但新键位没有落地。lead：M3 前必须定（「按键分离验证」没有依据）。
 5. **穿透两套模型** — `.map` 的 `_penetrable` 与 `penetration_count` 谁优先未定。lead：M6。
 6. **中文本地路径** `G:\自制游戏` — 已定：编译可用，**链接不可用**，所以工具链必须在 ASCII 路径（见 §7）。任何新引入的工具（godot-cpp、TrenchBroom 的 CLI、Python 脚本）第一次接入都要先验「能不能在这个路径下跑」。
-7. **缺少 step-up** — 0.46 m 台阶/平台目前走不上去（M2）。lead：M2 首项。
+7. ~~缺少 step-up~~ — 已在 M2 完成（`--test-step`：0.20 / 0.35 / 三级 0.15 台阶可上，0.55 m 挡住，蹲下空间有效）。
 
 ## 5. 教训（编号沿用，不复用）
 
@@ -118,6 +118,7 @@ Godot 4.7 宿主 + 自研 C++17 模拟层（无 Godot 依赖），64 tick，目�
 | 1 | 盒体扫掠的支撑距离用 **min**（相交）不是 max（包含）；`--test-wall` 出现任何 penetration 即为红。案例：`pitfalls/minkowski-support.md` |
 | 2 | 工具链必须在物理 ASCII 路径；junction/subst/8.3 都不能绕过。案例：`pitfalls/toolchain-nonascii.md` |
 | 3 | 会跑一次的测试不算测试：穿墙类判据至少 100 次 × 5 个速度档。 |
+| 4 | 碰撞判据必须成对：**不能穿**（100 次）与**不能卡**（贴墙静止 / 沿墙滑动）同时验。案例：`pitfalls/contact-epsilon.md` |
 
 ## 6. 开场协议
 

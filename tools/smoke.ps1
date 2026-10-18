@@ -22,6 +22,10 @@ try {
     & $exe --test-ray
     if ($LASTEXITCODE -ne 0) { throw 'ray test failed' }
 
+    Write-Host '== steps and crouch ==' -ForegroundColor Cyan
+    & $exe --test-step
+    if ($LASTEXITCODE -ne 0) { throw 'step test failed' }
+
     Write-Host '== bench ==' -ForegroundColor Cyan
     & $exe --bench 1000
     if ($LASTEXITCODE -ne 0) { throw 'bench failed' }

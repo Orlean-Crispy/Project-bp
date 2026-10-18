@@ -67,7 +67,12 @@ TraceResult CollisionWorld::trace_box(const Vec3& start, const Vec3& end,
             if (d1 <= 0.0f && d2 <= 0.0f) continue;
 
             if (d1 > d2) {
-                const float f = (d1 - kClipEpsilon) / (d1 - d2);
+                // Resting exactly one epsilon off the face makes the numerator zero
+                // or slightly negative. Clamp instead of discarding: an entry that
+                // has already happened is a hit at fraction 0, and dropping it lets
+                // the player creep 19 mm into the wall every tick.
+                float f = (d1 - kClipEpsilon) / (d1 - d2);
+                if (f < 0.0f) f = 0.0f;
                 if (f > brush_enter) {
                     brush_enter = f;
                     brush_normal = plane.normal;
@@ -192,6 +197,56 @@ SlideResult slide_move(const CollisionWorld& world, const Vec3& start, const Vec
 
     result.vel = vel;
     result.bumps = bumps;
+    return result;
+}
+
+namespace {
+
+float horizontal_distance(const Vec3& a, const Vec3& b) {
+    const float dx = a.x - b.x;
+    const float dy = a.y - b.y;
+    return std::sqrt(dx * dx + dy * dy);
+}
+
+}  // namespace
+
+StepResult step_slide_move(const CollisionWorld& world, const Vec3& start, const Vec3& velocity,
+                           const Vec3& mins, const Vec3& maxs, float dt,
+                           const MovementParams& params) {
+    StepResult result;
+    result.moved = slide_move(world, start, velocity, mins, maxs, dt, params);
+    if (!result.moved.hit) return result;
+
+    const float step = params.step_height;
+    if (step <= 0.0f) return result;
+
+    // 1. Lift.
+    const TraceResult up = world.trace_box(start, start + Vec3(0.0f, 0.0f, step), mins, maxs);
+    if (up.start_solid || up.fraction <= 0.0f) return result;
+    const Vec3 lifted = up.end_pos;
+
+    // 2. Repeat the horizontal move from the raised position.
+    const SlideResult raised = slide_move(world, lifted, velocity, mins, maxs, dt, params);
+
+    // 3. Drop back down.
+    const TraceResult down = world.trace_box(raised.pos, raised.pos - Vec3(0.0f, 0.0f, step + 0.01f),
+                                             mins, maxs);
+    if (down.start_solid) return result;
+    const Vec3 landed = down.end_pos;
+
+    // 4. Only take it when it is a real gain on a walkable surface.
+    const bool walkable = down.fraction < 1.0f && down.normal.z > 0.7f;
+    const float flat_gain = horizontal_distance(result.moved.pos, start);
+    const float step_gain = horizontal_distance(landed, start);
+    if (!walkable || step_gain <= flat_gain + 1e-4f) return result;
+
+    result.moved.pos = landed;
+    result.moved.vel = raised.vel;
+    result.moved.hit = raised.hit;
+    result.moved.hit_normal = raised.hit_normal;
+    result.moved.bumps = raised.bumps;
+    result.moved.max_step_length = raised.max_step_length;
+    result.stepped = true;
     return result;
 }
 

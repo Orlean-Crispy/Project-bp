@@ -54,4 +54,17 @@ struct SlideResult {
 SlideResult slide_move(const CollisionWorld& world, const Vec3& start, const Vec3& velocity,
                        const Vec3& mins, const Vec3& maxs, float dt, const MovementParams& params);
 
+struct StepResult {
+    SlideResult moved;
+    bool stepped = false;
+};
+
+// Stair stepping (Q3 PM_StepSlideMove): when the flat move is blocked, retry it
+// from step_height higher and drop back down. The stepped attempt is only taken
+// when it actually gains horizontal ground and lands on a walkable surface, so a
+// wall cannot be climbed by "stepping".
+StepResult step_slide_move(const CollisionWorld& world, const Vec3& start, const Vec3& velocity,
+                           const Vec3& mins, const Vec3& maxs, float dt,
+                           const MovementParams& params);
+
 }  // namespace sim

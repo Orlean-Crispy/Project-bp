@@ -32,6 +32,8 @@ struct Options {
     bool selftest = false;
     bool test_wall = false;
     bool test_ray = false;
+    bool test_step = false;
+    bool map_explicit = false;
     bool bench = false;
     bool info = false;
     bool print_hash = false;
@@ -50,6 +52,7 @@ void usage() {
         "  --selftest        run the same input twice and compare per-tick hashes\n"
         "  --test-wall       fire a player at a 0.1 m wall 100 times, count penetrations\n"
         "  --test-ray        sweep point and box traces across the thin wall in one segment\n"
+        "  --test-step       stair stepping and crouch headroom (uses step_test.map)\n"
         "  --bench [n]       time n ticks and report mean/p99/max\n");
 }
 
@@ -224,11 +227,34 @@ int run_wall_test(const Options& opt) {
                     static_cast<double>(max_step), ok ? "ok" : "FAIL");
     }
 
+    // Sliding must survive the contact-epsilon clamp: a player pressed into the
+    // wall at an angle has to keep moving along it, not stick.
+    {
+        PlayerState p;
+        p.pos = sim::Vec3(-1.0f, 0.0f, 0.02f);
+        p.vel = sim::Vec3(8.0f, 6.0f, 0.0f);
+        sim::Vec3 mins;
+        sim::Vec3 maxs;
+        sim::player_hull(p, world.params, mins, maxs);
+        const float start_y = p.pos.y;
+        for (int t = 0; t < 20; ++t) {
+            const SlideResult r =
+                sim::step_slide_move(world.collision, p.pos, p.vel, mins, maxs, kDt, world.params).moved;
+            p.pos = r.pos;
+            p.vel = r.vel;
+        }
+        const float slid = p.pos.y - start_y;
+        const bool ok = slid > 0.5f && p.pos.x < contact_x + 0.01f;
+        if (!ok) ++failures;
+        std::printf("  %5s  slid %.3f m along wall, x=%.3f\n", ok ? "slide" : "slide",
+                    static_cast<double>(slid), static_cast<double>(p.pos.x));
+    }
+
     if (failures != 0) {
         std::printf("FAIL: %d speed tiers penetrated the 0.1 m wall\n", failures);
         return 1;
     }
-    std::printf("PASS: no penetration at any tested speed\n");
+    std::printf("PASS: no penetration at any tested speed, wall sliding preserved\n");
     return 0;
 }
 
@@ -286,6 +312,82 @@ int run_ray_test(const Options& opt) {
     return 0;
 }
 
+int run_step_test(const Options& opt) {
+    Options local = opt;
+    if (!opt.map_explicit) local.map_path = "sim/data/maps/step_test.map";
+
+    std::string error;
+    World world;
+    if (!load_world(local, world, error)) {
+        std::fprintf(stderr, "error: %s\n", error.c_str());
+        return 1;
+    }
+
+    int failures = 0;
+
+    auto scenario = [&](float x, float y, int ticks, bool crouch, bool start_crouched,
+                        PlayerState& out) {
+        PlayerState p;
+        p.pos = sim::Vec3(x, y, 0.01f);
+        p.crouched = start_crouched;
+        p.impulses = world.params.max_impulses;
+        world.players.assign(1, p);
+        world.tick = 0;
+        for (int i = 0; i < ticks; ++i) {
+            MoveInput in;
+            in.forward = 1.0f;
+            in.crouch = crouch;
+            world.step({in}, kDt);
+        }
+        out = world.players[0];
+    };
+
+    auto expect_z = [&](const char* label, float got, float want, float tol) {
+        const bool ok = std::fabs(got - want) <= tol;
+        if (!ok) ++failures;
+        std::printf("  %-34s z=%.4f (want %.4f +-%.3f)  %s\n", label,
+                    static_cast<double>(got), static_cast<double>(want),
+                    static_cast<double>(tol), ok ? "ok" : "FAIL");
+    };
+
+    PlayerState out;
+
+    scenario(-2.0f, -4.0f, 90, false, false, out);
+    expect_z("0.20 m step: climbed", out.pos.z, 0.20f, 0.02f);
+
+    scenario(-2.0f, -2.0f, 90, false, false, out);
+    expect_z("0.35 m step: climbed", out.pos.z, 0.35f, 0.02f);
+
+    scenario(-2.0f, 2.0f, 140, false, false, out);
+    expect_z("three 0.15 m stairs", out.pos.z, 0.45f, 0.02f);
+
+    scenario(-2.0f, 0.0f, 90, false, false, out);
+    const bool blocked = out.pos.z < 0.05f && out.pos.x < -0.4f;
+    if (!blocked) ++failures;
+    std::printf("  %-34s z=%.4f x=%.4f  %s\n", "0.55 m wall: blocked",
+                static_cast<double>(out.pos.z), static_cast<double>(out.pos.x),
+                blocked ? "ok" : "FAIL");
+
+    // Crouch under a 1.0 m ceiling, then try to stand up again.
+    scenario(1.0f, 4.0f, 40, true, true, out);
+    const float crouched_z = out.pos.z;
+    const bool stayed_crouched_while_held = out.crouched;
+    scenario(1.0f, 4.0f, 40, false, true, out);
+    const bool kept_crouched = out.crouched && out.pos.z < 0.05f;
+    if (!stayed_crouched_while_held || !kept_crouched) ++failures;
+    std::printf("  %-34s crouched=%s z=%.4f  %s\n", "headroom: cannot stand under ceiling",
+                out.crouched ? "yes" : "no", static_cast<double>(out.pos.z),
+                kept_crouched ? "ok" : "FAIL");
+    (void)crouched_z;
+
+    if (failures != 0) {
+        std::printf("FAIL: %d step checks failed\n", failures);
+        return 1;
+    }
+    std::printf("PASS: stairs climb, walls block, crouch respects headroom\n");
+    return 0;
+}
+
 int run_bench(const Options& opt) {
     std::string error;
     World world;
@@ -335,6 +437,7 @@ int main(int argc, char** argv) {
             const char* v = need_value("--map");
             if (!v) return 2;
             opt.map_path = v;
+            opt.map_explicit = true;
         } else if (arg == "--data") {
             const char* v = need_value("--data");
             if (!v) return 2;
@@ -357,6 +460,8 @@ int main(int argc, char** argv) {
             opt.test_wall = true;
         } else if (arg == "--test-ray") {
             opt.test_ray = true;
+        } else if (arg == "--test-step") {
+            opt.test_step = true;
         } else if (arg == "--bench") {
             opt.bench = true;
             if (i + 1 < argc && argv[i + 1][0] != '-') opt.bench_ticks = std::atoi(argv[++i]);
@@ -374,6 +479,7 @@ int main(int argc, char** argv) {
     if (opt.selftest) return run_selftest(opt);
     if (opt.test_wall) return run_wall_test(opt);
     if (opt.test_ray) return run_ray_test(opt);
+    if (opt.test_step) return run_step_test(opt);
     if (opt.bench) return run_bench(opt);
 
     std::string error;
