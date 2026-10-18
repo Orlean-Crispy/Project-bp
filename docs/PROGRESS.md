@@ -407,3 +407,34 @@ C:\bp-toolchain\godot\Godot_v4.5-stable_win64.exe --path godot
 2. **可靠通道**只留了 AckTracker，还没有 full_state/重连消息（§7.7）。
 3. **hitbox 历史环形缓冲**（§7.3）未做——属于 M6 前的必做项。
 4. 客户端还没有“其他玩家”的插值渲染（§7.1），目前只预测自己。
+---
+
+## 2026-10-19 · S10 · HP / 护甲（用户拍板）
+
+| 项 | 值 |
+|---|---|
+| HP | 100 |
+| 小甲 | 25（不恢复） |
+| 再生甲 | 25（受伤后随时间恢复） |
+| 大甲 | 50（不恢复） |
+
+### 实现
+
+- sim/game/combat.h/.cpp：CombatParams / PlayerVitals / apply_damage / tick_vitals / equip_armor
+- 数据 sim/data/combat.toml（吸收 66%、再生 5 s / 10 s 是**提案**）
+- 伤害整数运算；护甲按百分比吸收，耗尽后溢出到 HP
+
+### 验收（--test-health，进冒烟）
+
+- 无甲 30 伤害 → 70 HP
+- 小甲：30 伤害 → 吸收 19、HP 11
+- 大甲：40 伤害 → 吸收 26、HP 14
+- 护甲封顶：100 伤害 → 吸收 25、HP 75
+- 再生甲：延迟内不回、之后回满、受伤重置延迟
+- 重甲躯干 TTK = 6 发 @600RPM = 0.60 s（落在 0.6–1.2 s）
+
+### 遗留
+
+- 吸收比例/再生节奏待确认（只改 combat.toml）
+- 爆头 ×5 与护甲的结算顺序在 M6 确定
+- 护甲尚未接入 PlayerState / 快照 / 网络（M6 再挂）
