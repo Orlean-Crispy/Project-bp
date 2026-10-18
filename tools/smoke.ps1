@@ -30,6 +30,10 @@ try {
     & $exe --test-parkour
     if ($LASTEXITCODE -ne 0) { throw 'parkour test failed' }
 
+    Write-Host '== keybinds ==' -ForegroundColor Cyan
+    & $exe --test-bindings
+    if ($LASTEXITCODE -ne 0) { throw 'keybind test failed' }
+
     Write-Host '== bench ==' -ForegroundColor Cyan
     & $exe --bench 1000
     if ($LASTEXITCODE -ne 0) { throw 'bench failed' }

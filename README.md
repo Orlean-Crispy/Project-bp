@@ -13,6 +13,8 @@ Godot 4.7 宿主 + 自研 C++17 模拟层（零 Godot 依赖），64 tick，目�
 - 分步 `slide_move`：按最小墙厚切步，20 m/s 撞 0.1 m 墙 100 次 0 穿透
 - 基础 pmove：地面加速/摩擦、空中控制、跳跃、蹲、**step-up 上台阶**、蹲下空间检查
 - parkour 五件套：**滑铲 / 冲刺 / 墙跑 / 爬墙 / 翻越**，全部走整数 tick 状态机
+- **键位数据驱动**：`sim/data/keybinds.toml`，默认瓦洛兰特布局（C 翻越 / Q 墙跑 / E 爬墙 / X 冲刺），
+  运行时可改、存盘即生效；sim 内部看不到键名
 - 无状态 RNG、逐 tick 世界哈希
 - `move_metrics` 四张表（CSV），可与 Q3 的数值对比
 
@@ -33,6 +35,8 @@ build\headless_sim.exe --test-wall                  # 5 个速度档 × 100 次�
 build\headless_sim.exe --test-ray                   # 点/盒的单段扫掠
 build\headless_sim.exe --test-step                  # 台阶 / 挡墙 / 蹲下空间
 build\headless_sim.exe --test-parkour               # 滑铲 / 冲刺 / 墙跑 / 爬墙 / 翻越
+build\headless_sim.exe --keys                       # 打印当前键位 + 冲突
+build\headless_sim.exe --test-bindings              # 改键 / 存盘 / 重载 全链路
 build\headless_sim.exe --bench 1000                 # 单 tick 耗时 p99
 build\move_metrics.exe                              # 四张手感表
 ```
@@ -43,7 +47,8 @@ build\move_metrics.exe                              # 四张手感表
 sim/core/        tick 时钟、世界状态与哈希、无状态 RNG、向量
 sim/collision/   .map 解析、brush 凸体、盒体扫掠、分步 slide
 sim/move/        pmove（地面/空中/跳跃/蹲 + parkour 五件套）
-sim/data/        movement.toml（唯一手感数值来源）、maps/*.map
+sim/input/       键位表：物理键枚举、动作映射、改键/存盘/冲突检测
+sim/data/        movement.toml（手感数值）、keybinds.toml（键位）、maps/*.map
 tools/           headless_sim、move_metrics、build/smoke/setup 脚本
 docs/            AGENTS / PROGRESS / pitfalls / keymap / 计划书
 ```

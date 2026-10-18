@@ -26,6 +26,8 @@ add_library(sim STATIC
   sim/collision/trace.cpp
   sim/move/pmove.cpp
   sim/data/config.cpp
+  sim/input/keycodes.cpp
+  sim/input/bindings.cpp
 )
 target_include_directories(sim PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 

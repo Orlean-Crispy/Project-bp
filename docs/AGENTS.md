@@ -85,6 +85,7 @@ Godot 4.7 宿主 + 自研 C++17 模拟层（无 Godot 依赖），64 tick，目�
 | 头文件 | `#pragma once`；sim 头文件不得 include 任何 Godot 头 |
 | 浮点 | `float` 为模拟主类型；禁止隐式 double（`-Wdouble-promotion` 复查） |
 | 路径 | 工程内引用一律用相对路径，不自设绝对路径；**脚本（.ps1）只写 ASCII**（PS 5.1 按 GBK 读无 BOM 文件，中文行尾会吃掉下一行） |
+| 键位 | 只允许出现在 `sim/data/keybinds.toml` 与 `sim/input/`；sim 内部**不得**出现 `Key`/`Action`，只认 `MoveInput` |
 
 ## 3. 判据清单
 
@@ -104,7 +105,7 @@ Godot 4.7 宿主 + 自研 C++17 模拟层（无 Godot 依赖），64 tick，目�
 1. **Godot 4.7 / godot-cpp 未安装** — lead：M5 之前必须解决；当前只验证纯 C++ 模拟层（M0–M4 不需要引擎）。
 2. **交叉编译器**：sim 用 MinGW GCC，godot-cpp 官方支持 MSVC。lead：M5 前二选一（装 VS Build Tools，或验证 mingw 构建 godot-cpp）。
 3. **HP / 护甲未定值** — 计划书只有「如 100」。lead：M6 前定，否则爆头 ×5 与 TTK 0.6–1.2 s 无法互相验证。
-4. **键位表** — 已给出建议稿 `docs/keymap.md`（Q 墙跑 / E 爬墙 / V 翻越 / F 冲刺），**待试玩确认**。lead：M4 前。
+4. **键位** — 已定：**数据驱动 + 运行时可改**，默认瓦洛兰特布局（C 翻越 / Q 墙跑 / E 爬墙 / X 冲刺），见 `docs/keymap.md` 与 `--test-bindings`。剩余：游戏内改键 UI（M5 之后）。
 5. **穿透两套模型** — `.map` 的 `_penetrable` 与 `penetration_count` 谁优先未定。lead：M6。
 6. **中文本地路径** `G:\自制游戏` — 已定：编译可用，**链接不可用**，所以工具链必须在 ASCII 路径（见 §7）。任何新引入的工具（godot-cpp、TrenchBroom 的 CLI、Python 脚本）第一次接入都要先验「能不能在这个路径下跑」。
 7. ~~缺少 step-up~~ — 已在 M2 完成（`--test-step`：0.20 / 0.35 / 三级 0.15 台阶可上，0.55 m 挡住，蹲下空间有效）。
@@ -142,7 +143,7 @@ Godot 4.7 宿主 + 自研 C++17 模拟层（无 Godot 依赖），64 tick，目�
 | 工具链 | `C:\bp-toolchain`：mingw64 / cmake-4.4.4-windows-x86_64 / ninja |
 | 重建工具链 | `powershell -File tools\setup_toolchain.ps1` |
 | 构建 | `powershell -File tools\build.ps1`（输出在 `build/`） |
-| 冒烟 | `powershell -File tools\smoke.ps1`（info / determinism / wall / ray / step / parkour / bench） |
+| 冒烟 | `powershell -File tools\smoke.ps1`（info / determinism / wall / ray / step / parkour / keybinds / bench） |
 | Shell | Windows PowerShell **5.1**，不是 pwsh 7 |
 | 运行时 | exe 静态链接 libgcc/libstdc++，不需要把 mingw 加进 PATH |
 

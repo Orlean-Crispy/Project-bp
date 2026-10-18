@@ -10,6 +10,7 @@
 
 #include "sim/core/tick.h"
 #include "sim/core/world.h"
+#include "sim/input/bindings.h"
 
 namespace {
 
@@ -34,7 +35,10 @@ struct Options {
     bool test_ray = false;
     bool test_step = false;
     bool test_parkour = false;
+    bool test_bindings = false;
+    bool print_keys = false;
     bool map_explicit = false;
+    std::string keybinds_path = "sim/data/keybinds.toml";
     bool bench = false;
     bool info = false;
     bool print_hash = false;
@@ -55,6 +59,9 @@ void usage() {
         "  --test-ray        sweep point and box traces across the thin wall in one segment\n"
         "  --test-step       stair stepping and crouch headroom (uses step_test.map)\n"
         "  --test-parkour    slide tunnel and dash (uses parkour_test.map)\n"
+        "  --keys            print the resolved key bindings\n"
+        "  --test-bindings   verify the keymap loads, remaps and persists\n"
+        "  --keybinds <file> keybind file (default sim/data/keybinds.toml)\n"
         "  --bench [n]       time n ticks and report mean/p99/max\n");
 }
 
@@ -562,6 +569,98 @@ int run_parkour_test(const Options& opt) {
     return 0;
 }
 
+int run_keys(const Options& opt) {
+    sim::Bindings bindings;
+    std::string error;
+    std::vector<std::string> warnings;
+    if (!bindings.load(opt.keybinds_path, error, warnings)) {
+        std::fprintf(stderr, "error: %s\n", error.c_str());
+        return 1;
+    }
+    for (const std::string& w : warnings) std::fprintf(stderr, "warning: %s\n", w.c_str());
+
+    std::printf("keybinds: %s\n\n", opt.keybinds_path.c_str());
+    std::printf("  %-12s %s\n", "ACTION", "KEY");
+    for (size_t i = 0; i < sim::kActionCount; ++i) {
+        const sim::Action action = static_cast<sim::Action>(i);
+        std::printf("  %-12s %s\n", sim::action_name(action), sim::key_name(bindings.key(action)));
+    }
+    if (!bindings.conflicts().empty()) {
+        std::printf("\nconflicts:\n");
+        for (const std::string& c : bindings.conflicts()) std::printf("  %s\n", c.c_str());
+    }
+    return 0;
+}
+
+// Proves the three properties that make the keymap "remappable" rather than
+// merely "configurable on paper": it loads from data, changes take effect
+// immediately, and the change survives a save/reload.
+int run_keybind_test(const Options& opt) {
+    int failures = 0;
+    auto check = [&](const char* label, bool ok) {
+        if (!ok) ++failures;
+        std::printf("  %-42s %s\n", label, ok ? "ok" : "FAIL");
+    };
+
+    sim::Bindings bindings;
+    std::string error;
+    std::vector<std::string> warnings;
+    if (!bindings.load(opt.keybinds_path, error, warnings)) {
+        std::fprintf(stderr, "error: %s\n", error.c_str());
+        return 1;
+    }
+    for (const std::string& w : warnings) std::fprintf(stderr, "warning: %s\n", w.c_str());
+
+    check("every action has a key", bindings.unbound().empty());
+    check("no key is bound twice", bindings.conflicts().empty());
+    check("wall run on Q (Valorant layout)",
+          bindings.key(sim::Action::WallRun) == sim::Key::Q);
+    check("wall climb on E", bindings.key(sim::Action::WallClimb) == sim::Key::E);
+    check("vault on C", bindings.key(sim::Action::Vault) == sim::Key::C);
+    check("dash on X", bindings.key(sim::Action::Dash) == sim::Key::X);
+
+    sim::KeyState keys;
+    keys.set(sim::Key::W, true);
+    keys.set(sim::Key::Space, true);
+    sim::MoveInput input = sim::build_move_input(bindings, keys, 0.0f);
+    check("W + SPACE produces forward + jump", input.forward > 0.5f && input.jump);
+
+    // Rebind at runtime; the old key must stop working immediately.
+    bindings.set_key(sim::Action::Jump, sim::Key::V);
+    input = sim::build_move_input(bindings, keys, 0.0f);
+    check("after rebinding, SPACE no longer jumps", !input.jump);
+    keys.set(sim::Key::V, true);
+    input = sim::build_move_input(bindings, keys, 0.0f);
+    check("after rebinding, V jumps", input.jump);
+
+    // Persist and reload into a fresh object.
+    const std::string saved = "build/keybinds_test.toml";
+    if (!bindings.save(saved, error)) {
+        std::fprintf(stderr, "error: %s\n", error.c_str());
+        return 1;
+    }
+    sim::Bindings reloaded;
+    if (!reloaded.load(saved, error, warnings)) {
+        std::fprintf(stderr, "error: %s\n", error.c_str());
+        return 1;
+    }
+    check("saved keymap reloads with V on jump",
+          reloaded.key(sim::Action::Jump) == sim::Key::V);
+
+    // Positive control for conflict detection: this must be able to fail.
+    bindings.set_key(sim::Action::Slide, sim::Key::Q);
+    check("duplicate bind is reported", !bindings.conflicts().empty());
+    bindings.set_key(sim::Action::Slide, sim::Key::LeftShift);
+    check("restoring the bind clears the conflict", bindings.conflicts().empty());
+
+    if (failures != 0) {
+        std::printf("FAIL: %d keybind checks failed\n", failures);
+        return 1;
+    }
+    std::printf("PASS: keymap loads from data, remaps live, and persists\n");
+    return 0;
+}
+
 int run_bench(const Options& opt) {
     std::string error;
     World world;
@@ -638,6 +737,14 @@ int main(int argc, char** argv) {
             opt.test_step = true;
         } else if (arg == "--test-parkour") {
             opt.test_parkour = true;
+        } else if (arg == "--test-bindings") {
+            opt.test_bindings = true;
+        } else if (arg == "--keys") {
+            opt.print_keys = true;
+        } else if (arg == "--keybinds") {
+            const char* v = need_value("--keybinds");
+            if (!v) return 2;
+            opt.keybinds_path = v;
         } else if (arg == "--bench") {
             opt.bench = true;
             if (i + 1 < argc && argv[i + 1][0] != '-') opt.bench_ticks = std::atoi(argv[++i]);
@@ -651,12 +758,14 @@ int main(int argc, char** argv) {
         }
     }
 
+    if (opt.print_keys) return run_keys(opt);
     if (opt.info) return run_info(opt);
     if (opt.selftest) return run_selftest(opt);
     if (opt.test_wall) return run_wall_test(opt);
     if (opt.test_ray) return run_ray_test(opt);
     if (opt.test_step) return run_step_test(opt);
     if (opt.test_parkour) return run_parkour_test(opt);
+    if (opt.test_bindings) return run_keybind_test(opt);
     if (opt.bench) return run_bench(opt);
 
     std::string error;

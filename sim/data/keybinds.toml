@@ -1,0 +1,22 @@
+# keybinds.toml - every bind is editable at runtime (iron law I).
+# Defaults follow the Valorant ability layout: abilities on C / Q / E / X.
+# Names are case insensitive; spaces are ignored ("left shift" works).
+# The simulation never sees these names - only the resulting MoveInput.
+
+[move]
+forward = "W"
+back    = "S"
+left    = "A"
+right   = "D"
+
+[actions]
+jump      = "SPACE"
+crouch    = "LEFT_CTRL"
+slide     = "LEFT_SHIFT"
+dash      = "X"        # Valorant ultimate slot
+wallrun   = "Q"        # Valorant ability 2
+wallclimb = "E"        # Valorant ability 3 (signature)
+vault     = "C"        # Valorant ability 1
+reload    = "R"
+use       = "F"
+scoreboard = "TAB"
