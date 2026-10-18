@@ -61,6 +61,11 @@
 - **§5.8 的「strafe 增益」不能在地面测**：地面加速的上限就是 `max_speed`，地面 strafe
   的增益恒为 0（实测 0.0000）。改成**空中 strafe（跳跃 + 前右 + 转视角）**，当前 1.04 m/s。
 
+### 基线提交
+
+`6b99597 M1: map parsing, brush sweep, deterministic sim, smoke gates`
+提交后删除 `build/` 做了**冷构建**，再跑 `tools/smoke.ps1`，全绿。
+
 ### 下一步
 
 - [ ] M2：stair step-up（0.46 m 台阶），现在 0.4 m 平台是走不上去的
