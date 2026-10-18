@@ -26,6 +26,10 @@ try {
     & $exe --test-step
     if ($LASTEXITCODE -ne 0) { throw 'step test failed' }
 
+    Write-Host '== ledges ==' -ForegroundColor Cyan
+    & $exe --test-edge
+    if ($LASTEXITCODE -ne 0) { throw 'ledge test failed' }
+
     Write-Host '== parkour ==' -ForegroundColor Cyan
     & $exe --test-parkour
     if ($LASTEXITCODE -ne 0) { throw 'parkour test failed' }

@@ -37,6 +37,7 @@ struct Options {
     bool test_ray = false;
     bool test_step = false;
     bool test_parkour = false;
+    bool test_edge = false;
     bool test_bindings = false;
     bool print_keys = false;
     bool map_explicit = false;
@@ -76,6 +77,7 @@ void usage() {
         "  --dump <csv>      with --play: write per-tick positions\n"
         "  --compare <a> <b> compare two --dump files, report max deviation\n"
         "  --test-demo       record, replay, and prove divergence detection works\n"
+        "  --test-edge       jump onto a platform edge and keep walking (uses playground.map)\n"
         "  --bench [n]       time n ticks and report mean/p99/max\n");
 }
 
@@ -905,6 +907,86 @@ int run_compare(const Options& opt) {
 
 // The gate for M4: a demo must replay exactly on the same build, and a changed
 // movement.toml must be caught at the tick where it first matters.
+// Landing on the lip of a 1 m platform used to leave the box overlapping the
+// brush by a hair, which made every later horizontal trace report start_solid and
+// froze the player. This is the regression gate for that.
+int run_edge_test(const Options& opt) {
+    Options local = opt;
+    if (!opt.map_explicit) local.map_path = "sim/data/maps/playground.map";
+
+    std::string error;
+    World world;
+    if (!load_world(local, world, error)) {
+        std::fprintf(stderr, "error: %s\n", error.c_str());
+        return 1;
+    }
+
+    // Drop onto the platform so that only ~20 cm of the box overlaps it: this is
+    // the "half a foot on the lip" case the player hit.
+    PlayerState p;
+    p.pos = sim::Vec3(9.8f, 6.0f, 1.4f);
+    p.impulses = world.params.max_impulses;
+    world.players.assign(1, p);
+    world.tick = 0;
+
+    for (int i = 0; i < 30; ++i) {
+        MoveInput in;
+        world.step({in}, kDt);
+    }
+    const PlayerState& q = world.players[0];
+    std::printf("  after falling onto the lip: x=%.3f z=%.3f state=%d\n",
+                static_cast<double>(q.pos.x), static_cast<double>(q.pos.z),
+                static_cast<int>(q.state));
+
+    const float x_before = q.pos.x;
+    for (int i = 0; i < 40; ++i) {
+        MoveInput in;
+        in.forward = 1.0f;
+        world.step({in}, kDt);
+    }
+    const float moved = world.players[0].pos.x - x_before;
+
+    const bool on_platform = q.pos.z > 0.9f;
+    const bool still_moves = moved > 1.0f;
+    std::printf("  continued %.3f m in 40 ticks\n", static_cast<double>(moved));
+
+    if (!on_platform || !still_moves) {
+        std::printf("FAIL: %s%s\n", on_platform ? "" : "did not land on the platform; ",
+                    still_moves ? "" : "stuck after landing");
+        return 1;
+    }
+
+    // Grazing approach to the wide stairs (y -2..2): drift +Y while running +X.
+    {
+        PlayerState s;
+        s.pos = sim::Vec3(-3.0f, -1.5f, 0.01f);
+        s.impulses = world.params.max_impulses;
+        world.players.assign(1, s);
+        world.tick = 0;
+        float max_z = 0.0f;
+        for (int i = 0; i < 160; ++i) {
+            MoveInput in;
+            in.forward = 1.0f;
+            in.yaw = 0.15f;
+            world.step({in}, kDt);
+            max_z = std::max(max_z, world.players[0].pos.z);
+        }
+        const PlayerState& q2 = world.players[0];
+        const bool climbed = max_z > 0.4f;
+        if (!climbed) {
+            std::printf("FAIL: grazing approach did not climb the stairs (z=%.3f x=%.2f y=%.2f)\n",
+                        static_cast<double>(q2.pos.z), static_cast<double>(q2.pos.x),
+                        static_cast<double>(q2.pos.y));
+            return 1;
+        }
+        std::printf("  grazing approach onto the stairs: max z=%.3f x=%.2f\n",
+                    static_cast<double>(max_z), static_cast<double>(q2.pos.x));
+    }
+
+    std::printf("PASS: landing on the lip does not freeze the player\n");
+    return 0;
+}
+
 int run_demo_test(const Options& opt) {
     int failures = 0;
     auto check = [&](const char* label, bool ok) {
@@ -1126,6 +1208,8 @@ int main(int argc, char** argv) {
             opt.tolerance = std::atof(v);
         } else if (arg == "--test-demo") {
             opt.test_demo = true;
+        } else if (arg == "--test-edge") {
+            opt.test_edge = true;
         } else if (arg == "--bench") {
             opt.bench = true;
             if (i + 1 < argc && argv[i + 1][0] != '-') opt.bench_ticks = std::atoi(argv[++i]);
@@ -1139,6 +1223,7 @@ int main(int argc, char** argv) {
         }
     }
 
+    if (opt.test_edge) return run_edge_test(opt);
     if (opt.test_demo) return run_demo_test(opt);
     if (!opt.record_path.empty()) return run_record(opt);
     if (!opt.play_path.empty()) return run_play(opt);

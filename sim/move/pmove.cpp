@@ -22,8 +22,10 @@ Vec3 facing_direction(const MoveInput& input) {
 Vec3 wish_direction(const MoveInput& input) {
     const float s = std::sin(input.yaw);
     const float c = std::cos(input.yaw);
-    Vec3 dir(input.forward * c - input.right * s,
-             input.forward * s + input.right * c,
+    // yaw 0 looks down +X; in a right-handed Z-up frame the right vector is
+    // (sin yaw, -cos yaw), so the right input contributes with a MINUS on Y.
+    Vec3 dir(input.forward * c + input.right * s,
+             input.forward * s - input.right * c,
              0.0f);
     if (length(dir) > 1.0f) dir = normalized(dir);
     return dir;

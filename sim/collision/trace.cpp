@@ -234,11 +234,17 @@ StepResult step_slide_move(const CollisionWorld& world, const Vec3& start, const
     if (down.start_solid) return result;
     const Vec3 landed = down.end_pos;
 
-    // 4. Only take it when it is a real gain on a walkable surface.
+    // 4. Accept only when it is a real gain: either more ground covered, or the
+    // landing is higher than the flat result. The second half matters when the
+    // player approaches at an angle: sliding along the riser covers more ground
+    // than climbing it, and the old check therefore refused every diagonal step.
     const bool walkable = down.fraction < 1.0f && down.normal.z > 0.7f;
+    if (!walkable) return result;
+
     const float flat_gain = horizontal_distance(result.moved.pos, start);
     const float step_gain = horizontal_distance(landed, start);
-    if (!walkable || step_gain <= flat_gain + 1e-4f) return result;
+    const bool climbed = landed.z > result.moved.pos.z + 0.05f;
+    if (step_gain <= flat_gain + 1e-4f && !climbed) return result;
 
     result.moved.pos = landed;
     result.moved.vel = raised.vel;

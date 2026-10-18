@@ -101,7 +101,9 @@ func _build_world_mesh() -> void:
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and mouse_captured:
-		yaw += event.relative.x * SENSITIVITY
+		# sim yaw grows counter-clockwise (left); moving the mouse right must
+		# decrease it, otherwise the whole view feels mirrored.
+		yaw -= event.relative.x * SENSITIVITY
 		pitch = clampf(pitch - event.relative.y * SENSITIVITY, -1.5533, 1.5533)
 	elif event is InputEventKey and event.pressed and event.physical_keycode == KEY_ESCAPE:
 		mouse_captured = not mouse_captured
@@ -122,7 +124,10 @@ func _process(delta: float) -> void:
 	# --autoplay: hold forward for two seconds. Used by the smoke check to prove
 	# that input -> simulation -> camera actually works without a human.
 	if autoplay and autoplay_ticks < 128:
-		forward = 1.0
+		if autoplay_ticks < 64:
+			forward = 1.0
+		else:
+			right = 1.0
 		autoplay_ticks += 1
 
 	sim.set_input(
