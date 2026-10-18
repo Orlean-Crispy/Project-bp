@@ -1,0 +1,5 @@
+# Normalise line endings so a Linux CI and this Windows box see the same bytes.
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.map text eol=lf

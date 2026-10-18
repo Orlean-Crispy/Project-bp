@@ -1,0 +1,27 @@
+# build
+/build/
+/out/
+/.cache/
+
+# portable toolchain (~1 GB, machine-local)
+/.toolchain/
+
+# editor / OS
+.vscode/
+*.user
+Thumbs.db
+desktop.ini
+
+# binaries
+*.exe
+*.pdb
+*.obj
+*.o
+*.a
+*.dll
+
+# generated data
+/tools/move_metrics/out/
+*.csv
+*.svg
+*.log

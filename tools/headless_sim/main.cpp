@@ -1,0 +1,399 @@
+// headless_sim - the terminal runner that makes the simulation testable without
+// Godot, a GPU or a display (plan section 3.2).
+
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+#include <cstring>
+#include <string>
+#include <vector>
+
+#include "sim/core/tick.h"
+#include "sim/core/world.h"
+
+namespace {
+
+using sim::CollisionWorld;
+using sim::MapData;
+using sim::MoveInput;
+using sim::MovementParams;
+using sim::PlayerState;
+using sim::SlideResult;
+using sim::World;
+
+constexpr float kDt = 1.0f / 64.0f;
+
+struct Options {
+    std::string map_path = "sim/data/maps/test_box.map";
+    std::string data_path = "sim/data/movement.toml";
+    std::string script = "jump";
+    int ticks = 600;
+    int bench_ticks = 1000;
+    bool selftest = false;
+    bool test_wall = false;
+    bool test_ray = false;
+    bool bench = false;
+    bool info = false;
+    bool print_hash = false;
+};
+
+void usage() {
+    std::printf(
+        "headless_sim - Project Breakpoint simulation runner\n"
+        "\n"
+        "  --map <file>      .map file (default sim/data/maps/test_box.map)\n"
+        "  --data <file>     movement.toml (default sim/data/movement.toml)\n"
+        "  --ticks <n>       ticks to simulate (default 600)\n"
+        "  --script <name>   idle | run | jump | strafe (default jump)\n"
+        "  --hash            print the world hash of every tick\n"
+        "  --info            print map statistics and exit\n"
+        "  --selftest        run the same input twice and compare per-tick hashes\n"
+        "  --test-wall       fire a player at a 0.1 m wall 100 times, count penetrations\n"
+        "  --test-ray        sweep point and box traces across the thin wall in one segment\n"
+        "  --bench [n]       time n ticks and report mean/p99/max\n");
+}
+
+bool load_world(const Options& opt, World& world, std::string& error) {
+    MapData map;
+    if (!sim::parse_map_file(opt.map_path, map, error)) return false;
+
+    std::vector<std::string> warnings;
+    if (!sim::load_movement_params(opt.data_path, world.params, warnings, error)) return false;
+    for (const std::string& w : warnings) std::fprintf(stderr, "warning: %s\n", w.c_str());
+
+    world.collision.build(map);
+    world.params_hash = world.params.hash();
+
+    PlayerState player;
+    // Spawn in the open lane (y = 5), clear of the 0.1 m test wall at x = 0.
+    player.pos = sim::Vec3(-5.0f, 5.0f, 0.01f);
+    player.impulses = world.params.max_impulses;
+    world.players.push_back(player);
+    return true;
+}
+
+MoveInput make_input(const std::string& script, uint32_t tick) {
+    MoveInput in;
+    if (script == "run") {
+        in.forward = 1.0f;
+    } else if (script == "jump") {
+        in.forward = 1.0f;
+        in.jump = (tick % 45) == 0;
+    } else if (script == "strafe") {
+        in.forward = tick < 128 ? 1.0f : 0.0f;
+        in.right = tick >= 128 ? 1.0f : 0.0f;
+    }
+    return in;
+}
+
+int run_info(const Options& opt) {
+    MapData map;
+    std::string error;
+    if (!sim::parse_map_file(opt.map_path, map, error)) {
+        std::fprintf(stderr, "error: %s\n", error.c_str());
+        return 1;
+    }
+
+    int brushes = 0;
+    for (const auto& e : map.entities) brushes += static_cast<int>(e.brushes.size());
+
+    std::printf("map       %s\n", opt.map_path.c_str());
+    std::printf("entities  %zu\n", map.entities.size());
+    std::printf("brushes   %d\n", brushes);
+    std::printf("bounds    mins (%.3f, %.3f, %.3f)  maxs (%.3f, %.3f, %.3f)  [metres]\n",
+                map.bounds.mins.x, map.bounds.mins.y, map.bounds.mins.z,
+                map.bounds.maxs.x, map.bounds.maxs.y, map.bounds.maxs.z);
+    for (const auto& e : map.entities) {
+        const auto it = e.keys.find("classname");
+        if (it != e.keys.end()) {
+            std::printf("entity    %-20s brushes=%zu\n", it->second.c_str(), e.brushes.size());
+        }
+    }
+    return 0;
+}
+
+int run_selftest(const Options& opt) {
+    std::string error;
+
+    World a;
+    World b;
+    if (!load_world(opt, a, error)) {
+        std::fprintf(stderr, "error: %s\n", error.c_str());
+        return 1;
+    }
+    if (!load_world(opt, b, error)) {
+        std::fprintf(stderr, "error: %s\n", error.c_str());
+        return 1;
+    }
+
+    if (a.params_hash != b.params_hash) {
+        std::fprintf(stderr, "FAIL: parameter hash differs between loads\n");
+        return 1;
+    }
+
+    std::vector<uint64_t> hash_a;
+    std::vector<uint64_t> hash_b;
+    hash_a.reserve(static_cast<size_t>(opt.ticks));
+    hash_b.reserve(static_cast<size_t>(opt.ticks));
+
+    for (int i = 0; i < opt.ticks; ++i) {
+        const MoveInput in = make_input(opt.script, static_cast<uint32_t>(i));
+        a.step({in}, kDt);
+        hash_a.push_back(a.state_hash());
+    }
+    for (int i = 0; i < opt.ticks; ++i) {
+        const MoveInput in = make_input(opt.script, static_cast<uint32_t>(i));
+        b.step({in}, kDt);
+        hash_b.push_back(b.state_hash());
+    }
+
+    size_t mismatch = 0;
+    for (size_t i = 0; i < hash_a.size(); ++i) {
+        if (hash_a[i] != hash_b[i]) {
+            if (mismatch < 5) {
+                std::printf("MISMATCH tick %zu\n", i);
+            }
+            ++mismatch;
+        }
+    }
+
+    std::printf("ticks        %d\n", opt.ticks);
+    std::printf("params_hash  %016llx\n", static_cast<unsigned long long>(a.params_hash));
+    std::printf("geometry     %016llx\n",
+                static_cast<unsigned long long>(a.collision.geometry_hash()));
+    std::printf("final_hash   %016llx\n",
+                static_cast<unsigned long long>(a.state_hash()));
+    std::printf("final_pos    (%.4f, %.4f, %.4f)\n", a.players[0].pos.x, a.players[0].pos.y,
+                a.players[0].pos.z);
+
+    if (mismatch != 0) {
+        std::printf("FAIL: %zu of %d ticks differ\n", mismatch, opt.ticks);
+        return 1;
+    }
+    std::printf("PASS: %d ticks identical on both runs\n", opt.ticks);
+    return 0;
+}
+
+// Fires the player at the thin wall without friction, so the test measures the
+// sweep itself rather than the ground friction that would slow a normal sprint.
+int run_wall_test(const Options& opt) {
+    std::string error;
+    World world;
+    if (!load_world(opt, world, error)) {
+        std::fprintf(stderr, "error: %s\n", error.c_str());
+        return 1;
+    }
+
+    const float speeds[] = {8.13f, 15.24f, 20.0f, 25.0f, 30.0f};
+    const float wall_near = -0.05f;  // thin wall front face, metres
+    const float radius = world.params.player_radius;
+    const float contact_x = wall_near - radius;  // expected resting x
+    int failures = 0;
+
+    std::printf("wall front x = %.3f, expected stop x = %.3f (+-0.01)\n", wall_near, contact_x);
+
+    for (float speed : speeds) {
+        int penetrations = 0;
+        float worst_x = -1000.0f;
+        float max_step = 0.0f;
+
+        for (int trial = 0; trial < 100; ++trial) {
+            PlayerState p;
+            p.pos = sim::Vec3(-1.0f, 0.0f, 0.02f);
+            p.vel = sim::Vec3(speed, 0.0f, 0.0f);
+            sim::Vec3 mins;
+            sim::Vec3 maxs;
+            sim::player_hull(p, world.params, mins, maxs);
+
+            for (int t = 0; t < 10; ++t) {
+                const SlideResult r =
+                    sim::slide_move(world.collision, p.pos, p.vel, mins, maxs, kDt, world.params);
+                p.pos = r.pos;
+                p.vel = r.vel;
+                max_step = std::max(max_step, r.max_step_length);
+            }
+
+            worst_x = std::max(worst_x, p.pos.x);
+            if (p.pos.x > contact_x + 0.01f) ++penetrations;
+        }
+
+        const bool ok = penetrations == 0;
+        if (!ok) ++failures;
+        std::printf("  %5.2f m/s  penetrations=%3d  worst_x=%7.4f  max_step=%.4f m  %s\n",
+                    static_cast<double>(speed), penetrations, static_cast<double>(worst_x),
+                    static_cast<double>(max_step), ok ? "ok" : "FAIL");
+    }
+
+    if (failures != 0) {
+        std::printf("FAIL: %d speed tiers penetrated the 0.1 m wall\n", failures);
+        return 1;
+    }
+    std::printf("PASS: no penetration at any tested speed\n");
+    return 0;
+}
+
+// Bullets and projectiles are swept as one segment per tick; at 500 m/s a tick
+// covers 7.8 m, which is 78x the wall thickness. This checks that the sweep is a
+// real sweep and not point sampling (plan section 6.5 / B2).
+int run_ray_test(const Options& opt) {
+    std::string error;
+    World world;
+    if (!load_world(opt, world, error)) {
+        std::fprintf(stderr, "error: %s\n", error.c_str());
+        return 1;
+    }
+
+    int failures = 0;
+    auto expect_hit = [&](const char* label, bool hit, float fraction, bool want_hit) {
+        const bool ok = hit == want_hit;
+        if (!ok) ++failures;
+        std::printf("  %-28s hit=%s fraction=%.4f  %s\n", label, hit ? "yes" : "no",
+                    static_cast<double>(fraction), ok ? "ok" : "FAIL");
+    };
+
+    const sim::Vec3 zero(0.0f, 0.0f, 0.0f);
+    const sim::TraceResult point =
+        world.collision.trace_box(sim::Vec3(-5.0f, 0.0f, 1.0f), sim::Vec3(5.0f, 0.0f, 1.0f), zero, zero);
+    expect_hit("point across 0.1 m wall", point.fraction < 1.0f, point.fraction, true);
+
+    const sim::TraceResult point_miss =
+        world.collision.trace_box(sim::Vec3(-5.0f, 5.0f, 1.0f), sim::Vec3(5.0f, 5.0f, 1.0f), zero, zero);
+    expect_hit("point beside the wall", point_miss.fraction < 1.0f, point_miss.fraction, false);
+
+    // 7.8 m of travel in a single segment: the 500 m/s case.
+    const sim::TraceResult fast =
+        world.collision.trace_box(sim::Vec3(-5.0f, 0.0f, 1.0f), sim::Vec3(2.8f, 0.0f, 1.0f), zero, zero);
+    expect_hit("point, 7.8 m segment", fast.fraction < 1.0f, fast.fraction, true);
+
+    PlayerState p;
+    p.pos = sim::Vec3(-5.0f, 0.0f, 0.01f);
+    sim::Vec3 mins;
+    sim::Vec3 maxs;
+    sim::player_hull(p, world.params, mins, maxs);
+    const sim::TraceResult box =
+        world.collision.trace_box(p.pos, sim::Vec3(5.0f, 0.0f, 0.01f), mins, maxs);
+    expect_hit("box across wall, one segment", box.fraction < 1.0f, box.fraction, true);
+
+    std::printf("  box contact x = %.4f (expected %.4f)\n", static_cast<double>(box.end_pos.x),
+                static_cast<double>(-0.05f - world.params.player_radius));
+    if (box.end_pos.x > -0.05f - world.params.player_radius + 0.01f) ++failures;
+
+    if (failures != 0) {
+        std::printf("FAIL: %d ray checks failed\n", failures);
+        return 1;
+    }
+    std::printf("PASS: swept traces hit thin geometry at any segment length\n");
+    return 0;
+}
+
+int run_bench(const Options& opt) {
+    std::string error;
+    World world;
+    if (!load_world(opt, world, error)) {
+        std::fprintf(stderr, "error: %s\n", error.c_str());
+        return 1;
+    }
+
+    std::vector<double> samples;
+    samples.reserve(static_cast<size_t>(opt.bench_ticks));
+
+    for (int i = 0; i < opt.bench_ticks; ++i) {
+        const MoveInput in = make_input("jump", static_cast<uint32_t>(i));
+        const int64_t start = sim::now_ns();
+        world.step({in}, kDt);
+        const int64_t took = sim::elapsed_ns(start);
+        samples.push_back(static_cast<double>(took) / 1000.0);
+    }
+
+    std::sort(samples.begin(), samples.end());
+    double sum = 0.0;
+    for (double s : samples) sum += s;
+    const size_t p99 = static_cast<size_t>(static_cast<double>(samples.size()) * 0.99);
+    std::printf("ticks  %d\n", opt.bench_ticks);
+    std::printf("mean   %.2f us\n", sum / static_cast<double>(samples.size()));
+    std::printf("p99    %.2f us  (budget 4000 us)\n",
+                samples[std::min(p99, samples.size() - 1)]);
+    std::printf("max    %.2f us\n", samples.back());
+    return 0;
+}
+
+}  // namespace
+
+int main(int argc, char** argv) {
+    Options opt;
+    for (int i = 1; i < argc; ++i) {
+        const std::string arg = argv[i];
+        auto need_value = [&](const char* name) -> const char* {
+            if (i + 1 >= argc) {
+                std::fprintf(stderr, "error: %s needs a value\n", name);
+                return nullptr;
+            }
+            return argv[++i];
+        };
+
+        if (arg == "--map") {
+            const char* v = need_value("--map");
+            if (!v) return 2;
+            opt.map_path = v;
+        } else if (arg == "--data") {
+            const char* v = need_value("--data");
+            if (!v) return 2;
+            opt.data_path = v;
+        } else if (arg == "--ticks") {
+            const char* v = need_value("--ticks");
+            if (!v) return 2;
+            opt.ticks = std::atoi(v);
+        } else if (arg == "--script") {
+            const char* v = need_value("--script");
+            if (!v) return 2;
+            opt.script = v;
+        } else if (arg == "--hash") {
+            opt.print_hash = true;
+        } else if (arg == "--info") {
+            opt.info = true;
+        } else if (arg == "--selftest") {
+            opt.selftest = true;
+        } else if (arg == "--test-wall") {
+            opt.test_wall = true;
+        } else if (arg == "--test-ray") {
+            opt.test_ray = true;
+        } else if (arg == "--bench") {
+            opt.bench = true;
+            if (i + 1 < argc && argv[i + 1][0] != '-') opt.bench_ticks = std::atoi(argv[++i]);
+        } else if (arg == "--help" || arg == "-h") {
+            usage();
+            return 0;
+        } else {
+            std::fprintf(stderr, "error: unknown argument %s\n", arg.c_str());
+            usage();
+            return 2;
+        }
+    }
+
+    if (opt.info) return run_info(opt);
+    if (opt.selftest) return run_selftest(opt);
+    if (opt.test_wall) return run_wall_test(opt);
+    if (opt.test_ray) return run_ray_test(opt);
+    if (opt.bench) return run_bench(opt);
+
+    std::string error;
+    World world;
+    if (!load_world(opt, world, error)) {
+        std::fprintf(stderr, "error: %s\n", error.c_str());
+        return 1;
+    }
+
+    for (int i = 0; i < opt.ticks; ++i) {
+        const MoveInput in = make_input(opt.script, static_cast<uint32_t>(i));
+        world.step({in}, kDt);
+        if (opt.print_hash) std::printf("%6d  %016llx\n", i, static_cast<unsigned long long>(world.state_hash()));
+    }
+
+    const PlayerState& p = world.players[0];
+    std::printf("ticks      %d\n", opt.ticks);
+    std::printf("pos        (%.4f, %.4f, %.4f)  [m]\n", p.pos.x, p.pos.y, p.pos.z);
+    std::printf("vel        (%.4f, %.4f, %.4f)  [m/s]\n", p.vel.x, p.vel.y, p.vel.z);
+    std::printf("on_ground  %s\n", p.on_ground ? "true" : "false");
+    std::printf("hash       %016llx\n", static_cast<unsigned long long>(world.state_hash()));
+    return 0;
+}
