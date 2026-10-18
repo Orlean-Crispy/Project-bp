@@ -240,6 +240,8 @@ StepResult step_slide_move(const CollisionWorld& world, const Vec3& start, const
     // than climbing it, and the old check therefore refused every diagonal step.
     const bool walkable = down.fraction < 1.0f && down.normal.z > 0.7f;
     if (!walkable) return result;
+    // Never accept a landing that is already inside another brush.
+    if (world.trace_box(landed, landed, mins, maxs).start_solid) return result;
 
     const float flat_gain = horizontal_distance(result.moved.pos, start);
     const float step_gain = horizontal_distance(landed, start);

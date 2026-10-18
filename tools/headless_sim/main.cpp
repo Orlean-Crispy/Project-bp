@@ -38,6 +38,8 @@ struct Options {
     bool test_step = false;
     bool test_parkour = false;
     bool test_edge = false;
+    bool test_stuck = false;
+    bool test_soak = false;
     bool test_bindings = false;
     bool print_keys = false;
     bool map_explicit = false;
@@ -78,6 +80,8 @@ void usage() {
         "  --compare <a> <b> compare two --dump files, report max deviation\n"
         "  --test-demo       record, replay, and prove divergence detection works\n"
         "  --test-edge       jump onto a platform edge and keep walking (uses playground.map)\n"
+        "  --test-stuck      start inside a brush and prove the player can get out\n"
+        "  --test-soak       mash movement abilities for 6000 ticks, watch for freezes\n"
         "  --bench [n]       time n ticks and report mean/p99/max\n");
 }
 
@@ -910,6 +914,100 @@ int run_compare(const Options& opt) {
 // Landing on the lip of a 1 m platform used to leave the box overlapping the
 // brush by a hair, which made every later horizontal trace report start_solid and
 // froze the player. This is the regression gate for that.
+// Reproduction of "camera moves but the player is frozen": the box is inside a
+// brush, so every trace starts solid and zeroes the velocity. pmove must push it
+// out and normal movement must resume.
+// Chaos soak: deterministic pseudo-random input mash. The failure this guards
+// against is "camera works, player does not move", i.e. the box wedged in a
+// brush, so it checks for solid states and for long stretches without movement.
+int run_soak_test(const Options& opt) {
+    Options local = opt;
+    if (!opt.map_explicit) local.map_path = "sim/data/maps/playground.map";
+
+    std::string error;
+    World world;
+    if (!load_world(local, world, error)) {
+        std::fprintf(stderr, "error: %s\n", error.c_str());
+        return 1;
+    }
+
+    int solid_streak = 0;
+    int max_solid_streak = 0;
+    int frozen_streak = 0;
+    int max_frozen_streak = 0;
+    sim::Vec3 last = world.players[0].pos;
+
+    for (int i = 0; i < 6000; ++i) {
+        MoveInput in;
+        in.forward = 1.0f;
+        in.yaw = 0.9f * std::sin(static_cast<float>(i) * 0.01f);
+        in.jump = (i % 47) == 0;
+        in.slide = (i % 90) < 12;
+        in.dash = (i % 137) == 0;
+        in.wallrun = (i % 160) < 24;
+        in.wallclimb = (i % 211) < 18;
+        in.vault = (i % 173) == 0;
+        world.step({in}, kDt);
+
+        const PlayerState& p = world.players[0];
+        sim::Vec3 mins;
+        sim::Vec3 maxs;
+        sim::player_hull(p, world.params, mins, maxs);
+        const bool solid = world.collision.trace_box(p.pos, p.pos, mins, maxs).start_solid;
+        solid_streak = solid ? solid_streak + 1 : 0;
+        max_solid_streak = std::max(max_solid_streak, solid_streak);
+
+        const float moved = sim::length(p.pos - last);
+        frozen_streak = moved < 1e-4f ? frozen_streak + 1 : 0;
+        max_frozen_streak = std::max(max_frozen_streak, frozen_streak);
+        last = p.pos;
+    }
+
+    std::printf("  ticks 6000   max solid streak %d   max frozen streak %d\n", max_solid_streak,
+                max_frozen_streak);
+    if (max_solid_streak > 2 || max_frozen_streak > 120) {
+        std::printf("FAIL: player was stuck (solid %d ticks, frozen %d ticks)\n", max_solid_streak,
+                    max_frozen_streak);
+        return 1;
+    }
+    std::printf("PASS: no persistent solid state across 6000 mashing ticks\n");
+    return 0;
+}
+
+int run_stuck_test(const Options& opt) {
+    std::string error;
+    World world;
+    if (!load_world(opt, world, error)) {
+        std::fprintf(stderr, "error: %s\n", error.c_str());
+        return 1;
+    }
+
+    PlayerState p;
+    p.pos = sim::Vec3(0.0f, 0.0f, 0.5f);  // inside the 0.1 m thin wall
+    p.impulses = world.params.max_impulses;
+    world.players.assign(1, p);
+    world.tick = 0;
+
+    const float x0 = world.players[0].pos.x;
+    for (int i = 0; i < 60; ++i) {
+        MoveInput in;
+        in.forward = 1.0f;
+        world.step({in}, kDt);
+    }
+    const PlayerState& q = world.players[0];
+    const float moved = q.pos.x - x0;
+
+    std::printf("  start inside wall, after 60 ticks: x=%.3f z=%.3f moved=%.3f\n",
+                static_cast<double>(q.pos.x), static_cast<double>(q.pos.z),
+                static_cast<double>(moved));
+    if (moved < 1.0f) {
+        std::printf("FAIL: still frozen after starting inside geometry\n");
+        return 1;
+    }
+    std::printf("PASS: depenetration frees the player\n");
+    return 0;
+}
+
 int run_edge_test(const Options& opt) {
     Options local = opt;
     if (!opt.map_explicit) local.map_path = "sim/data/maps/playground.map";
@@ -1210,6 +1308,10 @@ int main(int argc, char** argv) {
             opt.test_demo = true;
         } else if (arg == "--test-edge") {
             opt.test_edge = true;
+        } else if (arg == "--test-stuck") {
+            opt.test_stuck = true;
+        } else if (arg == "--test-soak") {
+            opt.test_soak = true;
         } else if (arg == "--bench") {
             opt.bench = true;
             if (i + 1 < argc && argv[i + 1][0] != '-') opt.bench_ticks = std::atoi(argv[++i]);
@@ -1223,6 +1325,8 @@ int main(int argc, char** argv) {
         }
     }
 
+    if (opt.test_soak) return run_soak_test(opt);
+    if (opt.test_stuck) return run_stuck_test(opt);
     if (opt.test_edge) return run_edge_test(opt);
     if (opt.test_demo) return run_demo_test(opt);
     if (!opt.record_path.empty()) return run_record(opt);

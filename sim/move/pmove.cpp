@@ -61,6 +61,26 @@ bool hull_fits(const CollisionWorld& world, const Vec3& pos, const Vec3& mins, c
     return !tr.start_solid;
 }
 
+// If the box somehow ends up inside geometry, every later move starts solid and
+// the player freezes with a working camera. Push it out deterministically: up
+// first (sinking into a step or the floor is the common case), then sideways.
+Vec3 resolve_penetration(const CollisionWorld& world, const Vec3& pos, const Vec3& mins,
+                         const Vec3& maxs) {
+    for (int i = 1; i <= 12; ++i) {
+        const Vec3 p = pos + Vec3(0.0f, 0.0f, 0.1f * static_cast<float>(i));
+        if (hull_fits(world, p, mins, maxs)) return p;
+    }
+    const Vec3 dirs[4] = {Vec3(1, 0, 0), Vec3(-1, 0, 0), Vec3(0, 1, 0), Vec3(0, -1, 0)};
+    for (int i = 1; i <= 8; ++i) {
+        const float d = 0.1f * static_cast<float>(i);
+        for (const Vec3& dir : dirs) {
+            const Vec3 p = pos + dir * d;
+            if (hull_fits(world, p, mins, maxs)) return p;
+        }
+    }
+    return pos;
+}
+
 bool probe_ground(const PlayerState& player, const CollisionWorld& world,
                   const MovementParams& params, float& out_z) {
     Vec3 mins;
@@ -230,6 +250,12 @@ void pmove(PlayerState& player, const MoveInput& input, const CollisionWorld& wo
     Vec3 mins;
     Vec3 maxs;
     player_hull(player, params, mins, maxs);
+
+    // Never start a tick inside geometry: that is the "camera works, player is
+    // frozen" bug.
+    if (!hull_fits(world, player.pos, mins, maxs)) {
+        player.pos = resolve_penetration(world, player.pos, mins, maxs);
+    }
 
     const bool sliding = player.state == ParkourState::Slide;
 

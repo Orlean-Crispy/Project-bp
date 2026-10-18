@@ -26,6 +26,12 @@ try {
     & $exe --test-step
     if ($LASTEXITCODE -ne 0) { throw 'step test failed' }
 
+    Write-Host '== stuck recovery ==' -ForegroundColor Cyan
+    & $exe --test-stuck
+    if ($LASTEXITCODE -ne 0) { throw 'stuck recovery test failed' }
+    & $exe --test-soak
+    if ($LASTEXITCODE -ne 0) { throw 'soak test failed' }
+
     Write-Host '== ledges ==' -ForegroundColor Cyan
     & $exe --test-edge
     if ($LASTEXITCODE -ne 0) { throw 'ledge test failed' }
