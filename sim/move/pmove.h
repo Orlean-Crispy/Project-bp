@@ -41,6 +41,7 @@ struct PlayerState {
     int state_ticks = 0;        // ticks spent in the current timed state
     int dash_cooldown = 0;      // ticks until dash is available again
     Vec3 wall_normal;           // valid while wall running / climbing
+    bool jump_was_down = false;
     bool slide_was_down = false;
     bool dash_was_down = false;
     bool wallrun_was_down = false;

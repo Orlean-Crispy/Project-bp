@@ -98,6 +98,8 @@ Godot 4.7 宿主 + 自研 C++17 模拟层（无 Godot 依赖），64 tick，目�
 | 冒烟 | 不崩 + 能读图 + 能跑 600 tick | `tools/smoke.ps1` |
 | 手感 | 单跳高/单跳远/strafe 增益/0→max tick 数 | `move_metrics` CSV |
 | demo 回放 | 同构建逐 tick 哈希一致；跨机最大偏差 < 0.01 m | `--test-demo` / `--compare` |
+| 网络收敛 | 30% 丢包 + 30 ms 下客户端与服务器偏差 < 0.01 m | `--test-net` |
+| 跳跃语义 | 按住只跳一次，点按每次起跳 | `--test-jump` |
 
 ## 4. 未结案
 
@@ -110,6 +112,7 @@ Godot 4.7 宿主 + 自研 C++17 模拟层（无 Godot 依赖），64 tick，目�
 5. **穿透两套模型** — `.map` 的 `_penetrable` 与 `penetration_count` 谁优先未定。lead：M6。
 6. **中文本地路径** `G:\自制游戏` — 已定：编译可用，**链接不可用**，所以工具链必须在 ASCII 路径（见 §7）。任何新引入的工具（godot-cpp、TrenchBroom 的 CLI、Python 脚本）第一次接入都要先验「能不能在这个路径下跑」。
 7. ~~缺少 step-up~~ — 已在 M2 完成（`--test-step`：0.20 / 0.35 / 三级 0.15 台阶可上，0.55 m 挡住，蹲下空间有效）。
+8. **M5 剩余**：`cmd.tick` 对齐服务器时钟（§7.0）、full_state/重连（§7.7）、hitbox 历史（§7.3）、其他玩家插值。lead：M5 → M6。
 
 ## 5. 教训（编号沿用，不复用）
 

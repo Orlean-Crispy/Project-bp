@@ -13,6 +13,8 @@
 #include "sim/core/world.h"
 #include "sim/demo/demo.h"
 #include "sim/input/bindings.h"
+#include "sim/net/session.h"
+#include "sim/net/transport.h"
 
 namespace {
 
@@ -40,6 +42,8 @@ struct Options {
     bool test_edge = false;
     bool test_stuck = false;
     bool test_soak = false;
+    bool test_jump = false;
+    bool test_net = false;
     bool test_bindings = false;
     bool print_keys = false;
     bool map_explicit = false;
@@ -82,6 +86,8 @@ void usage() {
         "  --test-edge       jump onto a platform edge and keep walking (uses playground.map)\n"
         "  --test-stuck      start inside a brush and prove the player can get out\n"
         "  --test-soak       mash movement abilities for 6000 ticks, watch for freezes\n"
+        "  --test-jump       holding space must jump once, tapping must jump each time\n"
+        "  --test-net        client/server over a 30%% loss link: prediction converges\n"
         "  --bench [n]       time n ticks and report mean/p99/max\n");
 }
 
@@ -920,6 +926,153 @@ int run_compare(const Options& opt) {
 // Chaos soak: deterministic pseudo-random input mash. The failure this guards
 // against is "camera works, player does not move", i.e. the box wedged in a
 // brush, so it checks for solid states and for long stretches without movement.
+// Plan M5: unreliable UDP + delta snapshots + client prediction, over a link that
+// drops 30% of packets in both directions with 30 ms of latency and jitter.
+int run_net_test(const Options& opt) {
+    const std::string map_path = "sim/data/maps/metrics_flat.map";
+
+    sim::NetServer server;
+    std::string error;
+    if (!server.init(map_path, opt.data_path, 1, error)) {
+        std::fprintf(stderr, "error: %s\n", error.c_str());
+        return 1;
+    }
+
+    sim::NetConditions conditions;
+    conditions.loss = 0.30f;
+    conditions.latency_ms = 30.0f;
+    conditions.jitter_ms = 10.0f;
+    conditions.duplicate = 0.02f;
+
+    sim::LoopbackTransport to_server(conditions, 1234);
+    sim::LoopbackTransport to_client(conditions, 5678);
+    server.add_client(&to_server, &to_client, 0);
+
+    sim::NetClient client;
+    if (!client.init(&to_server, &to_client, 0, map_path, opt.data_path, error)) {
+        std::fprintf(stderr, "error: %s\n", error.c_str());
+        return 1;
+    }
+
+    int failures = 0;
+    auto tick_once = [&](const MoveInput& in) {
+        client.send_input(in);
+        client.step_local();
+        server.receive();
+        server.step();
+        server.send();
+        to_server.advance(0);
+        to_client.advance(0);
+        client.receive();
+    };
+
+    const int ticks = 2000;
+    for (int i = 0; i < ticks; ++i) {
+        MoveInput in;
+        in.forward = 1.0f;
+        in.yaw = 0.35f * std::sin(static_cast<float>(i) * 0.01f);
+        in.jump = (i % 90) == 0;
+        tick_once(in);
+    }
+
+    // Let both sides come to rest so positions are comparable without latency.
+    for (int i = 0; i < 100; ++i) tick_once(MoveInput{});
+
+    const sim::Vec3 predicted = client.predicted().pos;
+    const sim::Vec3 authoritative = server.world().players[0].pos;
+    const float deviation = sim::length(predicted - authoritative);
+
+    std::printf("  ticks %d   rollbacks %d   snapshots %d   full %d   delta %d   dropped cmds %d\n",
+                ticks, client.rollbacks(), client.snapshots_received(), server.full_snapshots(),
+                server.delta_snapshots(), server.dropped_commands());
+    std::printf("  client: decode failures %d   stale skips %d\n", client.decode_failures(),
+                client.stale_skips());
+    std::printf("  client (%.4f, %.4f, %.4f)  server (%.4f, %.4f, %.4f)  dev %.5f m\n",
+                static_cast<double>(predicted.x), static_cast<double>(predicted.y),
+                static_cast<double>(predicted.z), static_cast<double>(authoritative.x),
+                static_cast<double>(authoritative.y), static_cast<double>(authoritative.z),
+                static_cast<double>(deviation));
+
+    if (deviation > 0.01f) {
+        std::printf("FAIL: client and server disagree by more than 1 cm\n");
+        ++failures;
+    }
+    if (client.rollbacks() == 0) {
+        std::printf("FAIL: no rollback happened, the lossy link should force at least one\n");
+        ++failures;
+    }
+    if (client.snapshots_received() < ticks / 2) {
+        std::printf("FAIL: too few snapshots arrived (head-of-line blocking?)\n");
+        ++failures;
+    }
+    if (server.full_snapshots() == 0) {
+        std::printf("FAIL: never fell back to a full snapshot despite lost acks\n");
+        ++failures;
+    }
+    if (server.delta_snapshots() <= server.full_snapshots()) {
+        std::printf("FAIL: delta snapshots are not the common case\n");
+        ++failures;
+    }
+
+    if (failures != 0) {
+        std::printf("FAIL: %d network checks failed\n", failures);
+        return 1;
+    }
+    std::printf("PASS: prediction converges over a 30%% loss link with delta snapshots\n");
+    return 0;
+}
+
+int run_jump_test(const Options& opt) {
+    Options local = opt;
+    if (!opt.map_explicit) local.map_path = "sim/data/maps/metrics_flat.map";
+
+    std::string error;
+    World world;
+    if (!load_world(local, world, error)) {
+        std::fprintf(stderr, "error: %s\n", error.c_str());
+        return 1;
+    }
+
+    auto count_takeoffs = [&](bool held, int taps) {
+        PlayerState p;
+        p.pos = sim::Vec3(-8.0f, 5.0f, 0.01f);
+        p.impulses = world.params.max_impulses;
+        world.players.assign(1, p);
+        world.tick = 0;
+
+        int takeoffs = 0;
+        bool was_ground = true;
+        for (int i = 0; i < 300; ++i) {
+            MoveInput in;
+            if (taps > 0) {
+                // 60 ticks apart: longer than the ~44 tick air time, so each tap
+                // happens while grounded.
+                in.jump = (i % 60) < 2 && (i / 60) < taps;
+            } else {
+                in.jump = held;
+            }
+            world.step({in}, kDt);
+            const bool now_ground = world.players[0].on_ground;
+            if (was_ground && !now_ground) ++takeoffs;
+            was_ground = now_ground;
+        }
+        return takeoffs;
+    };
+
+    const int held = count_takeoffs(true, 0);
+    const int tapped = count_takeoffs(false, 3);
+
+    std::printf("  holding space for 300 ticks -> %d takeoff(s)\n", held);
+    std::printf("  tapping space 3 times      -> %d takeoff(s)\n", tapped);
+
+    if (held != 1 || tapped != 3) {
+        std::printf("FAIL: jump is not edge triggered\n");
+        return 1;
+    }
+    std::printf("PASS: jump fires on press, not while held\n");
+    return 0;
+}
+
 int run_soak_test(const Options& opt) {
     Options local = opt;
     if (!opt.map_explicit) local.map_path = "sim/data/maps/playground.map";
@@ -1312,6 +1465,10 @@ int main(int argc, char** argv) {
             opt.test_stuck = true;
         } else if (arg == "--test-soak") {
             opt.test_soak = true;
+        } else if (arg == "--test-jump") {
+            opt.test_jump = true;
+        } else if (arg == "--test-net") {
+            opt.test_net = true;
         } else if (arg == "--bench") {
             opt.bench = true;
             if (i + 1 < argc && argv[i + 1][0] != '-') opt.bench_ticks = std::atoi(argv[++i]);
@@ -1325,6 +1482,8 @@ int main(int argc, char** argv) {
         }
     }
 
+    if (opt.test_net) return run_net_test(opt);
+    if (opt.test_jump) return run_jump_test(opt);
     if (opt.test_soak) return run_soak_test(opt);
     if (opt.test_stuck) return run_stuck_test(opt);
     if (opt.test_edge) return run_edge_test(opt);

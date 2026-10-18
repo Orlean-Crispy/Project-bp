@@ -29,6 +29,10 @@ add_library(sim STATIC
   sim/input/keycodes.cpp
   sim/input/bindings.cpp
   sim/demo/demo.cpp
+  sim/net/transport.cpp
+  sim/net/netchan.cpp
+  sim/net/snapshot.cpp
+  sim/net/session.cpp
 )
 target_include_directories(sim PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 

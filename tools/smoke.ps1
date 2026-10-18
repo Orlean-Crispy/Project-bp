@@ -26,6 +26,14 @@ try {
     & $exe --test-step
     if ($LASTEXITCODE -ne 0) { throw 'step test failed' }
 
+    Write-Host '== jump edge ==' -ForegroundColor Cyan
+    & $exe --test-jump
+    if ($LASTEXITCODE -ne 0) { throw 'jump edge test failed' }
+
+    Write-Host '== network ==' -ForegroundColor Cyan
+    & $exe --test-net
+    if ($LASTEXITCODE -ne 0) { throw 'network test failed' }
+
     Write-Host '== stuck recovery ==' -ForegroundColor Cyan
     & $exe --test-stuck
     if ($LASTEXITCODE -ne 0) { throw 'stuck recovery test failed' }

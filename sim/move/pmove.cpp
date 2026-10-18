@@ -259,7 +259,8 @@ void pmove(PlayerState& player, const MoveInput& input, const CollisionWorld& wo
 
     const bool sliding = player.state == ParkourState::Slide;
 
-    if (input.jump && player.on_ground) {
+    // Jump is edge triggered: holding space must not bunny hop on its own.
+    if (input.jump && !player.jump_was_down && player.on_ground) {
         player.vel.z = params.jump_velocity * (sliding ? params.slide_jump_boost : 1.0f);
         player.on_ground = false;
         if (sliding) {
@@ -422,6 +423,7 @@ void pmove(PlayerState& player, const MoveInput& input, const CollisionWorld& wo
         player.state = ParkourState::Ground;
     }
 
+    player.jump_was_down = input.jump;
     player.slide_was_down = input.slide;
     player.wallrun_was_down = input.wallrun;
     player.wallclimb_was_down = input.wallclimb;
