@@ -3,6 +3,7 @@
 #include <cctype>
 #include <cerrno>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <unordered_set>
@@ -111,7 +112,7 @@ bool parse_toml(const std::string& text, TomlTable& out, std::string& error) {
 }
 
 bool load_toml_file(const std::string& path, TomlTable& out, std::string& error) {
-    std::ifstream file(path, std::ios::binary);
+    std::ifstream file(std::filesystem::u8path(path), std::ios::binary);
     if (!file) {
         error = "cannot open " + path;
         return false;

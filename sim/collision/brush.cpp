@@ -1,5 +1,6 @@
 #include "sim/collision/brush.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace sim {
@@ -79,6 +80,39 @@ bool build_brush(const std::vector<Plane>& planes, Brush& out, std::string* erro
 
     brush.bounds = Bounds(vertices[0], vertices[0]);
     for (const Vec3& v : vertices) brush.bounds.expand(v);
+
+    // Build one polygon per plane for the renderer: collect the brush vertices
+    // lying on that plane and sort them around the plane normal.
+    brush.sides.reserve(planes.size());
+    for (const Plane& plane : planes) {
+        std::vector<Vec3> on_plane;
+        for (const Vec3& v : vertices) {
+            if (std::fabs(dot(plane.normal, v) - plane.dist) < 0.01f) on_plane.push_back(v);
+        }
+        if (on_plane.size() < 3) continue;
+
+        Vec3 centroid;
+        for (const Vec3& v : on_plane) centroid += v;
+        centroid = centroid / static_cast<float>(on_plane.size());
+
+        const Vec3 n = plane.normal;
+        const Vec3 helper = std::fabs(n.z) < 0.9f ? Vec3(0.0f, 0.0f, 1.0f) : Vec3(1.0f, 0.0f, 0.0f);
+        const Vec3 u = normalized(cross(n, helper));
+        const Vec3 v = cross(n, u);
+
+        std::sort(on_plane.begin(), on_plane.end(), [&](const Vec3& a, const Vec3& b) {
+            const Vec3 da = a - centroid;
+            const Vec3 db = b - centroid;
+            const float aa = std::atan2(dot(da, v), dot(da, u));
+            const float ab = std::atan2(dot(db, v), dot(db, u));
+            return aa < ab;
+        });
+
+        BrushSide side;
+        side.plane = plane;
+        side.polygon = std::move(on_plane);
+        brush.sides.push_back(std::move(side));
+    }
 
     out = brush;
     return true;

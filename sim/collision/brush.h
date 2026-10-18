@@ -16,8 +16,16 @@ struct Plane {
 
 Plane make_plane(const Vec3& a, const Vec3& b, const Vec3& c);
 
+// A face polygon, wound counter-clockwise seen from outside the brush.
+// Collision only needs the planes; the renderer needs the polygons.
+struct BrushSide {
+    Plane plane;
+    std::vector<Vec3> polygon;
+};
+
 struct Brush {
     std::vector<Plane> planes;
+    std::vector<BrushSide> sides;
     Bounds bounds;
     std::string material;
     bool climbable = false;

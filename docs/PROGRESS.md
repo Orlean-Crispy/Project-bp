@@ -236,3 +236,67 @@
 - [ ] 时间基准（§7.0）：serverTime 估计、cmd.tick、时钟漂移
 - [ ] 预测与本地移动状态回滚（§7.6）
 - [ ] 这些都需要先有 Godot 宿主或至少两个进程——M4 的 demo 工具正好可以用来验证回滚重放的确定性
+---
+
+## 2026-10-18 · S06 · 接回 Godot（纠正一次路线错误）
+
+### 我做错了什么
+
+为了让「立刻能玩」，我写了 `tools/playtest`——Win32 + GDI 的软件渲染器。
+这直接违背计划书 §3.1「Godot 4.7 作宿主」与 §4.1 的技术基座选型。**已删除该工具**，
+记在这里当作否决项：任何绕过宿主的「临时渲染器」都不做，调试只能走 headless 或 Godot。
+
+### 现在的链路
+
+```
+Godot 4.5（宿主：窗口/渲染/输入）
+   ↑ GDScript: main.gd（只读输入、驱动 tick、摆相机）
+   ↑ GDExtension（godot-cpp 4.5）
+bridge/sim_bridge.cpp  ← 唯一的跨边界层
+   ↑
+sim/（纯 C++17，零 Godot 依赖，headless_sim 仍然独立可跑）
+```
+
+| 组件 | 位置 | 说明 |
+|---|---|---|
+| 桥 | `bridge/sim_bridge.cpp` | `SimWorld` 类：`load_map / load_bindings / set_input / step / get_*`，另把 brush 面片一次性导出成顶点/法线/顶点色/索引 |
+| 工程 | `godot/` | `project.godot`、`main.tscn`、`main.gd`、`breakpoint.gdextension` |
+| 构建 | `tools/build_bridge.ps1` | g++ 直接产出 `godot/bin/breakpoint_bridge.windows.template_debug.x86_64.dll` |
+| 地图 | `sim/data/maps/playground.map` | 40×30 m，含台阶、1 m 平台、1 m 净高矮道、墙跑墙、爬墙墙 |
+
+启动：
+
+```powershell
+powershell -File tools\build.ps1
+powershell -File tools\build_bridge.ps1
+C:\bp-toolchain\godot\Godot_v4.5-stable_win64.exe --path godot
+```
+
+### 为什么是 4.5 而不是计划书的 4.7
+
+**godot-cpp 的最高分支只到 `godot-4.5-stable`**，没有 4.6/4.7 绑定。用 4.7 编辑器配 4.5 绑定
+会在 API 哈希上出问题。所以先用 4.5 把链路打通；等 godot-cpp 跟进 4.7 再升级
+（已记入 AGENTS 未结案）。
+
+### 接入时踩的两个坑
+
+1. **GDScript 传进来的路径是 UTF-8，`std::ifstream` 在 Windows 上按 ANSI 打开** →
+   地图路径变成 `G:/????????????/...`，报 `cannot open`。修法：`std::filesystem::u8path`。
+2. **DLL 缺 `libwinpthread-1.dll`**（Error 126）。`-static-libgcc -static-libstdc++` 不够，
+   把 `libwinpthread-1.dll` 放到 Godot 可执行文件旁边即可。
+3. 附带一个：**GNU ld 连输出文件都不能落在中文路径上**（`cannot open output file G:\???...`），
+   所以 `build_bridge.ps1` 里所有路径都是相对的。
+
+### 验收
+
+| 检查 | 结果 |
+|---|---|
+| `Godot --headless --path godot --quit-after 60` | 无 ERROR，地图加载成功 |
+| 开窗运行 | 房间、台阶、平台、矮道、墙跑墙全部可见 |
+| `--autoplay`（按住前进 128 tick） | 位置从 -16 推进到 -10.7，HUD 与相机跟随 |
+
+### 下一步
+
+- [ ] 输入映射目前由 GDScript 从 `sim.get_bindings()` 生成 —— 已经是单一数据源，但还没做游戏内改键界面
+- [ ] Godot 侧的表现层还没接事件通道（§3.4）
+- [ ] 升级到 godot-cpp 4.7（等上游）

@@ -6,8 +6,9 @@ Godot 4.7 宿主 + 自研 C++17 模拟层（零 Godot 依赖），64 tick，目�
 > 设计文档：`docs/计划书_v0.3.md`
 > 约束：`docs/AGENTS.md`　进度：`docs/PROGRESS.md`　事故：`docs/pitfalls/`
 
-## 现在能做什么（M1–M4 已完成）
+## 现在能做什么（M1–M4 + Godot 宿主已接）
 
+- **Godot 4.5 宿主 + GDExtension 桥**：窗口、渲染、输入都走 Godot；模拟层仍然是零依赖的 C++
 - 读 TrenchBroom 的 `.map`（Standard / Quake 2 四点面），**入口一次**把 Quake unit 转成米
 - brush 平面求交成凸体，盒体扫掠 trace（Minkowski 扩张，不是点采样）
 - 分步 `slide_move`：按最小墙厚切步，20 m/s 撞 0.1 m 墙 100 次 0 穿透
@@ -24,6 +25,7 @@ Godot 4.7 宿主 + 自研 C++17 模拟层（零 Godot 依赖），64 tick，目�
 
 ```powershell
 powershell -File tools\setup_toolchain.ps1   # 只需一次，装到 C:\bp-toolchain
+powershell -File tools\run_demo.ps1          # 构建桥 + 启动 Godot demo
 powershell -File tools\build.ps1             # 配置 + 全量构建（-Werror）
 powershell -File tools\smoke.ps1             # info / 确定性 / 穿墙 / 扫掠 / 性能
 ```
@@ -56,6 +58,8 @@ sim/collision/   .map 解析、brush 凸体、盒体扫掠、分步 slide
 sim/move/        pmove（地面/空中/跳跃/蹲 + parkour 五件套）
 sim/input/       键位表：物理键枚举、动作映射、改键/存盘/冲突检测
 sim/demo/        demo 二进制格式：录制、回放、头部校验
+bridge/          GDExtension 桥（唯一的跨边界层）
+godot/           Godot 工程：project.godot / main.tscn / main.gd
 sim/data/        movement.toml（手感数值）、keybinds.toml（键位）、maps/*.map
 tools/           headless_sim、move_metrics、build/smoke/setup 脚本
 docs/            AGENTS / PROGRESS / pitfalls / keymap / 计划书

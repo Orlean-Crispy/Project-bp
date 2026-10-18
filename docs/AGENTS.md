@@ -103,7 +103,7 @@ Godot 4.7 宿主 + 自研 C++17 模拟层（无 Godot 依赖），64 tick，目�
 
 > 按「值不值得下一轮动手」排序。每条必须有 lead；没有 lead 的不要瞎猜。
 
-1. **Godot 4.7 / godot-cpp 未安装** — lead：M5 之前必须解决；当前只验证纯 C++ 模拟层（M0–M4 不需要引擎）。
+1. **Godot 版本 4.5 ≠ 计划书 4.7** — godot-cpp 最高只有 `godot-4.5-stable`。lead：M7（Godot-Locomotion 绑定 4.7.2）之前必须跟进上游。
 2. **交叉编译器**：sim 用 MinGW GCC，godot-cpp 官方支持 MSVC。lead：M5 前二选一（装 VS Build Tools，或验证 mingw 构建 godot-cpp）。
 3. **HP / 护甲未定值** — 计划书只有「如 100」。lead：M6 前定，否则爆头 ×5 与 TTK 0.6–1.2 s 无法互相验证。
 4. **键位** — 已定：**数据驱动 + 运行时可改**，默认瓦洛兰特布局（C 翻越 / Q 墙跑 / E 爬墙 / X 冲刺），见 `docs/keymap.md` 与 `--test-bindings`。剩余：游戏内改键 UI（M5 之后）。
@@ -123,6 +123,7 @@ Godot 4.7 宿主 + 自研 C++17 模拟层（无 Godot 依赖），64 tick，目�
 | 4 | 碰撞判据必须成对：**不能穿**（100 次）与**不能卡**（贴墙静止 / 沿墙滑动）同时验。案例：`pitfalls/contact-epsilon.md` |
 | 5 | 「面前有没有东西」的探测一律**从后退 5 cm 处起扫**；投影/裁剪后的速度不能当探测方向。 |
 | 6 | 被测的输入已经进了哈希时，「能检出差异」是恒真的；物理差异必须用位置 dump 比对来证明。案例：`docs/demo-format.md` 的 params_hash 说明。 |
+| 7 | 路径分三种：**编译器能读的**、**链接器能写的**、**C 运行库能打开的**，三者对非 ASCII 的容忍度不同。链接输出必须相对路径，文件打开必须 `u8path`。 |
 
 ## 6. 开场协议
 
@@ -143,6 +144,10 @@ Godot 4.7 宿主 + 自研 C++17 模拟层（无 Godot 依赖），64 tick，目�
 |---|---|
 | 工作区 | `G:\自制游戏`（**中文路径**，编译可以，链接不行） |
 | 工具链 | `C:\bp-toolchain`：mingw64 / cmake-4.4.4-windows-x86_64 / ninja |
+| Godot | `C:\bp-toolchain\godot\Godot_v4.5-stable_win64.exe`（**4.5**，godot-cpp 无 4.7 绑定） |
+| godot-cpp | `C:\bp-toolchain\godot-cpp`（`godot-4.5-stable`，SCons 构建） |
+| 桥构建 | `powershell -File tools\build_bridge.ps1` → `godot/bin/breakpoint_bridge...dll` |
+| 跑 Godot | `Godot_v4.5-stable_win64.exe --path godot`（首次 `--headless --editor --quit` 导入） |
 | 重建工具链 | `powershell -File tools\setup_toolchain.ps1` |
 | 构建 | `powershell -File tools\build.ps1`（输出在 `build/`） |
 | 冒烟 | `powershell -File tools\smoke.ps1`（info / determinism / wall / ray / step / parkour / keybinds / demo / bench） |

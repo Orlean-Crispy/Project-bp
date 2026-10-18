@@ -3,6 +3,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -181,13 +182,14 @@ bool parse_brush(Lexer& lexer, Brush& out, std::string& error) {
         for (;;) {
             Token n = lexer.next();
             if (n.kind == Token::Kind::Close) {
-                out = Brush();
-                out.material = material;
                 std::string build_error;
                 if (!build_brush(planes, out, &build_error)) {
                     error = "line " + std::to_string(n.line) + ": " + build_error;
                     return false;
                 }
+                // build_brush rebuilds the Brush, so the material has to be set
+                // afterwards or it is silently wiped.
+                out.material = material;
                 return true;
             }
             if (n.kind == Token::Kind::ParenOpen) {
@@ -279,7 +281,9 @@ bool parse_map_text(const std::string& text, MapData& out, std::string& error) {
 }
 
 bool parse_map_file(const std::string& path, MapData& out, std::string& error) {
-    std::ifstream file(path, std::ios::binary);
+    // Paths arrive as UTF-8 from Godot; u8path converts them to the native wide
+    // form, which is what Windows actually needs to open a non-ASCII path.
+    std::ifstream file(std::filesystem::u8path(path), std::ios::binary);
     if (!file) {
         error = "cannot open " + path;
         return false;

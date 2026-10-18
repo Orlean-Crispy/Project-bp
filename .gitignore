@@ -3,6 +3,12 @@
 /out/
 /.cache/
 
+# Godot
+/godot/.godot/
+/godot/bin/*.dll
+/godot/*.import
+/godot/.import/
+
 # portable toolchain (~1 GB, machine-local)
 /.toolchain/
 
