@@ -153,7 +153,7 @@ Godot 4.7 宿主 + 自研 C++17 模拟层（无 Godot 依赖），64 tick，目�
 | 跑 Godot | `Godot_v4.5-stable_win64.exe --path godot`（首次 `--headless --editor --quit` 导入） |
 | 重建工具链 | `powershell -File tools\setup_toolchain.ps1` |
 | 构建 | `powershell -File tools\build.ps1`（输出在 `build/`） |
-| 冒烟 | `powershell -File tools\smoke.ps1`（info / determinism / wall / ray / step / parkour / keybinds / demo / bench） |
+| 冒烟 | `powershell -File tools\smoke.ps1`（info / determinism / wall / ray / step / parkour / jump / net / stuck / soak / edge / keybinds / demo / bench） |
 | Shell | Windows PowerShell **5.1**，不是 pwsh 7 |
 | 运行时 | exe 静态链接 libgcc/libstdc++，不需要把 mingw 加进 PATH |
 
