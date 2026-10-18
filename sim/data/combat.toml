@@ -1,0 +1,23 @@
+# combat.toml - HP and armour. Decided 2026-10-18: HP 100; armour 25 / 25 regen / 50.
+# The absorb percentage and the regeneration timing are PROPOSALS (Valorant-like):
+# they are not in the plan yet and must be confirmed before M6 balancing.
+
+[health]
+max_health = 100
+
+[armor.light]
+max_armor      = 25
+absorb_percent = 66
+regenerates    = false
+
+[armor.regen]
+max_armor           = 25
+absorb_percent      = 66
+regenerates         = true
+regen_delay_seconds = 5.0    # no damage for this long before it starts
+regen_seconds       = 10.0   # time to refill from 0 to max
+
+[armor.heavy]
+max_armor      = 50
+absorb_percent = 66
+regenerates    = false

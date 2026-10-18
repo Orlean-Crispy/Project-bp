@@ -13,6 +13,7 @@
 #include "sim/core/world.h"
 #include "sim/demo/demo.h"
 #include "sim/input/bindings.h"
+#include "sim/game/combat.h"
 #include "sim/net/session.h"
 #include "sim/net/transport.h"
 
@@ -44,6 +45,7 @@ struct Options {
     bool test_soak = false;
     bool test_jump = false;
     bool test_net = false;
+    bool test_health = false;
     bool test_bindings = false;
     bool print_keys = false;
     bool map_explicit = false;
@@ -88,6 +90,7 @@ void usage() {
         "  --test-soak       mash movement abilities for 6000 ticks, watch for freezes\n"
         "  --test-jump       holding space must jump once, tapping must jump each time\n"
         "  --test-net        client/server over a 30%% loss link: prediction converges\n"
+        "  --test-health     HP 100 + 25 / 25 regen / 50 armour damage and regen rules\n"
         "  --bench [n]       time n ticks and report mean/p99/max\n");
 }
 
@@ -928,6 +931,91 @@ int run_compare(const Options& opt) {
 // brush, so it checks for solid states and for long stretches without movement.
 // Plan M5: unreliable UDP + delta snapshots + client prediction, over a link that
 // drops 30% of packets in both directions with 30 ms of latency and jitter.
+// M6 groundwork: HP 100 and the three armour types. Absorption and regen timing
+// are proposals (see combat.toml), so these checks pin the *rules*, not the tuning.
+int run_health_test(const Options& opt) {
+    (void)opt;
+    sim::CombatParams params;
+    std::string error;
+    std::vector<std::string> warnings;
+    if (!sim::load_combat_params("sim/data/combat.toml", params, warnings, error)) {
+        std::fprintf(stderr, "error: %s\n", error.c_str());
+        return 1;
+    }
+
+    int failures = 0;
+    auto check = [&](const char* label, bool ok) {
+        if (!ok) ++failures;
+        std::printf("  %-46s %s\n", label, ok ? "ok" : "FAIL");
+    };
+
+    sim::PlayerVitals bare;
+    bare.health = params.max_health;
+    const int dealt = sim::apply_damage(bare, 30, params);
+    check("no armour: 30 damage -> 70 HP", bare.health == 70 && dealt == 30);
+
+    sim::PlayerVitals light = bare;
+    light.health = params.max_health;
+    sim::equip_armor(light, sim::ArmorType::Light, params);
+    sim::apply_damage(light, 30, params);
+    // 30 * 66% = 19 absorbed, 11 to health, armour 25 -> 6.
+    check("light armour: 30 damage -> 19 absorbed, 11 HP", light.armor == 6 && light.health == 89);
+
+    sim::PlayerVitals heavy = bare;
+    heavy.health = params.max_health;
+    sim::equip_armor(heavy, sim::ArmorType::Heavy, params);
+    sim::apply_damage(heavy, 40, params);
+    // 40 * 66% = 26 absorbed, 14 to health, armour 50 -> 24.
+    check("heavy armour: 40 damage -> 26 absorbed, 14 HP", heavy.armor == 24 && heavy.health == 86);
+
+    sim::PlayerVitals broken = bare;
+    broken.health = params.max_health;
+    sim::equip_armor(broken, sim::ArmorType::Light, params);
+    sim::apply_damage(broken, 100, params);
+    // Armour caps at 25 absorbed: 75 spills to health.
+    check("armour caps out: 100 damage -> 25 absorbed, 75 HP lost",
+          broken.armor == 0 && broken.health == 25);
+
+    sim::PlayerVitals regen = bare;
+    regen.health = params.max_health;
+    sim::equip_armor(regen, sim::ArmorType::Regen, params);
+    sim::apply_damage(regen, 20, params);
+    const int armour_after_hit = regen.armor;
+    // Inside the delay nothing regenerates.
+    for (int i = 0; i < 100; ++i) sim::tick_vitals(regen, params);
+    check("regen armour: no refill during the delay", regen.armor == armour_after_hit);
+
+    for (int i = 0; i < 2000; ++i) sim::tick_vitals(regen, params);
+    check("regen armour: refills to its maximum", regen.armor == 25);
+
+    sim::apply_damage(regen, 10, params);
+    for (int i = 0; i < 100; ++i) sim::tick_vitals(regen, params);
+    check("regen armour: taking damage restarts the delay", regen.ticks_since_damage <= 100);
+
+    // Sanity: does 25 damage per shot at 600 RPM land inside the 0.6-1.2 s TTK band?
+    int shots = 0;
+    int armour = 50;
+    int health = 100;
+    while (health > 0 && shots < 100) {
+        ++shots;
+        int absorbed = 25 * 66 / 100;
+        if (absorbed > armour) absorbed = armour;
+        armour -= absorbed;
+        health -= (25 - absorbed);
+    }
+    const float ttk = static_cast<float>(shots) / 10.0f;  // 600 RPM = 10 shots/s
+    std::printf("  body TTK with heavy armour: %d shots = %.2f s\n", shots,
+                static_cast<double>(ttk));
+    check("body TTK stays inside the 0.6-1.2 s band", ttk >= 0.6f && ttk <= 1.2f);
+
+    if (failures != 0) {
+        std::printf("FAIL: %d health/armour checks failed\n", failures);
+        return 1;
+    }
+    std::printf("PASS: HP/armour rules behave and TTK lands in the plan's band\n");
+    return 0;
+}
+
 int run_net_test(const Options& opt) {
     const std::string map_path = "sim/data/maps/metrics_flat.map";
 
@@ -1469,6 +1557,8 @@ int main(int argc, char** argv) {
             opt.test_jump = true;
         } else if (arg == "--test-net") {
             opt.test_net = true;
+        } else if (arg == "--test-health") {
+            opt.test_health = true;
         } else if (arg == "--bench") {
             opt.bench = true;
             if (i + 1 < argc && argv[i + 1][0] != '-') opt.bench_ticks = std::atoi(argv[++i]);
@@ -1482,6 +1572,7 @@ int main(int argc, char** argv) {
         }
     }
 
+    if (opt.test_health) return run_health_test(opt);
     if (opt.test_net) return run_net_test(opt);
     if (opt.test_jump) return run_jump_test(opt);
     if (opt.test_soak) return run_soak_test(opt);

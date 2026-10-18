@@ -33,6 +33,7 @@ add_library(sim STATIC
   sim/net/netchan.cpp
   sim/net/snapshot.cpp
   sim/net/session.cpp
+  sim/game/combat.cpp
 )
 target_include_directories(sim PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 

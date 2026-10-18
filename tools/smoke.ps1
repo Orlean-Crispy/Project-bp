@@ -30,6 +30,10 @@ try {
     & $exe --test-jump
     if ($LASTEXITCODE -ne 0) { throw 'jump edge test failed' }
 
+    Write-Host '== health and armour ==' -ForegroundColor Cyan
+    & $exe --test-health
+    if ($LASTEXITCODE -ne 0) { throw 'health test failed' }
+
     Write-Host '== network ==' -ForegroundColor Cyan
     & $exe --test-net
     if ($LASTEXITCODE -ne 0) { throw 'network test failed' }
