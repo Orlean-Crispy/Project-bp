@@ -7,7 +7,7 @@
 
 ## 0. 一句话总结
 
-从零搭起 M0–M4 全部、M5 的网络骨架、M6 的 HP/护甲规则；14 项 headless 闸门全绿；
+从零搭起 M0–M4 全部、M5 的网络骨架、M6 的 HP/护甲规则；14 项 headless 行为闸门 + bench 全绿；
 Godot 4.5 宿主 + GDExtension 桥可运行。所有试玩反馈都已落回 sim 层并带回归测试。
 
 ---
@@ -137,7 +137,7 @@ Godot 4.5 宿主 + GDExtension 桥可运行。所有试玩反馈都已落回 sim
 
 ~~~powershell
 powershell -File tools\build.ps1
-powershell -File tools\smoke.ps1                 # 14 项，必须 ALL GREEN
+powershell -File tools\smoke.ps1                 # 14 项行为闸门 + bench，必须 ALL GREEN
 
 build\headless_sim.exe --test-net                 # 网络收敛/回滚数
 build\headless_sim.exe --test-health              # 护甲规则与 TTK

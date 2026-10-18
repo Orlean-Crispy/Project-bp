@@ -37,7 +37,7 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 
 ### 0.3 现在能跑什么
 
-- `headless_sim` 14 项闸门全绿（见 §3）
+- `headless_sim` 14 项行为闸门 + bench 全绿（见 §3）
 - Godot demo：`demo.bat` 或 `powershell -File tools/run_demo.ps1`，可走跑跳滑铲墙跑爬墙翻越
 - 手感数值可改 sim/data/movement.toml 后重跑，不用改代码
 
@@ -125,7 +125,7 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 
 ---
 
-## 3. 判据清单（全部在 tools/smoke.ps1 里串起来）
+## 3. 判据清单（tools/smoke.ps1 串起 14 项行为闸门 + bench）
 
 | # | 判据 | 阈值 | 命令 |
 |---|---|---|---|
@@ -201,7 +201,7 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 ```powershell
 powershell -File tools\setup_toolchain.ps1   # 仅首次：下载 GCC/CMake/Ninja
 powershell -File tools\build.ps1             # 配置 + 全量构建（headless_sim, move_metrics）
-powershell -File tools\smoke.ps1             # 14 项闸门，必须全绿
+powershell -File tools\smoke.ps1             # 14 项行为闸门 + bench，必须全绿
 powershell -File tools\build_bridge.ps1      # 重建 GDExtension DLL
 powershell -File tools\run_demo.ps1          # 构建桥 + 启动 Godot demo
 ```
@@ -310,7 +310,7 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
 ```
 1. 读 docs/AGENTS.md（本文件）
 2. 读 docs/PROGRESS.md 最后一节 + docs/HANDOFF.md（若存在）
-3. 跑 tools\build.ps1，再跑 tools\smoke.ps1，确认 14 项全绿
+3. 跑 tools\build.ps1，再跑 tools\smoke.ps1，确认 14 项行为闸门 + bench 全绿
 4. 只改一个文件集；大文件只做精确 edit
 5. 改完立刻 commit（一个功能一个 commit）
 6. 更新 docs/PROGRESS.md（做了什么/结论/下一步）
