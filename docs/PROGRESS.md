@@ -1102,3 +1102,30 @@ CMake 只在 WIN32 链接 ws2_32，不污染 sim 的其它目标。
 1. A1/A2/A5 接入组局（信令线程、单 socket 双队列、重连状态机）。
 2. 局内/断线重连 UI、第三人称动画。
 3. M6 射击。
+---
+
+## 2026-10-19 · S29 · 源文件清单单一化（清架构债）
+
+### 1. 改动
+
+- 新增 tools/sim_sources.txt：26 个 sim .cpp 的唯一清单。
+- CMake：`file(STRINGS ... SIM_SOURCES)` + `add_library(sim STATIC ${SIM_SOURCES})`。
+- build_bridge.ps1：读同一份清单，不再维护第二份数组。
+- 新增 tools/check_sources.ps1：比对清单与 `git ls-files sim/**/*.cpp`，不一致即红。
+
+### 2. 验收
+
+- check_sources：`sources ok: 26 sim .cpp files`。
+- 全量构建通过；bridge 重建通过（现在编译全部 sim 源，符号不会再漏）。
+- 16 项闸门 + bench 仍全绿。
+
+### 3. 代价
+
+- bridge 多编译 demo/combat/reliable/ticket 等当前未调用的文件，DLL 略大；
+  换来的是“再也不会因为漏一个 .cpp 而链接失败”。
+
+### 4. 下一步
+
+1. A1/A2/A5 接入组局（信令线程、单 socket 双队列、重连状态机）。
+2. 局内/断线重连 UI、第三人称动画。
+3. M6 射击。

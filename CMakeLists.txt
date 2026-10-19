@@ -18,36 +18,10 @@ if(MINGW)
   add_link_options(-static -static-libgcc -static-libstdc++)
 endif()
 
-# Keep the core files in sync with tools/build_bridge.ps1: the DLL links only the
-# simulation core, while the headless library also has net/demo/game.
-add_library(sim STATIC
-  sim/core/event.cpp
-  sim/core/tick.cpp
-  sim/core/world.cpp
-  sim/collision/brush.cpp
-  sim/collision/map_parse.cpp
-  sim/collision/trace.cpp
-  sim/move/pmove.cpp
-  sim/data/config.cpp
-  sim/input/keycodes.cpp
-  sim/input/bindings.cpp
-  sim/demo/demo.cpp
-  sim/net/transport.cpp
-  sim/net/udp_socket.cpp
-  sim/net/udp_transport.cpp
-  sim/net/udp_hub.cpp
-  sim/net/handshake.cpp
-  sim/net/signaling.cpp
-  sim/net/reliable.cpp
-  sim/net/ticket.cpp
-  sim/net/fragment.cpp
-  sim/net/netchan.cpp
-  sim/net/snapshot.cpp
-  sim/net/interp.cpp
-  sim/net/session.cpp
-  sim/game/combat.cpp
-  sim/game/hitbox.cpp
-)
+# Single source of truth shared with tools/build_bridge.ps1. Add new sim .cpp
+# files to tools/sim_sources.txt, not here.
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/tools/sim_sources.txt" SIM_SOURCES)
+add_library(sim STATIC ${SIM_SOURCES})
 target_include_directories(sim PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 if(WIN32)
   target_link_libraries(sim PUBLIC ws2_32)

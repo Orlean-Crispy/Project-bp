@@ -303,3 +303,8 @@ powershell -File tools\run_demo.ps1
 - 所有试玩问题必须先落到 sim + 一个 headless 判据，再谈表现层。
 - 严格按 AGENTS §11 的顺序推进；跳步会重演「demo 先行」的错误。
 - 用户在意两件事：严格遵循计划书、不要遗漏。每次收尾更新 AGENTS 的未结案。
+### S29 源文件清单单一化（2026-10-19）
+
+- tools/sim_sources.txt 成为唯一清单；CMake 与 build_bridge.ps1 都读它。
+- tools/check_sources.ps1 校验清单 == git ls-files sim/**/*.cpp（26 个）。
+- 全量构建 + bridge + smoke 仍绿；修掉“桥接漏 .cpp 导致链接失败”的架构债。

@@ -12,33 +12,11 @@ if (-not (Test-Path $gpp)) { throw "g++ not found at $gpp" }
 $lib = Join-Path $cpp 'bin\libgodot-cpp.windows.template_debug.x86_64.a'
 if (-not (Test-Path $lib)) { throw 'godot-cpp static library not found' }
 
-# Keep the sim core list in sync with the "sim" target in CMakeLists.txt.
-# The DLL only links the core (no net/demo/game); the headless library has more.
-$sources = @(
-    'bridge/sim_bridge.cpp',
-    'sim/core/tick.cpp',
-    'sim/core/event.cpp',
-    'sim/core/world.cpp',
-    'sim/collision/brush.cpp',
-    'sim/collision/map_parse.cpp',
-    'sim/collision/trace.cpp',
-    'sim/move/pmove.cpp',
-    'sim/data/config.cpp',
-    'sim/input/keycodes.cpp',
-    'sim/input/bindings.cpp',
-    'sim/net/transport.cpp',
-    'sim/net/udp_socket.cpp',
-    'sim/net/udp_transport.cpp',
-    'sim/net/udp_hub.cpp',
-    'sim/net/handshake.cpp',
-    'sim/net/signaling.cpp',
-    'sim/net/interp.cpp',
-    'sim/game/hitbox.cpp',
-    'sim/net/fragment.cpp',
-    'sim/net/netchan.cpp',
-    'sim/net/snapshot.cpp',
-    'sim/net/session.cpp'
-)
+# Single source of truth shared with the "sim" target in CMakeLists.txt.
+$listed = Get-Content (Join-Path $PSScriptRoot 'sim_sources.txt') |
+    ForEach-Object { $_.Trim() } |
+    Where-Object { $_ -ne '' -and -not $_.StartsWith('#') }
+$sources = @('bridge/sim_bridge.cpp') + $listed
 
 New-Item -ItemType Directory -Force -Path (Join-Path $root 'godot\bin') | Out-Null
 $out = 'godot/bin/breakpoint_bridge.windows.template_debug.x86_64.dll'
