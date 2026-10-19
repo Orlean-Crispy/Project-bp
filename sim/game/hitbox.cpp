@@ -57,13 +57,20 @@ void HitboxHistory::record(const PlayerState& player, const MovementParams& para
     entry.sample.crouched = player.crouched;
     entry.sample.tick = tick;
 
+    // O(1): the oldest frame is only needed by diagnostics/tests, so it is
+    // scanned on demand instead of on every recorded tick.
+    if (m_count == 1 || tick > m_newest) m_newest = tick;
+}
+
+uint32_t HitboxHistory::oldest_tick() const {
+    uint32_t oldest = 0;
     bool first = true;
     for (const Entry& e : m_entries) {
         if (!e.valid) continue;
-        if (first || e.tick < m_oldest) m_oldest = e.tick;
-        if (first || e.tick > m_newest) m_newest = e.tick;
+        if (first || e.tick < oldest) oldest = e.tick;
         first = false;
     }
+    return oldest;
 }
 
 void HitboxHistory::reset() {
@@ -73,7 +80,6 @@ void HitboxHistory::reset() {
         e.sample = HitboxSample{};
     }
     m_count = 0;
-    m_oldest = 0;
     m_newest = 0;
 }
 

@@ -154,7 +154,9 @@ SlideResult slide_move(const CollisionWorld& world, const Vec3& start, const Vec
 
         bool bumped = false;
         for (int s = 0; s < steps; ++s) {
-            const float live_speed = length(vel);
+            // vel is only changed by a bump, and a bump breaks out of this loop,
+            // so the speed measured above still holds for every sub-step.
+            const float live_speed = speed;
             if (live_speed < kMinSpeed) {
                 vel = Vec3();
                 bumped = true;

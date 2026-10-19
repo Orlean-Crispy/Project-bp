@@ -546,3 +546,52 @@ C:\bp-toolchain\godot\Godot_v4.5-stable_win64.exe --path godot
 4. M6：hitscan（用 hitbox 历史 + 回溯窗 6 tick）、后坐力表、穿透、衰减、hitmarker。
 
 - 护甲尚未接入 PlayerState / 快照 / 网络（M6 再挂）
+
+---
+
+## 2026-10-19 · S13 · 底层性能审计（语义不变）
+
+### 0. 结论先行
+
+- 10 人同图 **2.15 µs/tick**（预算 4000 µs，占 0.05%）；`World::step` 稳态 **0 分配**。
+- 瓶颈是 brush 扫掠，不是 pmove 数学。15 / 201 / 801 brush（10 人）：
+  **2.2 / 5.9 / 21.7 µs**。
+- 暂不引入 broadphase：现图 15 brush；800 brush 仍只占预算 0.54%。
+  等单图 >2000 brush 再做，避免为不存在的地图增加网格顺序/去重逻辑。
+
+### 1. 改了什么（全部保持逐 tick 哈希一致）
+
+| 优化 | 之前 | 之后 |
+|---|---|---|
+| pmove 三角函数 | 每 tick 最多 4 次 sin/cos | 1 次，facing / wish 复用 |
+| slide_move | 每个子步 1 次 sqrt | 用外层 speed（只有 bump 会改 vel，且立即 break） |
+| 起始实心检查 | 每 tick 多 1 次 hull trace | 蹲姿未变时复用地面探测的 `start_solid` |
+| HitboxHistory::record | 每 tick 扫描 64 帧 | **O(1)**；`oldest_tick()` 按需扫描 |
+
+> 没有为后续武器/破坏/多玩家加任何字段或钩子；改动都是局部算术与结果复用。
+
+### 2. 工具
+
+- `--bench N --players M`：多玩家基准（同出生点；玩家之间本来就没有碰撞，
+  所以不引入任何游戏语义）。
+- `headless_sim` 覆盖全局 `new/delete` 计数，bench 打印 `allocs / tick`；
+  `World::step` 为 **0.00**，铁律 E 的“稳态 0 分配”在 sim 核心成立。
+
+### 3. 证据
+
+| 场景 | mean | p99 |
+|---|---|---|
+| 1 人 | 0.24 µs | 0.40 µs |
+| 10 人 | 2.15 µs | 2.90 µs |
+| 10 人 / 201 brush | 5.94 µs | 10.70 µs |
+| 10 人 / 801 brush | 21.71 µs | 35.90 µs |
+
+- 600 tick 逐 tick 哈希与优化前**逐字节一致**（build/hash_before.txt vs after）。
+- 15 项闸门 + bench ALL GREEN。
+
+### 4. 剩余（非本次）
+
+- 网络层每 tick 仍有分配（Snapshot / 编码 / 包缓冲），离“稳态 0 分配”还有距离；
+  属 M5 增量，不在 sim 核心。
+- 单图 brush 数超过 ~2000 时先做 broadphase，再做压测；按当前线性外推，
+  2000 brush / 10 人约 55–60 µs，仍是预算的 1.5%。

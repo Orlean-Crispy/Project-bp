@@ -108,6 +108,16 @@ Godot 4.5 宿主 + GDExtension 桥可运行。所有试玩反馈都已落回 sim
 - 判据：--test-hitbox（25 项）；--test-net 顺带断言服务器 newest == tick。
 - 成本：10 人 × 64 帧 × ~40 B ≈ 25 KB；bench p99 0.5 µs 不受影响。
 
+### S13 底层性能审计（2026-10-19）
+
+- 优化（逐 tick 哈希不变）：pmove 每 tick 只算一次 sin/cos；slide 子步去掉重复 sqrt；
+  蹲姿未变时复用地面探测的 start_solid，省一次 hull trace；HitboxHistory 记录改 O(1)。
+- 工具：`--bench N --players M`；全局 new/delete 计数，World::step 稳态 **0 分配**。
+- 数据（10 人）：15 brush **2.15 µs**、201 brush 5.94 µs、801 brush 21.71 µs；
+  p99 分别 2.9 / 10.7 / 35.9 µs（预算 4000 µs）。
+- 结论：不做 broadphase（800 brush 仍 0.54% 预算）；等单图 >2000 brush 再评估。
+  没有为未来的武器/破坏加任何字段或钩子。
+
 ---
 
 ## 2. 当前基线数字（2026-10-19）
@@ -119,7 +129,8 @@ Godot 4.5 宿主 + GDExtension 桥可运行。所有试玩反馈都已落回 sim
 | 0→99% 最高速 | 10 tick |
 | 撞墙穿透 | 8.13–30 m/s ×100 次，0 次 |
 | 接触位置 | x = -0.456（理论 -0.455） |
-| bench p99 | 0.4 µs（1000 tick，单玩家） |
+| bench p99 | 0.4 µs（单玩家）/ 2.9 µs（10 人） |
+| World::step 分配 | 0.00 / tick |
 | 网络偏差 | 0.00000 m（30% loss / 30 ms） |
 | 网络回滚 | 185 / 2000 tick（30% loss；曾 1428） |
 | N3 位置修正 | 0 次 / 60 s（5% loss + 10 ms jitter；阈值 <3） |

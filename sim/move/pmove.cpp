@@ -15,22 +15,6 @@ float horizontal_speed(const Vec3& v) {
     return std::sqrt(v.x * v.x + v.y * v.y);
 }
 
-Vec3 facing_direction(const MoveInput& input) {
-    return Vec3(std::cos(input.yaw), std::sin(input.yaw), 0.0f);
-}
-
-Vec3 wish_direction(const MoveInput& input) {
-    const float s = std::sin(input.yaw);
-    const float c = std::cos(input.yaw);
-    // yaw 0 looks down +X; in a right-handed Z-up frame the right vector is
-    // (sin yaw, -cos yaw), so the right input contributes with a MINUS on Y.
-    Vec3 dir(input.forward * c + input.right * s,
-             input.forward * s - input.right * c,
-             0.0f);
-    if (length(dir) > 1.0f) dir = normalized(dir);
-    return dir;
-}
-
 void apply_friction(PlayerState& player, const MovementParams& params, float scale, float dt) {
     const float speed = horizontal_speed(player.vel);
     if (speed < 1e-4f) return;
@@ -82,12 +66,13 @@ Vec3 resolve_penetration(const CollisionWorld& world, const Vec3& pos, const Vec
 }
 
 bool probe_ground(const PlayerState& player, const CollisionWorld& world,
-                  const MovementParams& params, float& out_z) {
+                  const MovementParams& params, float& out_z, bool& out_start_solid) {
     Vec3 mins;
     Vec3 maxs;
     player_hull(player, params, mins, maxs);
     const TraceResult tr = world.trace_box(player.pos, player.pos - Vec3(0.0f, 0.0f, kGroundProbe),
                                            mins, maxs);
+    out_start_solid = tr.start_solid;
     if (tr.start_solid) {
         out_z = player.pos.z;
         return true;
@@ -220,13 +205,27 @@ void player_hull(const PlayerState& player, const MovementParams& params, Vec3& 
 void pmove(PlayerState& player, const MoveInput& input, const CollisionWorld& world,
            const MovementParams& params, float dt) {
     const float hz = 1.0f / dt;
+
+    // One sin/cos pair per tick: yaw is constant for the whole tick, and the
+    // ability checks below used to recompute the same basis up to four times.
+    const float yaw_sin = std::sin(input.yaw);
+    const float yaw_cos = std::cos(input.yaw);
+    const Vec3 facing(yaw_cos, yaw_sin, 0.0f);
+    // yaw 0 looks down +X; in a right-handed Z-up frame the right vector is
+    // (sin yaw, -cos yaw), so the right input contributes with a MINUS on Y.
+    Vec3 wish(input.forward * yaw_cos + input.right * yaw_sin,
+              input.forward * yaw_sin - input.right * yaw_cos, 0.0f);
+    if (length(wish) > 1.0f) wish = normalized(wish);
+
     if (player.dash_cooldown > 0) --player.dash_cooldown;
 
     const bool do_dash = input.dash && !player.dash_was_down && player.dash_cooldown == 0;
     player.dash_was_down = input.dash;
 
+    const bool was_crouched = player.crouched;
+    bool started_solid = false;
     float ground_z = player.pos.z;
-    player.on_ground = probe_ground(player, world, params, ground_z);
+    player.on_ground = probe_ground(player, world, params, ground_z, started_solid);
     if (player.on_ground) player.pos.z = ground_z;
 
     try_start_slide(player, input, params);
@@ -252,8 +251,13 @@ void pmove(PlayerState& player, const MoveInput& input, const CollisionWorld& wo
     player_hull(player, params, mins, maxs);
 
     // Never start a tick inside geometry: that is the "camera works, player is
-    // frozen" bug.
-    if (!hull_fits(world, player.pos, mins, maxs)) {
+    // frozen" bug. When the hull did not change, the ground probe already
+    // answered this with the same start at the same position, so skip a full
+    // trace; only a stance change needs a fresh hull query.
+    const bool solid = player.crouched != was_crouched
+                           ? !hull_fits(world, player.pos, mins, maxs)
+                           : started_solid;
+    if (solid) {
         player.pos = resolve_penetration(world, player.pos, mins, maxs);
     }
 
@@ -288,7 +292,7 @@ void pmove(PlayerState& player, const MoveInput& input, const CollisionWorld& wo
     } else if (player.state == ParkourState::WallClimb) {
         ++player.state_ticks;
         const int max_ticks = static_cast<int>(params.wallclimb_max_duration * hz + 0.5f);
-        const WallProbe wall = probe_wall(world, player.pos, facing_direction(input), mins, maxs);
+        const WallProbe wall = probe_wall(world, player.pos, facing, mins, maxs);
         const bool keep = input.wallclimb && wall.hit && player.state_ticks <= max_ticks;
         if (!keep) {
             player.state = player.on_ground ? ParkourState::Ground : ParkourState::Air;
@@ -303,8 +307,8 @@ void pmove(PlayerState& player, const MoveInput& input, const CollisionWorld& wo
 
     if (!busy && player.on_ground && player.state != ParkourState::Slide && input.vault &&
         !player.vault_was_down && player.impulses > 0) {
-        Vec3 dir = wish_direction(input);
-        if (length(dir) < 0.5f) dir = facing_direction(input);
+        Vec3 dir = wish;
+        if (length(dir) < 0.5f) dir = facing;
         const VaultProbe plan = probe_vault(world, player, params, dir, mins, maxs);
         if (plan.ok) {
             player.state = ParkourState::Vault;
@@ -326,7 +330,7 @@ void pmove(PlayerState& player, const MoveInput& input, const CollisionWorld& wo
 
     // Wall climb works from the ground too (Apex style), wall run does not.
     if (!busy && input.wallclimb && player.impulses > 0) {
-        const WallProbe wall = probe_wall(world, player.pos, facing_direction(input), mins, maxs);
+        const WallProbe wall = probe_wall(world, player.pos, facing, mins, maxs);
         if (wall.hit && wall.brush && wall.brush->climbable) {
             player.state = ParkourState::WallClimb;
             player.state_ticks = 0;
@@ -373,17 +377,15 @@ void pmove(PlayerState& player, const MoveInput& input, const CollisionWorld& wo
         if (player.vel.z < 0.0f) player.vel.z = 0.0f;
     } else if (player.on_ground) {
         apply_friction(player, params, 1.0f, dt);
-        const Vec3 wishdir = wish_direction(input);
-        accelerate(player.vel, wishdir, effective_max_speed(player, params), params.accel, dt);
+        accelerate(player.vel, wish, effective_max_speed(player, params), params.accel, dt);
         if (player.vel.z < 0.0f) player.vel.z = 0.0f;
     } else {
-        const Vec3 wishdir = wish_direction(input);
-        accelerate(player.vel, wishdir, effective_max_speed(player, params), params.air_accel, dt);
+        accelerate(player.vel, wish, effective_max_speed(player, params), params.air_accel, dt);
         player.vel.z -= params.gravity * dt;
     }
 
     if (do_dash) {
-        Vec3 dir = wish_direction(input);
+        Vec3 dir = wish;
         if (length(dir) < 0.5f) {
             const float s = horizontal_speed(player.vel);
             dir = s > 1e-4f ? Vec3(player.vel.x / s, player.vel.y / s, 0.0f) : Vec3(1.0f, 0.0f, 0.0f);
@@ -397,7 +399,8 @@ void pmove(PlayerState& player, const MoveInput& input, const CollisionWorld& wo
     player.pos = moved.moved.pos;
     player.vel = moved.moved.vel;
 
-    if (probe_ground(player, world, params, ground_z)) {
+    bool landed_solid = false;
+    if (probe_ground(player, world, params, ground_z, landed_solid)) {
         player.pos.z = ground_z;
         player.on_ground = true;
         if (player.vel.z < 0.0f) player.vel.z = 0.0f;

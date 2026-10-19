@@ -273,12 +273,16 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
 - 爬墙：需要 brush.climbable，速度 4.57 m/s，最长 0.7 s。
 - 翻越：0.46–1.22 m 台沿，0.35 s 内固定前进+上升。
 - 有效速度 = base_speed × 武器系数 × 受伤减速 × 蹲下系数。
+- 性能：每 tick 只算一次 yaw 的 sin/cos；蹲姿未变时，起始实心检查复用地面探测的
+  start_solid，不再重复一次 hull trace。
 
 ### 8.2 碰撞（sim/collision/*）
 
 - 扫掠 = Minkowski 展开（支撑距离取 **min**）+ 分步（step = 最小墙厚），bumps ≤ 4。
 - 进入分数钳到 0（接触 epsilon 的坑）。
 - 落地不接受实心点；pmove 每 tick 检查实心并向上/四向脱离。
+- 基准：`--bench 1000 --players 10`；World::step 稳态 0 分配。10 人：15 brush 2.2 µs、
+  201 brush 5.9 µs、801 brush 21.7 µs（预算 4000 µs）。单图 >2000 brush 再考虑 broadphase。
 
 ### 8.3 键位（sim/input/*）
 

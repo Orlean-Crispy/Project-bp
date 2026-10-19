@@ -4,7 +4,9 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <new>
 #include <string>
 #include <vector>
 
@@ -16,6 +18,26 @@
 #include "sim/game/combat.h"
 #include "sim/net/session.h"
 #include "sim/net/transport.h"
+
+// Allocation counter for the "steady state allocates nothing" rule (iron law E).
+// These replace the global operators for this test executable only.
+static unsigned long long g_allocations = 0;
+
+void* operator new(std::size_t size) {
+    ++g_allocations;
+    if (void* p = std::malloc(size == 0 ? 1 : size)) return p;
+    throw std::bad_alloc();
+}
+void* operator new[](std::size_t size) { return operator new(size); }
+void* operator new(std::size_t size, const std::nothrow_t&) noexcept {
+    ++g_allocations;
+    return std::malloc(size == 0 ? 1 : size);
+}
+void operator delete(void* p) noexcept { std::free(p); }
+void operator delete[](void* p) noexcept { std::free(p); }
+void operator delete(void* p, std::size_t) noexcept { std::free(p); }
+void operator delete[](void* p, std::size_t) noexcept { std::free(p); }
+void operator delete(void* p, const std::nothrow_t&) noexcept { std::free(p); }
 
 namespace {
 
@@ -35,6 +57,7 @@ struct Options {
     std::string script = "jump";
     int ticks = 600;
     int bench_ticks = 1000;
+    int bench_players = 1;
     bool selftest = false;
     bool test_wall = false;
     bool test_ray = false;
@@ -93,7 +116,8 @@ void usage() {
         "  --test-net        client/server over a 30%% loss link: prediction converges\n"
         "  --test-health     HP 100 + 25 / 25 regen / 50 armour damage and regen rules\n"
         "  --test-hitbox     verify the 64-tick hitbox history and the 3-zone multipliers\n"
-        "  --bench [n]       time n ticks and report mean/p99/max\n");
+        "  --bench [n]       time n ticks and report mean/p99/max\n"
+        "  --players <n>     with --bench: simulate n players (default 1)\n");
 }
 
 bool load_world_from(const std::string& map_path, const std::string& data_path, World& world,
@@ -1629,13 +1653,23 @@ int run_bench(const Options& opt) {
         return 1;
     }
 
+    // Players never collide with each other, so sharing a spawn point measures
+    // the per-player simulation cost without inventing gameplay semantics.
+    if (opt.bench_players > 1) {
+        const PlayerState spawn = world.players[0];
+        world.players.assign(static_cast<size_t>(opt.bench_players), spawn);
+    }
+
     std::vector<double> samples;
     samples.reserve(static_cast<size_t>(opt.bench_ticks));
+    std::vector<MoveInput> inputs(world.players.size());
 
+    const unsigned long long alloc_before = g_allocations;
     for (int i = 0; i < opt.bench_ticks; ++i) {
         const MoveInput in = make_input("jump", static_cast<uint32_t>(i));
+        for (MoveInput& slot : inputs) slot = in;
         const int64_t start = sim::now_ns();
-        world.step({in}, kDt);
+        world.step(inputs, kDt);
         const int64_t took = sim::elapsed_ns(start);
         samples.push_back(static_cast<double>(took) / 1000.0);
     }
@@ -1644,11 +1678,14 @@ int run_bench(const Options& opt) {
     double sum = 0.0;
     for (double s : samples) sum += s;
     const size_t p99 = static_cast<size_t>(static_cast<double>(samples.size()) * 0.99);
-    std::printf("ticks  %d\n", opt.bench_ticks);
+    std::printf("ticks  %d   players %d\n", opt.bench_ticks, opt.bench_players);
     std::printf("mean   %.2f us\n", sum / static_cast<double>(samples.size()));
     std::printf("p99    %.2f us  (budget 4000 us)\n",
                 samples[std::min(p99, samples.size() - 1)]);
     std::printf("max    %.2f us\n", samples.back());
+    const unsigned long long allocs = g_allocations - alloc_before;
+    std::printf("allocs %.2f / tick\n",
+                static_cast<double>(allocs) / static_cast<double>(opt.bench_ticks));
     return 0;
 }
 
@@ -1746,6 +1783,10 @@ int main(int argc, char** argv) {
             opt.test_health = true;
         } else if (arg == "--test-hitbox") {
             opt.test_hitbox = true;
+        } else if (arg == "--players") {
+            const char* v = need_value("--players");
+            if (!v) return 2;
+            opt.bench_players = std::atoi(v);
         } else if (arg == "--bench") {
             opt.bench = true;
             if (i + 1 < argc && argv[i + 1][0] != '-') opt.bench_ticks = std::atoi(argv[++i]);

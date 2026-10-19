@@ -44,7 +44,7 @@ public:
     HitboxSample sample(uint32_t tick, float frac) const;
 
     int size() const { return m_count; }
-    uint32_t oldest_tick() const { return m_count == 0 ? 0 : m_oldest; }
+    uint32_t oldest_tick() const;  // lazily scanned: record() stays O(1)
     uint32_t newest_tick() const { return m_count == 0 ? 0 : m_newest; }
 
 private:
@@ -59,7 +59,6 @@ private:
 
     Entry m_entries[kCapacity];
     int m_count = 0;
-    uint32_t m_oldest = 0;
     uint32_t m_newest = 0;
 };
 
