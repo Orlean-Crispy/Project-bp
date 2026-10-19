@@ -201,6 +201,12 @@ Godot 4.5 宿主 + GDExtension 桥可运行。所有试玩反馈都已落回 sim
   MATCH_START/FULL_STATE）+ TcpListener/TcpStream（connect/accept 超时）。
 - 真 TCP 环回逐字段验证：[signal] hello 1 ack 1 manifest 1 ready 1 match 1 full 1。
 - 尚未接入 Godot/NetServer；下一步是信令线程 + MATCH_START 触发 UDP 会话，再做 A2。
+### S26 A2 可靠流（2026-10-19）
+
+- sim/net/reliable：独立 rel_seq、窗口 32、累积 ACK + 32 位位图、RFC 6298 RTO、5 次重传上限。
+- configstring 512 B 分块 + CRC32；组装器逐块校验，缺块不 complete。
+- 30% 丢包：5000 B / 10 块 → retrans 6、complete 1、same 1、corrupt 1、dead 0。
+- 尚未与快照共用 socket；单 socket 双队列是下一步。
 
 ---
 

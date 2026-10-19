@@ -1004,3 +1004,34 @@ CMake 只在 WIN32 链接 ws2_32，不污染 sim 的其它目标。
 1. 信令接入组局（线程 + 事件队列 + MATCH_START 触发 UDP 加入）。
 2. A2 可靠流 + configstring 512 B 分块 + CRC32。
 3. A5 票据。
+---
+
+## 2026-10-19 · S26 · A2 可靠流 + configstring 分块
+
+### 1. 实现
+
+- sim/net/reliable.*：独立 rel_seq（从 1 开始，0 表示“未确认任何包”），窗口 32。
+- 累积 ACK + 32 位位图（bit i 覆盖 ack+1+i）；RFC 6298 RTO（初始 250 ms，钳 100–1000 ms）。
+- 重传上限 5 次 → dead；configstring 按 512 B 分块，8 B 头（index/total/CRC32）+ 负载。
+- ConfigAssembler 逐块校验 CRC，缺块不 complete，assemble 按 index 拼接。
+
+### 2. 验收（30% 丢包）
+
+- 5000 B → 10 块，60 次重传预算内完成：chunks 10 retrans 6 complete 1 same 1 corrupt 1 dead 0。
+- 篡改任意字节的块被 CRC 拒绝。
+
+### 3. 抓到的 bug
+
+- 第一版 complete() 只看 m_chunks.size()==total，而 resize 会补空槽，导致 7 块时就“完成”，
+  拼接结果缺 3 块。修复：complete 要求每块非空。
+
+### 4. 边界
+
+- 尚未与快照共用同一个 socket：A2 目前是独立层 + 闸门，NetServer 的单 socket 双队列是下一步。
+- 重传上限后的断线流程与 A5 票据联动未接。
+
+### 5. 下一步
+
+1. 把 A2 接进 NetServer 的单 socket（高优先快照队列 + 低优先可靠队列）。
+2. A5 票据。
+3. A1 信令线程接入组局。

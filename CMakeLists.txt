@@ -38,6 +38,7 @@ add_library(sim STATIC
   sim/net/udp_hub.cpp
   sim/net/handshake.cpp
   sim/net/signaling.cpp
+  sim/net/reliable.cpp
   sim/net/fragment.cpp
   sim/net/netchan.cpp
   sim/net/snapshot.cpp

@@ -20,6 +20,7 @@
 #include "sim/game/combat.h"
 #include "sim/net/fragment.h"
 #include "sim/net/handshake.h"
+#include "sim/net/reliable.h"
 #include "sim/net/session.h"
 #include "sim/net/signaling.h"
 #include "sim/net/transport.h"
@@ -1661,6 +1662,67 @@ int run_udp_session_check(const std::string& data_path) {
     return failures;
 }
 
+int run_reliable_test() {
+    std::vector<uint8_t> data(5000);
+    for (size_t i = 0; i < data.size(); ++i) {
+        data[i] = static_cast<uint8_t>((i * 31 + 7) & 0xFF);
+    }
+    const std::vector<std::vector<uint8_t>> chunks = sim::chunk_config(data, 512);
+
+    sim::ReliableSender sender;
+    sim::ReliableReceiver receiver;
+    sim::ConfigAssembler assembler;
+    for (const auto& chunk : chunks) sender.send(chunk, 0);
+
+    std::string error;
+    bool complete = false;
+    uint32_t now = 0;
+    for (int step = 0; step < 600 && !complete; ++step) {
+        now += 16;
+        std::vector<std::vector<uint8_t>> out;
+        sender.poll(now, out);
+        int index = 0;
+        for (const auto& packet : out) {
+            ++index;
+            if ((step * 7 + index * 13) % 10 < 3) continue;  // 30% loss
+            std::vector<std::vector<uint8_t>> delivered;
+            receiver.on_packet(packet.data(), packet.size(), delivered);
+            for (const auto& chunk : delivered) {
+                if (!assembler.add(chunk.data(), chunk.size(), error)) {
+                    std::printf("FAIL: reliable chunk rejected: %s\n", error.c_str());
+                    return 1;
+                }
+            }
+        }
+        std::vector<uint8_t> ack;
+        receiver.make_ack(ack);
+        const uint16_t ack_seq = static_cast<uint16_t>(ack[1]) |
+                                 static_cast<uint16_t>(ack[2] << 8);
+        const uint32_t bitmap = static_cast<uint32_t>(ack[3]) |
+                                (static_cast<uint32_t>(ack[4]) << 8) |
+                                (static_cast<uint32_t>(ack[5]) << 16) |
+                                (static_cast<uint32_t>(ack[6]) << 24);
+        sender.on_ack(ack_seq, bitmap, now);
+        complete = assembler.complete();
+    }
+
+    std::vector<uint8_t> bad = chunks[0];
+    bad[bad.size() - 1] ^= 0xFF;
+    sim::ConfigAssembler corrupt;
+    std::string corrupt_error;
+    const bool rejected = !corrupt.add(bad.data(), bad.size(), corrupt_error);
+
+    const bool same = assembler.assemble() == data;
+    std::printf("  [reliable] chunks %zu retrans %d complete %d same %d corrupt %d dead %d\n",
+                chunks.size(), sender.retransmits(), complete ? 1 : 0, same ? 1 : 0,
+                rejected ? 1 : 0, sender.dead() ? 1 : 0);
+    if (!complete || !same || sender.retransmits() == 0 || !rejected || sender.dead()) {
+        std::printf("FAIL: A2 reliable stream test failed\n");
+        return 1;
+    }
+    return 0;
+}
+
 int run_signal_test() {
     std::string error;
     sim::TcpListener listener;
@@ -1821,6 +1883,7 @@ int run_net_test(const Options& opt) {
     failures += run_udp_session_check(opt.data_path);
     failures += run_clock_check(opt.data_path);
     failures += run_signal_test();
+    failures += run_reliable_test();
 
     // v0.4 5.2: duplicates, late and far commands never enter the queue twice.
     {
