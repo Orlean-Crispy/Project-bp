@@ -6,6 +6,10 @@ Push-Location $root
 try {
     $exe = 'build\headless_sim.exe'
 
+    Write-Host '== sources ==' -ForegroundColor Cyan
+    & powershell -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'check_sources.ps1')
+    if ($LASTEXITCODE -ne 0) { throw 'source list mismatch' }
+
     Write-Host '== info ==' -ForegroundColor Cyan
     & $exe --info
     if ($LASTEXITCODE -ne 0) { throw 'info failed' }

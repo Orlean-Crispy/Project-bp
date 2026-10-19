@@ -178,6 +178,18 @@ bool NetServer::init(const std::string& map_path, const std::string& params_path
 }
 
 int NetServer::add_client(Transport* incoming, Transport* outgoing, int player_index) {
+    if (player_index < 0) {
+        // Reuse the first free slot: after a timeout a reconnect must land on
+        // the same player the server kept in the world.
+        for (size_t i = 0; i < m_world.players.size(); ++i) {
+            if (!m_world.players[i].active) {
+                player_index = static_cast<int>(i);
+                break;
+            }
+        }
+        if (player_index < 0) return -1;
+    }
+    if (player_index >= static_cast<int>(m_world.players.size())) return -1;
     Link link;
     link.rx = incoming;
     link.tx = outgoing;

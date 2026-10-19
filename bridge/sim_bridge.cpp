@@ -158,7 +158,6 @@ public:
             return false;
         }
         m_hosting = true;
-        m_next_slot = 1;
         return true;
     }
 
@@ -192,13 +191,11 @@ public:
             std::vector<uint8_t> packet;
             while (m_hub->next_unknown(peer_host, peer_port, packet)) {
                 if (!sim::is_hello(packet)) continue;
-                const int slots = static_cast<int>(m_server->world().players.size());
-                if (m_next_slot >= slots) continue;
                 sim::PeerTransport* peer = m_hub->add_peer(peer_host, peer_port);
-                m_server->add_client(peer, peer, m_next_slot);
-                std::printf("breakpoint: peer joined slot %d\n", m_next_slot);
+                const int slot = m_server->add_client(peer, peer, -1);
+                if (slot < 0) continue;  // all slots taken
+                std::printf("breakpoint: peer joined slot %d\n", slot);
                 std::fflush(stdout);
-                ++m_next_slot;
             }
             m_net_client->send_input(m_input);
             m_net_client->step_local();
@@ -394,7 +391,6 @@ private:
     std::unique_ptr<sim::LoopbackTransport> m_local_to_server;
     std::unique_ptr<sim::LoopbackTransport> m_local_to_client;
     bool m_hosting = false;
-    int m_next_slot = 1;
     std::chrono::steady_clock::time_point m_last_hello{};
     PackedVector3Array m_vertices;
     PackedVector3Array m_normals;

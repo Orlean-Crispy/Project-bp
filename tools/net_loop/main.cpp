@@ -58,7 +58,6 @@ int run_server(const Options& opt) {
     }
     std::printf("server port=%u players=%d\n", hub.local_port(), opt.players);
 
-    int next_slot = 0;
     int tick = 0;
     const auto start = std::chrono::steady_clock::now();
     auto next = start;
@@ -73,13 +72,13 @@ int run_server(const Options& opt) {
         uint16_t port = 0;
         std::vector<uint8_t> packet;
         while (hub.next_unknown(host, port, packet)) {
-            if (!sim::is_hello(packet) || next_slot >= opt.players) continue;
+            if (!sim::is_hello(packet)) continue;
             sim::PeerTransport* peer = hub.add_peer(host, port);
-            server.add_client(peer, peer, next_slot);
-            std::printf("join slot=%d addr=%s:%u server_tick=%u\n", next_slot, host.c_str(),
-                        port, server.tick());
+            const int slot = server.add_client(peer, peer, -1);
+            if (slot < 0) continue;
+            std::printf("join slot=%d addr=%s:%u server_tick=%u\n", slot, host.c_str(), port,
+                        server.tick());
             std::fflush(stdout);
-            ++next_slot;
         }
         server.receive();
         server.step();

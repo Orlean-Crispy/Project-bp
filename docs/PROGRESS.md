@@ -1136,6 +1136,19 @@ CMake 只在 WIN32 链接 ws2_32，不污染 sim 的其它目标。
 - NetServer 每条 Link 记录 last_rx_tick；任何可解包都会刷新。
 - step() 开头扫描：ever_seen 且 320 tick（5 s）没收到包 → remove_client（槽位失活）。
 - 验收：[timeout] joined 1 dropped 1；其余网络闸门不变。
+---
+
+## 2026-10-19 · S31 · 易解技术债（第一批）
+
+- 槽位复用：`add_client(..., -1)` 选第一个 inactive 槽位；bridge/net_loop 不再维护 next_slot。
+  超时释放后重连回到原槽（[timeout] joined 1 dropped 1 reuse 1）。
+- `check_sources.ps1` 接入 smoke：源清单与 git 不一致时闸门直接红。
+- README 已在 S30 后更新到 M5，并链接 GAPS.md。
+
+### 未动（明天）
+
+- PROGRESS S21/S20 顺序；InputWindow Overflow 死分支；Winsock 初始化重复；
+  A2 单 socket 双队列；A1 信令线程；DLL dead-strip；远端插值 frac；10 分钟 soak。
 
 ### 下一步
 

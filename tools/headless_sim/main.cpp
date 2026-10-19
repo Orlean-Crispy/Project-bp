@@ -1695,9 +1695,15 @@ int run_timeout_test() {
     }
     const bool dropped = server.client_count() == 0 && server.timed_out_clients() == 1 &&
                          !server.world().players[0].active;
-    std::printf("  [timeout] joined %d dropped %d\n", joined ? 1 : 0, dropped ? 1 : 0);
-    if (!joined || !dropped) {
-        std::printf("FAIL: silent client was not dropped\n");
+    sim::LoopbackTransport reconnect_to_server(sim::NetConditions{}, 43);
+    sim::LoopbackTransport reconnect_to_client(sim::NetConditions{}, 44);
+    const int slot = server.add_client(&reconnect_to_server, &reconnect_to_client, -1);
+    const bool reused = slot == 0 && server.world().players[0].active &&
+                        server.client_count() == 1;
+    std::printf("  [timeout] joined %d dropped %d reuse %d\n", joined ? 1 : 0, dropped ? 1 : 0,
+                reused ? 1 : 0);
+    if (!joined || !dropped || !reused) {
+        std::printf("FAIL: silent client drop or slot reuse failed\n");
         return 1;
     }
     return 0;
