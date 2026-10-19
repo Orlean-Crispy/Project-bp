@@ -174,8 +174,16 @@ int NetServer::add_client(Transport* incoming, Transport* outgoing, int player_i
     link.rx = incoming;
     link.tx = outgoing;
     link.player = player_index;
+    link.join_id = m_next_join_id++;
     m_links.push_back(link);
     return static_cast<int>(m_links.size()) - 1;
+}
+
+void NetServer::remove_client(int link_index) {
+    if (link_index < 0 || link_index >= static_cast<int>(m_links.size())) return;
+    // The player stays in the world; a reconnect re-attaches a link to it and
+    // receives the full state again (plan 7.7).
+    m_links.erase(m_links.begin() + link_index);
 }
 
 void NetServer::receive() {
@@ -207,6 +215,14 @@ void NetServer::receive() {
                 link.last_cmd_seq = header.seq;
                 switch (link.inputs.push(cmd.tick, cmd.input)) {
                     case InputWindow::Result::Accepted:
+                        // A command for a future tick proves the client has
+                        // received the full state; stale packets cannot, because
+                        // they resolve to Late below.
+                        link.pending_full_state = false;
+                        break;
+                    case InputWindow::Result::Overflow:
+                        ++m_overflow_cmds;  // pathological jitter
+                        link.pending_full_state = false;
                         break;
                     case InputWindow::Result::Duplicate:
                         ++m_dup_cmds;  // normal under redundancy, do not log
@@ -220,9 +236,6 @@ void NetServer::receive() {
                         break;
                     case InputWindow::Result::TooFar:
                         ++m_far_cmds;  // clock skew or cheating
-                        break;
-                    case InputWindow::Result::Overflow:
-                        ++m_overflow_cmds;  // pathological jitter
                         break;
                 }
                 if (link.inputs.depth() > static_cast<std::size_t>(m_max_depth)) {
@@ -254,6 +267,29 @@ void NetServer::step() {
 
 void NetServer::send() {
     for (Link& link : m_links) {
+        if (link.pending_full_state) {
+            Snapshot full;
+            full.tick = m_world.tick;
+            full.acked_cmd = link.last_cmd_seq;
+            for (const PlayerState& p : m_world.players) full.players.push_back(to_snap(p));
+            const std::vector<uint8_t> body = encode_snapshot(full, nullptr);
+
+            ByteWriter w;
+            w.u32(link.join_id);
+            w.u8(static_cast<uint8_t>(link.player));
+            w.u64(m_world.params_hash);
+            w.u64(m_world.collision.geometry_hash());
+            w.raw(body.data(), body.size());
+
+            PacketHeader header;
+            header.type = PacketType::FullState;
+            header.seq = link.out_seq++;
+            header.ack = link.last_cmd_seq;
+            header.ack_bits = 0;
+            link.tx->send(wrap_packet(header, w.data()));
+            continue;
+        }
+
         Snapshot snap;
         snap.tick = m_world.tick;
         snap.acked_cmd = link.last_cmd_seq;
@@ -301,22 +337,9 @@ bool NetClient::init(Transport* outgoing, Transport* incoming, int player_index,
     m_local.players.push_back(p);
     m_local.tick = 0;
 
-    // Plan 7.0: run on the server's tick axis, one lead ahead, and mirror the
-    // empty ticks the server simulates before the first command reaches it.
-    // Without the warm-up, the first snapshot would look like a mispredict and
-    // every later comparison would be shifted by the lead.
-    m_clock.align(0);
-    m_hitbox.record(m_local.players[0], m_local.params, 0);
-    while (m_local.tick < m_clock.command_tick()) {
-        const MoveInput none;
-        m_local.step({none}, kDt);
-        HistoryEntry entry;
-        entry.tick = m_local.tick;
-        entry.state = m_local.players[0];
-        entry.input = none;
-        m_history.push_back(entry);
-        m_hitbox.record(m_local.players[0], m_local.params, m_local.tick);
-    }
+    // Plan 7.7: wait for FULL_STATE instead of assuming both sides start at
+    // tick 0. Cold start, mid-match join and reconnect all use the same path.
+    m_joined = false;
     return true;
 }
 
@@ -331,7 +354,48 @@ void NetClient::reset_stats() {
     m_max_correction = 0.0f;
 }
 
+void NetClient::apply_full_state(const Snapshot& snap) {
+    ++m_full_states;
+    m_join_tick = snap.tick;
+    m_join_failed = false;
+
+    // Everything predicted before the join/reconnect refers to a different
+    // history; drop it rather than trying to reconcile it.
+    m_history.clear();
+    m_recent.clear();
+    m_pending.clear();
+    m_last_snapshot_tick = snap.tick;
+    m_ack = 0;
+    m_ack_bits = 0;
+
+    m_local.players.resize(1);
+    from_snap(snap.players[static_cast<size_t>(m_player)], m_local.players[0]);
+    m_local.tick = snap.tick;
+
+    // Plan 7.0/7.7: start on the server tick axis one lead ahead, mirroring the
+    // empty ticks the server runs while our first command is in flight.
+    // The snapshot is already up to three ticks stale when it arrives. Estimate
+    // the server's current tick before adding the normal command lead; the extra
+    // slack only makes the first command arrive early, never late.
+    constexpr uint32_t kJoinSlack = 3;
+    m_clock.align(snap.tick + kJoinSlack);
+    m_hitbox.reset();
+    m_hitbox.record(m_local.players[0], m_local.params, snap.tick);
+    while (m_local.tick < m_clock.command_tick()) {
+        const MoveInput none;
+        m_local.step({none}, kDt);
+        HistoryEntry entry;
+        entry.tick = m_local.tick;
+        entry.state = m_local.players[0];
+        entry.input = none;
+        m_history.push_back(entry);
+        m_hitbox.record(m_local.players[0], m_local.params, m_local.tick);
+    }
+    m_joined = true;
+}
+
 void NetClient::send_input(const MoveInput& input) {
+    if (!m_joined) return;  // no tick axis until FULL_STATE arrives
     m_last_input = input;
     InputCmd cmd;
     cmd.tick = m_clock.command_tick();
@@ -348,6 +412,7 @@ void NetClient::send_input(const MoveInput& input) {
 }
 
 void NetClient::step_local() {
+    if (!m_joined) return;
     // Prediction uses exactly the input that was just sent, on the server's tick
     // axis; the clock advances with the world so the two never drift apart.
     m_local.step({m_last_input}, kDt);
@@ -368,7 +433,40 @@ void NetClient::receive() {
         const uint8_t* payload = nullptr;
         size_t size = 0;
         if (!unwrap_packet(packet, header, payload, size)) continue;
+
+        if (header.type == PacketType::FullState) {
+            constexpr size_t kFullHeader = 4 + 1 + 8 + 8;
+            if (size < kFullHeader) continue;
+            ByteReader r(payload, size);
+            const uint32_t join_id = r.u32();
+            const uint8_t player_index = r.u8();
+            const uint64_t params_hash = r.u64();
+            const uint64_t geometry_hash = r.u64();
+            if (!r.ok() || params_hash != m_local.params_hash ||
+                geometry_hash != m_local.collision.geometry_hash()) {
+                m_join_failed = true;  // wrong build or map: refuse to join
+                continue;
+            }
+            Snapshot full;
+            if (!decode_snapshot(payload + kFullHeader, size - kFullHeader, nullptr, full)) {
+                ++m_decode_fail;
+                continue;
+            }
+            if (player_index >= full.players.size()) {
+                m_join_failed = true;
+                continue;
+            }
+            // The server repeats the same full state every tick until our first
+            // command lands; a new join_id means a reconnect.
+            if (m_joined && join_id == m_join_id) continue;
+            m_join_id = join_id;
+            m_player = player_index;
+            apply_full_state(full);
+            continue;
+        }
+
         if (header.type != PacketType::Snapshot) continue;
+        if (!m_joined) continue;
 
         Snapshot snap;
         const uint32_t baseline_tick = peek_baseline_tick(payload, size);

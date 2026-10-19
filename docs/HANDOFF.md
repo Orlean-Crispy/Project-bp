@@ -118,6 +118,16 @@ Godot 4.5 宿主 + GDExtension 桥可运行。所有试玩反馈都已落回 sim
 - 结论：不做 broadphase（800 brush 仍 0.54% 预算）；等单图 >2000 brush 再评估。
   没有为未来的武器/破坏加任何字段或钩子。
 
+### S14 §7.7 FULL_STATE / 中途加入 / 重连（2026-10-19）
+
+- 新链路 pending_full_state：每 tick 发 FULL_STATE（join_id、player、params/geometry hash、
+  全量快照），收到“未来 tick”的命令才转 delta；迟到/重复命令清不掉标记。
+- 客户端不再假设双方从 tick 0 起步：拿 FS 后重置历史，tick = FS tick + 7 预跑，
+  首条命令到达即完成握手。
+- 断线只摘链路，玩家留在世界；重连走同一 FS 路径，join_id 变化触发重对齐。
+- 参数哈希不一致的客户端被拒绝（join_failed）。
+- 证据：tick 202 中途加入、tick 701 重连，偏差均 0.00000 m；30% 丢包回滚 51（曾 185）。
+
 ---
 
 ## 2. 当前基线数字（2026-10-19）
@@ -132,8 +142,9 @@ Godot 4.5 宿主 + GDExtension 桥可运行。所有试玩反馈都已落回 sim
 | bench p99 | 0.4 µs（单玩家）/ 2.9 µs（10 人） |
 | World::step 分配 | 0.00 / tick |
 | 网络偏差 | 0.00000 m（30% loss / 30 ms） |
-| 网络回滚 | 185 / 2000 tick（30% loss；曾 1428） |
+| 网络回滚 | 51 / 2000 tick（30% loss；曾 1428） |
 | N3 位置修正 | 0 次 / 60 s（5% loss + 10 ms jitter；阈值 <3） |
+| 中途加入 / 重连 | 偏差 0.00000 m（FS tick 202 / 701） |
 | 护甲 | 25 / 25 再生 / 50；吸收 66% |
 | demo | ~28 B/tick；600 tick ≈ 17 KB |
 

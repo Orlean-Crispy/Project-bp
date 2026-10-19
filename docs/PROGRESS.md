@@ -595,3 +595,44 @@ C:\bp-toolchain\godot\Godot_v4.5-stable_win64.exe --path godot
   属 M5 增量，不在 sim 核心。
 - 单图 brush 数超过 ~2000 时先做 broadphase，再做压测；按当前线性外推，
   2000 brush / 10 人约 55–60 µs，仍是预算的 1.5%。
+
+---
+
+## 2026-10-19 · S14 · §7.7 FULL_STATE / 中途加入 / 重连
+
+### 1. 协议
+
+- 新链路一律 `pending_full_state`：服务器每 tick 发 `FULL_STATE`，直到收到一条
+  **未来 tick** 的命令（迟到包解析成 Late/Duplicate，清不掉标记）。
+- 载荷：`join_id(u32) + player_index(u8) + params_hash(u64) + geometry_hash(u64)`
+  + 完整 `Snapshot`（baseline = 0）。
+- `join_id` 每次 `add_client` 递增：重连是新 id；同一份重复 FS 被客户端忽略。
+- 哈希不一致 → `join_failed`，拒绝入局（不允许“半套配置”）。
+
+### 2. 客户端加入
+
+- `init` 不再假设双方从 tick 0 起步，等 FULL_STATE。
+- 收到后：清历史/最近快照，tick = 快照 tick，预跑 4 tick；
+  另加 `kJoinSlack = 3`（快照到达时最多旧 3 tick），首条命令 tick = 快照 tick + 7。
+- 首条命令到达服务器即清 pending，恢复正常 delta 快照。
+
+### 3. 断线与重连
+
+- `remove_client` 只摘链路，玩家留在世界（无输入 = 站立/落地）。
+- 重新 `add_client` 走同一 FULL_STATE 路径；`join_id` 变化触发客户端重对齐。
+
+### 4. 验收（--test-net 内，闸门 8）
+
+| 场景 | 结果 |
+|---|---|
+| 比赛先跑 200 tick，客户端 tick 202 加入 | 300+100 tick 后偏差 0.00000 m |
+| 摘链路 100 tick 后重连 | 第二次 FS tick 701，偏差 0.00000 m |
+| 参数哈希不同的客户端 | 被拒绝（join_failed） |
+| 30% 丢包 2000 tick | 回滚 **51**（曾 185/1428），迟到 42 |
+
+> 加入路径让起始对齐更干净：客户端从真实服务器 tick 起步，不再赌“双方都从 0 开始”。
+
+### 5. 未做
+
+- “回合内加入观战到下一回合”：还没有回合系统，等爆破/回合落地后再接。
+- 重连票据（v0.4 A5 的 HMAC / 120 s）：当前按 player_index 重新挂链路。

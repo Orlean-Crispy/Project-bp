@@ -60,6 +60,7 @@ public:
               std::string& error);
 
     int add_client(Transport* incoming, Transport* outgoing, int player_index);
+    void remove_client(int link_index);
     void receive();
     void step();
     void send();
@@ -83,6 +84,11 @@ private:
         Transport* rx = nullptr;
         Transport* tx = nullptr;
         int player = 0;
+        // Plan 7.7: a fresh link starts with the full state, whether it is a
+        // cold start or a reconnect. Normal snapshots resume after the first
+        // command proves the client has joined.
+        bool pending_full_state = true;
+        uint32_t join_id = 0;  // changes on every admission, so repeats can be ignored
         uint16_t last_cmd_seq = 0;
         bool has_command = false;
         MoveInput last_input;
@@ -106,6 +112,7 @@ private:
     int m_far_cmds = 0;
     int m_overflow_cmds = 0;
     int m_max_depth = 0;
+    uint32_t m_next_join_id = 1;
     std::vector<HitboxHistory> m_hitboxes;
 };
 
@@ -127,6 +134,10 @@ public:
     uint32_t last_snapshot_tick() const { return m_last_snapshot_tick; }
     int corrections() const { return m_corrections; }
     float max_correction() const { return m_max_correction; }
+    bool joined() const { return m_joined; }
+    int full_states() const { return m_full_states; }
+    uint32_t join_tick() const { return m_join_tick; }
+    bool join_failed() const { return m_join_failed; }
     const HitboxHistory& hitbox() const { return m_hitbox; }
     void reset_stats();
     ServerClock& clock() { return m_clock; }
@@ -139,6 +150,7 @@ private:
     };
 
     void apply_snapshot(const Snapshot& snap);
+    void apply_full_state(const Snapshot& snap);
 
     Transport* m_tx = nullptr;
     Transport* m_rx = nullptr;
@@ -160,6 +172,11 @@ private:
     int m_stale = 0;
     int m_corrections = 0;
     float m_max_correction = 0.0f;
+    bool m_joined = false;
+    bool m_join_failed = false;
+    int m_full_states = 0;
+    uint32_t m_join_tick = 0;
+    uint32_t m_join_id = 0;
     HitboxHistory m_hitbox;
     ServerClock m_clock;
 };

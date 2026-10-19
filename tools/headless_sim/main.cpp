@@ -1215,6 +1215,123 @@ int run_hitbox_test(const Options& opt) {
     return 0;
 }
 
+int run_join_phase(const std::string& data_path) {
+    const std::string map_path = "sim/data/maps/metrics_flat.map";
+    int failures = 0;
+
+    sim::NetServer server;
+    std::string error;
+    if (!server.init(map_path, data_path, 1, error)) {
+        std::fprintf(stderr, "error: %s\n", error.c_str());
+        return 1;
+    }
+    // The match is already running when the first client arrives.
+    for (int i = 0; i < 200; ++i) server.step();
+
+    sim::NetConditions conditions;
+    conditions.loss = 0.05f;
+    conditions.latency_ms = 30.0f;
+    conditions.jitter_ms = 5.0f;
+    sim::LoopbackTransport to_server(conditions, 999);
+    sim::LoopbackTransport to_client(conditions, 1000);
+
+    int link = server.add_client(&to_server, &to_client, 0);
+    sim::NetClient client;
+    if (!client.init(&to_server, &to_client, 0, map_path, data_path, error)) {
+        std::fprintf(stderr, "error: %s\n", error.c_str());
+        return 1;
+    }
+
+    auto tick_once = [&](const sim::MoveInput& in) {
+        client.send_input(in);
+        client.step_local();
+        server.receive();
+        server.step();
+        server.send();
+        to_server.advance(0);
+        to_client.advance(0);
+        client.receive();
+    };
+
+    for (int i = 0; i < 300; ++i) tick_once(net_test_input(i));
+    const uint32_t first_join = client.join_tick();
+    const int first_full_states = client.full_states();
+    for (int i = 0; i < 100; ++i) tick_once(sim::MoveInput{});
+    const float first_deviation =
+        sim::length(client.predicted().pos - server.world().players[0].pos);
+
+    // Pull the link for 100 ticks, then re-admit the same player. The server
+    // keeps simulating; the client's state goes stale until FULL_STATE returns.
+    server.remove_client(link);
+    for (int i = 0; i < 100; ++i) server.step();
+    link = server.add_client(&to_server, &to_client, 0);
+
+    for (int i = 0; i < 300; ++i) tick_once(net_test_input(i + 300));
+    for (int i = 0; i < 100; ++i) tick_once(sim::MoveInput{});
+    const float second_deviation =
+        sim::length(client.predicted().pos - server.world().players[0].pos);
+
+    std::printf("  [join/reconnect] first join tick %u, full states %d -> %d, "
+                "reconnect tick %u, dev %.5f / %.5f m\n",
+                first_join, first_full_states, client.full_states(), client.join_tick(),
+                static_cast<double>(first_deviation), static_cast<double>(second_deviation));
+
+    if (!client.joined() || client.join_failed()) {
+        std::printf("FAIL: client did not join or rejected the full state\n");
+        ++failures;
+    }
+    if (first_join < 200) {
+        std::printf("FAIL: first join happened before the match had started\n");
+        ++failures;
+    }
+    if (client.full_states() < 2) {
+        std::printf("FAIL: reconnect did not deliver a second full state\n");
+        ++failures;
+    }
+    if (client.join_tick() <= first_join) {
+        std::printf("FAIL: reconnect full state did not advance the server tick\n");
+        ++failures;
+    }
+    if (first_deviation > 0.01f || second_deviation > 0.01f) {
+        std::printf("FAIL: join/reconnect did not converge to within 1 cm\n");
+        ++failures;
+    }
+
+    // A client whose params_hash differs must refuse the full state instead of
+    // simulating a different world (plan 7.7; v0.4 A1 config hash).
+    FILE* bad = std::fopen("build/join_bad.toml", "wb");
+    if (bad != nullptr) {
+        std::fprintf(bad, "[base]\naccel = 12.0\n");
+        std::fclose(bad);
+
+        sim::NetServer bad_server;
+        if (!bad_server.init(map_path, data_path, 1, error)) return failures + 1;
+        sim::LoopbackTransport bad_to_server(conditions, 42);
+        sim::LoopbackTransport bad_to_client(conditions, 43);
+        bad_server.add_client(&bad_to_server, &bad_to_client, 0);
+
+        sim::NetClient bad_client;
+        if (!bad_client.init(&bad_to_server, &bad_to_client, 0, map_path,
+                             "build/join_bad.toml", error)) {
+            return failures + 1;
+        }
+        for (int i = 0; i < 20; ++i) {
+            bad_client.send_input(sim::MoveInput{});
+            bad_client.step_local();
+            bad_server.receive();
+            bad_server.step();
+            bad_server.send();
+            bad_to_server.advance(0);
+            bad_to_client.advance(0);
+            bad_client.receive();
+        }
+        const bool rejected = bad_client.join_failed() && !bad_client.joined();
+        std::printf("  [join] mismatched params hash rejected  %s\n", rejected ? "ok" : "FAIL");
+        if (!rejected) ++failures;
+    }
+    return failures;
+}
+
 int run_net_test(const Options& opt) {
     int failures = 0;
 
@@ -1310,6 +1427,9 @@ int run_net_test(const Options& opt) {
         std::printf("FAIL: light-loss link did not converge\n");
         ++failures;
     }
+
+    // Gate 8c (plan 7.7): mid-match join and reconnect both go through FULL_STATE.
+    failures += run_join_phase(opt.data_path);
 
     if (failures != 0) {
         std::printf("FAIL: %d network checks failed\n", failures);
