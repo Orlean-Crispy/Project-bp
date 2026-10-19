@@ -32,6 +32,7 @@ enum class ParkourState : uint8_t {
 struct PlayerState {
     Vec3 pos;  // feet position
     Vec3 vel;
+    float yaw = 0.0f;  // view yaw; replicated so remote players can face the right way
     bool on_ground = false;
     bool crouched = false;
     int impulses = 4;

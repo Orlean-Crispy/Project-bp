@@ -208,6 +208,7 @@ void pmove(PlayerState& player, const MoveInput& input, const CollisionWorld& wo
 
     // One sin/cos pair per tick: yaw is constant for the whole tick, and the
     // ability checks below used to recompute the same basis up to four times.
+    player.yaw = input.yaw;
     const float yaw_sin = std::sin(input.yaw);
     const float yaw_cos = std::cos(input.yaw);
     const Vec3 facing(yaw_cos, yaw_sin, 0.0f);

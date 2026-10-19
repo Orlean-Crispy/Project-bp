@@ -10,7 +10,8 @@ enum FieldMask : uint8_t {
     kFieldVel = 1u << 1,
     kFieldStatus = 1u << 2,   // flags, impulses, state
     kFieldTimers = 1u << 3,   // state_ticks, dash_cooldown
-    kFieldAll = 0x0F,
+    kFieldYaw = 1u << 4,      // view yaw (remote orientation)
+    kFieldAll = 0x1F,
 };
 
 bool same_pos(const PlayerSnap& a, const PlayerSnap& b) { return a.pos == b.pos; }
@@ -21,6 +22,7 @@ bool same_status(const PlayerSnap& a, const PlayerSnap& b) {
 bool same_timers(const PlayerSnap& a, const PlayerSnap& b) {
     return a.state_ticks == b.state_ticks && a.dash_cooldown == b.dash_cooldown;
 }
+bool same_yaw(const PlayerSnap& a, const PlayerSnap& b) { return a.yaw == b.yaw; }
 
 }  // namespace
 
@@ -28,6 +30,7 @@ PlayerSnap to_snap(const PlayerState& p) {
     PlayerSnap s;
     s.pos = p.pos;
     s.vel = p.vel;
+    s.yaw = p.yaw;
     s.flags = static_cast<uint8_t>((p.on_ground ? 1 : 0) | (p.crouched ? 2 : 0));
     s.impulses = static_cast<uint8_t>(p.impulses);
     s.state = static_cast<uint8_t>(p.state);
@@ -39,6 +42,7 @@ PlayerSnap to_snap(const PlayerState& p) {
 void from_snap(const PlayerSnap& s, PlayerState& p) {
     p.pos = s.pos;
     p.vel = s.vel;
+    p.yaw = s.yaw;
     p.on_ground = (s.flags & 1) != 0;
     p.crouched = (s.flags & 2) != 0;
     p.impulses = s.impulses;
@@ -72,6 +76,7 @@ std::vector<uint8_t> encode_snapshot(const Snapshot& current, const Snapshot* ba
             if (!same_vel(now, before)) mask |= kFieldVel;
             if (!same_status(now, before)) mask |= kFieldStatus;
             if (!same_timers(now, before)) mask |= kFieldTimers;
+            if (!same_yaw(now, before)) mask |= kFieldYaw;
         }
         w.u8(mask);
         if (mask & kFieldPos) w.vec3(now.pos);
@@ -85,6 +90,7 @@ std::vector<uint8_t> encode_snapshot(const Snapshot& current, const Snapshot* ba
             w.u16(now.state_ticks);
             w.u16(now.dash_cooldown);
         }
+        if (mask & kFieldYaw) w.f32(now.yaw);
     }
     return w.data();
 }
@@ -130,6 +136,7 @@ bool decode_snapshot(const uint8_t* data, size_t size, const Snapshot* baseline,
             p.state_ticks = r.u16();
             p.dash_cooldown = r.u16();
         }
+        if (mask & kFieldYaw) p.yaw = r.f32();
         if (!r.ok()) return false;
     }
 

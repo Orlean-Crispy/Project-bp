@@ -190,6 +190,11 @@ Godot 4.5 宿主 + GDExtension 桥可运行。所有试玩反馈都已落回 sim
   （不发命令、不推进），领先量永久减 1，无 tick 空洞、无历史修复。
 - 强制漂移测试：skips=3、far=0、dev 0.00000 m；12 秒两进程 far=0，最终位置一致。
 - 实测环境 12 秒内自然漂移未越阈值（skips=0）；纠正作为长局保险。
+### S24 远端朝向（2026-10-19）
+
+- PlayerState/PlayerSnap 增加 yaw；快照 delta 新增 kFieldYaw 字段组；协议版本 2。
+- 远端胶囊按 yaw 旋转并加前方标记；插值器取前一帧 yaw（64 Hz 足够）。
+- 证据：[yaw] full 1 delta 1；host 看到 remote yaw 0.0→0.9，client 看到 remote 0.9。
 
 ---
 

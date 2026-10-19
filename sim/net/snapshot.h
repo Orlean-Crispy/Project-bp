@@ -13,6 +13,7 @@ namespace sim {
 struct PlayerSnap {
     Vec3 pos;
     Vec3 vel;
+    float yaw = 0.0f;
     uint8_t flags = 0;  // bit0 on_ground, bit1 crouched
     uint8_t impulses = 0;
     uint8_t state = 0;

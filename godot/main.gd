@@ -241,6 +241,16 @@ func _update_remote_players(players: Array) -> void:
 			material.albedo_color = Color(0.95, 0.35, 0.25)
 			material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 			node.material_override = material
+			var nose := MeshInstance3D.new()
+			var nose_mesh := BoxMesh.new()
+			nose_mesh.size = Vector3(0.14, 0.14, 0.5)
+			nose.mesh = nose_mesh
+			nose.position = Vector3(0.0, 0.9, -0.35)
+			var nose_material := StandardMaterial3D.new()
+			nose_material.albedo_color = Color(1.0, 0.9, 0.7)
+			nose_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			nose.material_override = nose_material
+			node.add_child(nose)
 			add_child(node)
 			remote_nodes[slot] = node
 			print("breakpoint: remote slot ", slot, " visible")
@@ -249,6 +259,11 @@ func _update_remote_players(players: Array) -> void:
 		var height := 0.91 if crouched else 1.42
 		node.scale = Vector3(1.0, height / 1.42, 1.0)
 		node.position = feet + Vector3(0.0, height * 0.5, 0.0)
+		var yaw: float = entry["yaw"]
+		node.rotation.y = atan2(-cos(yaw), sin(yaw))
+		if autoplay and abs(yaw - node.get_meta("logged_yaw", -99.0)) > 0.05:
+			node.set_meta("logged_yaw", yaw)
+			print("breakpoint: remote slot ", slot, " yaw ", yaw)
 	for slot in remote_nodes.keys():
 		if not alive.has(slot):
 			remote_nodes[slot].queue_free()
@@ -270,6 +285,8 @@ func _process(delta: float) -> void:
 	# change what the demo does (and headless runs at a different rate).
 	var tick := int(sim.get_tick())
 	var jump := _pressed("Jump")
+	if autoplay:
+		yaw = 0.9  # make remote orientation observable in the headless check
 	if autoplay and tick < 128:
 		# Stand still until grounded, jump once, then move. This makes the
 		# event-channel check deterministic instead of depending on the spawn.

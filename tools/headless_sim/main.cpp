@@ -1801,6 +1801,34 @@ int run_net_test(const Options& opt) {
         }
     }
 
+    // View yaw rides in the snapshot (its own field group), in full and delta form.
+    {
+        sim::Snapshot a;
+        a.tick = 5;
+        sim::PlayerSnap p;
+        p.yaw = 1.25f;
+        a.players = {p};
+        const std::vector<uint8_t> full = sim::encode_snapshot(a, nullptr);
+        sim::Snapshot decoded;
+        const bool full_ok = sim::decode_snapshot(full.data(), full.size(), nullptr, decoded) &&
+                             decoded.players.size() == 1 &&
+                             std::fabs(decoded.players[0].yaw - 1.25f) < 1e-6f;
+
+        sim::Snapshot b = a;
+        b.tick = 6;
+        b.players[0].yaw = 2.5f;
+        const std::vector<uint8_t> delta = sim::encode_snapshot(b, &a);
+        sim::Snapshot decoded_delta;
+        const bool delta_ok = sim::decode_snapshot(delta.data(), delta.size(), &a, decoded_delta) &&
+                              decoded_delta.players.size() == 1 &&
+                              std::fabs(decoded_delta.players[0].yaw - 2.5f) < 1e-6f;
+        std::printf("  [yaw] full %d delta %d\n", full_ok, delta_ok);
+        if (!full_ok || !delta_ok) {
+            std::printf("FAIL: view yaw does not survive snapshot encoding\n");
+            ++failures;
+        }
+    }
+
     // Gate 8a: the original lossy link must converge and stay delta-based.
     const int ticks = 2000;
     const NetRunStats lossy = run_net_scenario(opt.data_path, 0.30f, 10.0f, ticks, 100);

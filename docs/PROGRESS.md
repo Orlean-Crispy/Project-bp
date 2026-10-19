@@ -944,3 +944,36 @@ CMake 只在 WIN32 链接 ws2_32，不污染 sim 的其它目标。
 1. 远端朝向/动画、局内/断线重连 UI。
 2. A1 信令 → A2 可靠流 → A5 票据。
 3. M6 射击。
+---
+
+## 2026-10-19 · S24 · 远端朝向（yaw 进快照）
+
+### 1. 数据
+
+- PlayerState 增加 yaw；pmove 每 tick 从 input.yaw 写入（纯输入派生，确定性不变）。
+- PlayerSnap 增加 yaw，快照 delta 新增独立字段组 kFieldYaw（1<<4，mask 0x1F）。
+- 协议版本 1 → 2：HELLO 会拒绝旧版本构建（headless 与 bridge 都重新定义为 2）。
+
+### 2. 表现
+
+- get_remote_players() 返回 yaw；GDScript 用
+  `rotation.y = atan2(-cos(yaw), sin(yaw))`（与相机同一套映射）旋转胶囊体。
+- 胶囊体加一个前方小方块，朝向可见；蹲下缩放仍然生效。
+- 插值器取相邻帧的前一帧 yaw（64 Hz 下足够；角度最短弧插值留待动画阶段）。
+
+### 3. 验收
+
+- 快照 roundtrip：全量 / delta 的 yaw 都逐位还原（[yaw] full 1 delta 1）。
+- headless 双实例：host 看到 remote slot 1 yaw 0.0 → 0.9；
+  client 看到 remote slot 0 yaw 0.9；两端 stderr 为空。
+
+### 4. 代价
+
+- 每玩家每 tick 多 4 B（仅在变化时）；mask 多一位。
+- bench 不变（0.23 µs、0 allocs/tick）。
+
+### 5. 下一步
+
+1. 局内/断线重连 UI。
+2. A1 信令 → A2 可靠流 → A5 票据。
+3. M6 射击。

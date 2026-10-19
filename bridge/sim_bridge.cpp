@@ -246,6 +246,7 @@ public:
             entry["pos"] = to_godot(players[i].pos);
             entry["crouched"] = (players[i].flags & 2) != 0;
             entry["state"] = players[i].state;
+            entry["yaw"] = players[i].yaw;
             out.push_back(entry);
         }
         return out;
