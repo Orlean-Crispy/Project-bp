@@ -91,21 +91,57 @@ bool same_state(const PlayerSnap& a, const PlayerState& b) {
 
 }  // namespace
 
-void ServerClock::sample(uint32_t server_tick, uint32_t local_tick, float rtt_seconds) {
-    // Plan 7.0: serverTime ~= snapshot tick + RTT/2, smoothed, never jumped.
-    const float measured = static_cast<float>(server_tick) +
-                           rtt_seconds * 32.0f - static_cast<float>(local_tick);
-    if (!m_initialized) {
-        m_offset = measured;
-        m_initialized = true;
-    } else {
-        m_offset += 0.1f * (measured - m_offset);
-    }
+void ServerClock::align(uint32_t server_tick) {
+    m_command_tick = server_tick + kInputLead;
+    m_initialized = true;
 }
 
-uint32_t ServerClock::server_tick_for(uint32_t local_tick) const {
-    const float value = static_cast<float>(local_tick) + m_offset;
-    return value <= 0.0f ? 0u : static_cast<uint32_t>(value + 0.5f);
+InputWindow::Result InputWindow::push(uint32_t tick, const MoveInput& input) {
+    if (tick <= m_last_executed) {
+        // Already executed. A resend of a tick that was applied is the normal
+        // redundancy path; one that arrives after a tick executed without input
+        // is a genuine late command and is counted once.
+        const uint32_t age = m_last_executed - tick;
+        if (age >= 16) return Result::Duplicate;
+        const uint16_t bit = static_cast<uint16_t>(1u << age);
+        if ((m_executed_seen & bit) != 0) return Result::Duplicate;
+        m_executed_seen = static_cast<uint16_t>(m_executed_seen | bit);
+        return Result::Late;
+    }
+    const uint32_t offset = tick - m_last_executed - 1;
+    if (offset >= 8) return Result::TooFar;
+    const uint16_t bit = static_cast<uint16_t>(1u << offset);
+    if ((m_seen & bit) != 0) return Result::Duplicate;
+
+    bool overflow = false;
+    if (m_queue.size() >= 4) {  // Plan 7.9: more than 4 buffered ticks is pathological.
+        m_queue.erase(m_queue.begin());
+        overflow = true;
+    }
+    m_queue.emplace(tick, input);
+    m_seen = static_cast<uint16_t>(m_seen | bit);
+    return overflow ? Result::Overflow : Result::Accepted;
+}
+
+bool InputWindow::take(uint32_t tick, MoveInput& out) {
+    if (tick > m_last_executed) {
+        const uint32_t steps = tick - m_last_executed;
+        m_seen = steps >= 16 ? 0 : static_cast<uint16_t>(m_seen >> steps);
+        m_executed_seen =
+            steps >= 16 ? 0 : static_cast<uint16_t>(m_executed_seen << steps);
+        m_last_executed = tick;
+    }
+    const auto it = m_queue.find(tick);
+    const bool found = it != m_queue.end();
+    if (found) {
+        out = it->second;
+        m_queue.erase(it);
+    }
+    // Bit 0 records whether the tick just executed had a real command; the
+    // history lets a late arrival be told apart from a normal resend.
+    m_executed_seen =
+        static_cast<uint16_t>((m_executed_seen & ~1u) | (found ? 1u : 0u));
+    return found;
 }
 
 bool NetServer::init(const std::string& map_path, const std::string& params_path,
@@ -164,19 +200,30 @@ void NetServer::receive() {
             for (const InputCmd& cmd : cmds) {
                 link.has_command = true;
                 link.last_cmd_seq = header.seq;
-                if (cmd.tick < m_world.tick) {
-                    // Arrived after its tick (latency): apply it as the newest
-                    // input instead of throwing it away, otherwise the server
-                    // would stand still under jitter.
-                    link.last_input = cmd.input;
-                    ++m_dropped_cmds;
-                    continue;
+                switch (link.inputs.push(cmd.tick, cmd.input)) {
+                    case InputWindow::Result::Accepted:
+                        break;
+                    case InputWindow::Result::Duplicate:
+                        ++m_dup_cmds;  // normal under redundancy, do not log
+                        break;
+                    case InputWindow::Result::Late:
+                        // v0.4 5.3: the tick has already been executed. Drop it
+                        // instead of replaying it as the newest input, otherwise
+                        // the whole input stream shifts by one tick and the
+                        // client can never converge.
+                        ++m_late_cmds;
+                        break;
+                    case InputWindow::Result::TooFar:
+                        ++m_far_cmds;  // clock skew or cheating
+                        break;
+                    case InputWindow::Result::Overflow:
+                        ++m_overflow_cmds;  // pathological jitter
+                        break;
                 }
-                link.last_cmd_tick = cmd.tick;
-                link.inputs[cmd.tick] = cmd.input;
+                if (link.inputs.depth() > static_cast<std::size_t>(m_max_depth)) {
+                    m_max_depth = static_cast<int>(link.inputs.depth());
+                }
             }
-            // Plan 7.9: the server buffer targets ~2 ticks; keep it bounded.
-            while (link.inputs.size() > 8) link.inputs.erase(link.inputs.begin());
         }
     }
 }
@@ -184,10 +231,10 @@ void NetServer::receive() {
 void NetServer::step() {
     std::vector<MoveInput> inputs(m_world.players.size());
     for (Link& link : m_links) {
-        const auto it = link.inputs.find(m_world.tick);
-        if (it != link.inputs.end()) {
-            link.last_input = it->second;
-            link.inputs.erase(it);
+        MoveInput in;
+        if (link.inputs.take(m_world.tick, in)) {
+            link.last_input = in;
+            link.has_command = true;
         }
         // If no command arrived for this tick, repeat the last one (Q3 behaviour).
         if (link.player >= 0 && link.player < static_cast<int>(inputs.size())) {
@@ -245,15 +292,39 @@ bool NetClient::init(Transport* outgoing, Transport* incoming, int player_index,
     p.impulses = m_local.params.max_impulses;
     m_local.players.push_back(p);
     m_local.tick = 0;
+
+    // Plan 7.0: run on the server's tick axis, one lead ahead, and mirror the
+    // empty ticks the server simulates before the first command reaches it.
+    // Without the warm-up, the first snapshot would look like a mispredict and
+    // every later comparison would be shifted by the lead.
+    m_clock.align(0);
+    while (m_local.tick < m_clock.command_tick()) {
+        const MoveInput none;
+        m_local.step({none}, kDt);
+        HistoryEntry entry;
+        entry.tick = m_local.tick;
+        entry.state = m_local.players[0];
+        entry.input = none;
+        m_history.push_back(entry);
+    }
     return true;
 }
 
 const PlayerState& NetClient::predicted() const { return m_local.players[0]; }
 
+void NetClient::reset_stats() {
+    m_rollbacks = 0;
+    m_snapshots = 0;
+    m_decode_fail = 0;
+    m_stale = 0;
+    m_corrections = 0;
+    m_max_correction = 0.0f;
+}
+
 void NetClient::send_input(const MoveInput& input) {
     m_last_input = input;
     InputCmd cmd;
-    cmd.tick = m_local.tick;
+    cmd.tick = m_clock.command_tick();
     cmd.input = input;
     m_pending.push_back(cmd);
     while (m_pending.size() > kInputRedundancy) m_pending.pop_front();
@@ -267,8 +338,10 @@ void NetClient::send_input(const MoveInput& input) {
 }
 
 void NetClient::step_local() {
-    // Prediction uses exactly the input that was just sent.
+    // Prediction uses exactly the input that was just sent, on the server's tick
+    // axis; the clock advances with the world so the two never drift apart.
     m_local.step({m_last_input}, kDt);
+    m_clock.advance();
     HistoryEntry entry;
     entry.tick = m_local.tick;
     entry.state = m_local.players[0];
@@ -327,7 +400,10 @@ void NetClient::apply_snapshot(const Snapshot& snap) {
         if (m_history[i].tick == snap.tick) { index = i; break; }
     }
     if (index == m_history.size()) {
-        // No matching prediction (older than our buffer or a fresh join): snap.
+        // Snapshots older than the first unconfirmed prediction are already
+        // applied; rewinding to them would teleport the view backwards. Only a
+        // forward gap (mid-match join) is allowed to snap.
+        if (!m_history.empty() && snap.tick < m_history.front().tick) return;
         from_snap(auth, m_local.players[0]);
         return;
     }
@@ -339,6 +415,11 @@ void NetClient::apply_snapshot(const Snapshot& snap) {
 
     // Rollback: adopt the authoritative state and replay every later input.
     ++m_rollbacks;
+    const float deviation = length(auth.pos - m_history[index].state.pos);
+    if (deviation > 1e-4f) {
+        ++m_corrections;  // a visible position correction (v0.4 N3)
+        if (deviation > m_max_correction) m_max_correction = deviation;
+    }
     PlayerState corrected;
     from_snap(auth, corrected);
     m_local.players[0] = corrected;

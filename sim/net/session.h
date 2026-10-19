@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <deque>
 #include <map>
@@ -17,18 +18,39 @@ struct InputCmd {
     MoveInput input;
 };
 
-// Server-side clock estimate (plan 7.0): serverTick = localTick + offset, with the
-// offset smoothed so the client never teleports its simulation time.
+// Plan 7.0: the client simulates on the server's tick axis. At join the clock is
+// aligned to the server tick and shifted forward by kInputLead, so a command
+// reaches the server before the tick it belongs to is executed; every local step
+// then advances the axis by exactly one tick. Lead = one-way latency (2 ticks at
+// 30 ms) + 2 ticks of lookahead, matching 7.0's "1-2 ticks ahead".
+constexpr uint32_t kInputLead = 4;
+
 class ServerClock {
 public:
-    void sample(uint32_t server_tick, uint32_t local_tick, float rtt_seconds);
+    void align(uint32_t server_tick);
+    void advance() { ++m_command_tick; }
     bool initialized() const { return m_initialized; }
-    float offset() const { return m_offset; }
-    uint32_t server_tick_for(uint32_t local_tick) const;
+    uint32_t command_tick() const { return m_command_tick; }
 
 private:
     bool m_initialized = false;
-    float m_offset = 0.0f;
+    uint32_t m_command_tick = kInputLead;
+};
+
+// v0.4 5.2: a duplicated, stale or far-future command must never be executed.
+// The bitmap covers ticks last_executed+1 .. last_executed+8 (the 5.2 window).
+struct InputWindow {
+    enum class Result { Accepted, Duplicate, Late, TooFar, Overflow };
+    Result push(uint32_t tick, const MoveInput& input);
+    bool take(uint32_t tick, MoveInput& out);
+    std::size_t depth() const { return m_queue.size(); }
+    uint32_t last_executed() const { return m_last_executed; }
+
+private:
+    uint32_t m_last_executed = 0;
+    uint16_t m_seen = 0;          // queued ticks, last_executed+1 .. +8
+    uint16_t m_executed_seen = 0; // bit0 = last tick had input, bit1 = previous...
+    std::map<uint32_t, MoveInput> m_queue;
 };
 
 class NetServer {
@@ -45,7 +67,12 @@ public:
     uint32_t tick() const { return m_world.tick; }
     int full_snapshots() const { return m_full; }
     int delta_snapshots() const { return m_delta; }
-    int dropped_commands() const { return m_dropped_cmds; }
+    int dropped_commands() const { return m_late_cmds; }
+    int duplicate_commands() const { return m_dup_cmds; }
+    int late_commands() const { return m_late_cmds; }
+    int far_commands() const { return m_far_cmds; }
+    int overflow_commands() const { return m_overflow_cmds; }
+    int max_input_depth() const { return m_max_depth; }
 
 private:
     struct Link {
@@ -53,13 +80,11 @@ private:
         Transport* tx = nullptr;
         int player = 0;
         uint16_t last_cmd_seq = 0;
-        uint32_t last_cmd_tick = 0;
         bool has_command = false;
         MoveInput last_input;
-        // Inputs keyed by the tick they belong to. Applying them out of a queue
-        // would shift every input by the network latency and force a rollback on
-        // every snapshot.
-        std::map<uint32_t, MoveInput> inputs;
+        // Inputs keyed by the tick they belong to (v0.4 5.2): duplicates and late
+        // arrivals are dropped, never replayed as the newest input.
+        InputWindow inputs;
         uint16_t out_seq = 0;
         int unacked = 0;
         Snapshot baseline;
@@ -72,7 +97,11 @@ private:
     std::vector<Link> m_links;
     int m_full = 0;
     int m_delta = 0;
-    int m_dropped_cmds = 0;
+    int m_dup_cmds = 0;
+    int m_late_cmds = 0;
+    int m_far_cmds = 0;
+    int m_overflow_cmds = 0;
+    int m_max_depth = 0;
 };
 
 class NetClient {
@@ -91,6 +120,9 @@ public:
     int decode_failures() const { return m_decode_fail; }
     int stale_skips() const { return m_stale; }
     uint32_t last_snapshot_tick() const { return m_last_snapshot_tick; }
+    int corrections() const { return m_corrections; }
+    float max_correction() const { return m_max_correction; }
+    void reset_stats();
     ServerClock& clock() { return m_clock; }
 
 private:
@@ -120,6 +152,8 @@ private:
     int m_snapshots = 0;
     int m_decode_fail = 0;
     int m_stale = 0;
+    int m_corrections = 0;
+    float m_max_correction = 0.0f;
     ServerClock m_clock;
 };
 

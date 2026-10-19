@@ -1016,20 +1016,46 @@ int run_health_test(const Options& opt) {
     return 0;
 }
 
-int run_net_test(const Options& opt) {
+struct NetRunStats {
+    bool ok = false;
+    float deviation = 0.0f;
+    int rollbacks = 0;
+    int snapshots = 0;
+    int full = 0;
+    int delta = 0;
+    int late = 0;
+    int duplicate = 0;
+    int far = 0;
+    int overflow = 0;
+    int max_depth = 0;
+    int corrections = 0;
+    float max_correction = 0.0f;
+};
+
+sim::MoveInput net_test_input(int i) {
+    sim::MoveInput in;
+    in.forward = 1.0f;
+    in.yaw = 0.35f * std::sin(static_cast<float>(i) * 0.01f);
+    in.jump = (i % 90) == 0;
+    return in;
+}
+
+NetRunStats run_net_scenario(const std::string& data_path, float loss, float jitter_ms, int ticks,
+                             int settle_ticks) {
+    NetRunStats stats;
     const std::string map_path = "sim/data/maps/metrics_flat.map";
 
     sim::NetServer server;
     std::string error;
-    if (!server.init(map_path, opt.data_path, 1, error)) {
+    if (!server.init(map_path, data_path, 1, error)) {
         std::fprintf(stderr, "error: %s\n", error.c_str());
-        return 1;
+        return stats;
     }
 
     sim::NetConditions conditions;
-    conditions.loss = 0.30f;
+    conditions.loss = loss;
     conditions.latency_ms = 30.0f;
-    conditions.jitter_ms = 10.0f;
+    conditions.jitter_ms = jitter_ms;
     conditions.duplicate = 0.02f;
 
     sim::LoopbackTransport to_server(conditions, 1234);
@@ -1037,13 +1063,12 @@ int run_net_test(const Options& opt) {
     server.add_client(&to_server, &to_client, 0);
 
     sim::NetClient client;
-    if (!client.init(&to_server, &to_client, 0, map_path, opt.data_path, error)) {
+    if (!client.init(&to_server, &to_client, 0, map_path, data_path, error)) {
         std::fprintf(stderr, "error: %s\n", error.c_str());
-        return 1;
+        return stats;
     }
 
-    int failures = 0;
-    auto tick_once = [&](const MoveInput& in) {
+    auto tick_once = [&](const sim::MoveInput& in) {
         client.send_input(in);
         client.step_local();
         server.receive();
@@ -1054,51 +1079,115 @@ int run_net_test(const Options& opt) {
         client.receive();
     };
 
-    const int ticks = 2000;
-    for (int i = 0; i < ticks; ++i) {
-        MoveInput in;
-        in.forward = 1.0f;
-        in.yaw = 0.35f * std::sin(static_cast<float>(i) * 0.01f);
-        in.jump = (i % 90) == 0;
-        tick_once(in);
-    }
+    for (int i = 0; i < ticks; ++i) tick_once(net_test_input(i));
+
+    stats.rollbacks = client.rollbacks();
+    stats.snapshots = client.snapshots_received();
+    stats.corrections = client.corrections();
+    stats.max_correction = client.max_correction();
+    stats.full = server.full_snapshots();
+    stats.delta = server.delta_snapshots();
+    stats.late = server.late_commands();
+    stats.duplicate = server.duplicate_commands();
+    stats.far = server.far_commands();
+    stats.overflow = server.overflow_commands();
+    stats.max_depth = server.max_input_depth();
 
     // Let both sides come to rest so positions are comparable without latency.
-    for (int i = 0; i < 100; ++i) tick_once(MoveInput{});
+    client.reset_stats();
+    for (int i = 0; i < settle_ticks; ++i) tick_once(sim::MoveInput{});
 
-    const sim::Vec3 predicted = client.predicted().pos;
-    const sim::Vec3 authoritative = server.world().players[0].pos;
-    const float deviation = sim::length(predicted - authoritative);
+    stats.deviation = sim::length(client.predicted().pos - server.world().players[0].pos);
+    stats.ok = true;
+    return stats;
+}
 
-    std::printf("  ticks %d   rollbacks %d   snapshots %d   full %d   delta %d   dropped cmds %d\n",
-                ticks, client.rollbacks(), client.snapshots_received(), server.full_snapshots(),
-                server.delta_snapshots(), server.dropped_commands());
-    std::printf("  client: decode failures %d   stale skips %d\n", client.decode_failures(),
-                client.stale_skips());
-    std::printf("  client (%.4f, %.4f, %.4f)  server (%.4f, %.4f, %.4f)  dev %.5f m\n",
-                static_cast<double>(predicted.x), static_cast<double>(predicted.y),
-                static_cast<double>(predicted.z), static_cast<double>(authoritative.x),
-                static_cast<double>(authoritative.y), static_cast<double>(authoritative.z),
-                static_cast<double>(deviation));
+int run_net_test(const Options& opt) {
+    int failures = 0;
 
-    if (deviation > 0.01f) {
+    // v0.4 5.2: duplicates, late and far commands never enter the queue twice.
+    {
+        sim::InputWindow window;
+        sim::MoveInput in;
+        in.forward = 1.0f;
+        const bool accepted = window.push(2, in) == sim::InputWindow::Result::Accepted;
+        const bool duplicate = window.push(2, in) == sim::InputWindow::Result::Duplicate;
+        window.take(2, in);
+        const bool late = window.push(1, in) == sim::InputWindow::Result::Late;
+        const bool executed_duplicate =
+            window.push(2, in) == sim::InputWindow::Result::Duplicate;
+        const bool far = window.push(40, in) == sim::InputWindow::Result::TooFar;
+        for (uint32_t t = 3; t <= 6; ++t) window.push(t, in);
+        const bool overflow = window.push(7, in) == sim::InputWindow::Result::Overflow;
+        const bool bounded = window.depth() == 4;
+        std::printf("  window: accept %d dup %d late %d far %d exec-dup %d overflow %d depth %zu\n",
+                    accepted, duplicate, late, far, executed_duplicate, overflow, window.depth());
+        if (!accepted || !duplicate || !late || !far || !executed_duplicate || !overflow ||
+            !bounded) {
+            std::printf("FAIL: input window does not reject duplicate/late/far commands\n");
+            ++failures;
+        }
+    }
+
+    // Gate 8a: the original lossy link must converge and stay delta-based.
+    const int ticks = 2000;
+    const NetRunStats lossy = run_net_scenario(opt.data_path, 0.30f, 10.0f, ticks, 100);
+    if (!lossy.ok) return 1;
+    std::printf("  [30%% loss] rollbacks %d   snapshots %d   full %d   delta %d   depth %d\n",
+                lossy.rollbacks, lossy.snapshots, lossy.full, lossy.delta, lossy.max_depth);
+    std::printf("              late %d   dup %d   far %d   overflow %d   dev %.5f m\n",
+                lossy.late, lossy.duplicate, lossy.far, lossy.overflow,
+                static_cast<double>(lossy.deviation));
+
+    if (lossy.deviation > 0.01f) {
         std::printf("FAIL: client and server disagree by more than 1 cm\n");
         ++failures;
     }
-    if (client.rollbacks() == 0) {
+    if (lossy.rollbacks == 0) {
         std::printf("FAIL: no rollback happened, the lossy link should force at least one\n");
         ++failures;
     }
-    if (client.snapshots_received() < ticks / 2) {
+    if (lossy.rollbacks > ticks / 4) {
+        std::printf("FAIL: %d rollbacks in %d ticks, cmd.tick is still not aligned\n",
+                    lossy.rollbacks, ticks);
+        ++failures;
+    }
+    if (lossy.snapshots < ticks / 2) {
         std::printf("FAIL: too few snapshots arrived (head-of-line blocking?)\n");
         ++failures;
     }
-    if (server.full_snapshots() == 0) {
+    if (lossy.full == 0) {
         std::printf("FAIL: never fell back to a full snapshot despite lost acks\n");
         ++failures;
     }
-    if (server.delta_snapshots() <= server.full_snapshots()) {
+    if (lossy.delta <= lossy.full) {
         std::printf("FAIL: delta snapshots are not the common case\n");
+        ++failures;
+    }
+    if (lossy.far != 0) {
+        std::printf("FAIL: %d commands were outside the input window\n", lossy.far);
+        ++failures;
+    }
+
+    // Gate 8b (v0.4 N3): 5% loss + 30 ms + 10 ms jitter for 60 s.
+    const int minute = 64 * 60;
+    const NetRunStats light = run_net_scenario(opt.data_path, 0.05f, 10.0f, minute, 100);
+    if (!light.ok) return 1;
+    std::printf("  [5%% loss, 60 s] corrections %d   max %.4f m   rollbacks %d   dev %.5f m\n",
+                light.corrections, static_cast<double>(light.max_correction), light.rollbacks,
+                static_cast<double>(light.deviation));
+    if (light.corrections >= 3) {
+        std::printf("FAIL: %d position corrections in a minute (N3 allows < 3)\n",
+                    light.corrections);
+        ++failures;
+    }
+    if (light.max_correction > 0.5f) {
+        std::printf("FAIL: single correction %.3f m exceeds 0.5 m (N3)\n",
+                    static_cast<double>(light.max_correction));
+        ++failures;
+    }
+    if (light.deviation > 0.01f) {
+        std::printf("FAIL: light-loss link did not converge\n");
         ++failures;
     }
 
@@ -1106,7 +1195,7 @@ int run_net_test(const Options& opt) {
         std::printf("FAIL: %d network checks failed\n", failures);
         return 1;
     }
-    std::printf("PASS: prediction converges over a 30%% loss link with delta snapshots\n");
+    std::printf("PASS: cmd.tick aligned, input dedup, and <3 corrections/min on a 5%% loss link\n");
     return 0;
 }
 
