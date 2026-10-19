@@ -817,6 +817,44 @@ CMake 只在 WIN32 链接 ws2_32，不污染 sim 的其它目标。
 3. A1 信令 → A2 可靠流 → A5 票据。
 ---
 
+## 2026-10-19 · S21 · Godot 组局：--host / --connect + 远端渲染
+
+### 1. 桥接层
+
+- SimWorld 增加 host(port, players) / join(ip, port) / step_network()。
+- host = listen server + 本机 NetClient 走 LoopbackTransport（复用完整预测/回滚路径）；
+  远端客户端走 UdpPeerHub + UdpTransport。
+- 本地玩家状态一律取 NetClient::predicted()，远端玩家取 SnapshotInterpolator
+  （tick-1 采样）；不再为联机写第二套移动逻辑。
+- get_remote_players() 返回 slot/pos/crouched/state；GDScript 生成胶囊体并按身高缩放。
+
+### 2. Godot 侧
+
+- CLI：--host、--connect[=ip]、--port=N（同时读 get_cmdline_args 与 user args）。
+- step 循环按 is_networked() 分流：单机 step()，联机 step_network()。
+- HUD 显示 role/slot/peers；加入与远端可见时打印日志（供 headless 验证）。
+- tools/run_net_demo.ps1 一键起 host + client 两个窗口。
+
+### 3. 验收（headless，两实例）
+
+- host：hosting on 27161 → joined slot 0 → peers 1 → remote slot 1 visible → peers 2。
+- client：connecting → joined slot 1 → peers 1 → remote slot 0 visible。
+- 两端 stderr 均为空。
+
+### 4. 未做
+
+- 连接 UI（当前是命令行参数）。
+- 客户端时钟漂移纠正（两进程已量化 ~1 tick/s）。
+- 远端玩家的朝向/动画（快照暂无 yaw；胶囊体足够验证同步）。
+- 5v5 槽位管理、断线重连 UI。
+
+### 5. 下一步
+
+1. 连接 UI（host/join 按钮 + IP 输入）。
+2. 客户端时钟漂移纠正（§7.0 的减速/丢 cmd）。
+3. A1 信令 → A2 可靠流 → A5 票据。
+---
+
 ## 2026-10-19 · S20 · 两进程 net_loop + 输入窗口修复
 
 ### 1. 工具

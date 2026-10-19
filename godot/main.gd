@@ -30,11 +30,28 @@ var accumulator := 0.0
 var mouse_captured := true
 var autoplay := false
 var last_event := "-"
+var host_mode := false
+var connect_ip := ""
+var net_port := 27016
+var joined_printed := false
+var last_peer_count := -1
+var remote_nodes := {}
 
 func _ready() -> void:
 	RenderingServer.set_default_clear_color(Color(0.07, 0.08, 0.1))
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
-	autoplay = OS.get_cmdline_args().has("--autoplay")
+	var cli := OS.get_cmdline_args()
+	cli.append_array(OS.get_cmdline_user_args())
+	autoplay = cli.has("--autoplay")
+	for arg in cli:
+		if arg == "--host":
+			host_mode = true
+		elif arg == "--connect":
+			connect_ip = "127.0.0.1"
+		elif arg.begins_with("--connect="):
+			connect_ip = arg.substr(10)
+		elif arg.begins_with("--port="):
+			net_port = int(arg.substr(7))
 
 	sim = SimWorld.new()
 	var base := ProjectSettings.globalize_path("res://")
@@ -47,6 +64,17 @@ func _ready() -> void:
 		push_warning("cannot load keybinds, using defaults")
 	_build_actions(sim.get_bindings())
 	_build_world_mesh()
+
+	if host_mode:
+		if sim.host(net_port, 2):
+			print("breakpoint: hosting on port ", net_port)
+		else:
+			push_error("host failed")
+	elif connect_ip != "":
+		if sim.join(connect_ip, net_port):
+			print("breakpoint: connecting to ", connect_ip, ":", net_port)
+		else:
+			push_error("join failed")
 
 	camera = Camera3D.new()
 	camera.fov = 90.0
@@ -117,6 +145,35 @@ func _input(event: InputEvent) -> void:
 func _pressed(action: String) -> bool:
 	return Input.is_action_pressed("bp_" + action)
 
+func _update_remote_players(players: Array) -> void:
+	var alive := {}
+	for entry in players:
+		var slot := int(entry["slot"])
+		alive[slot] = true
+		var node: MeshInstance3D = remote_nodes.get(slot)
+		if node == null:
+			node = MeshInstance3D.new()
+			var capsule := CapsuleMesh.new()
+			capsule.radius = 0.405
+			capsule.height = 1.42
+			node.mesh = capsule
+			var material := StandardMaterial3D.new()
+			material.albedo_color = Color(0.95, 0.35, 0.25)
+			material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			node.material_override = material
+			add_child(node)
+			remote_nodes[slot] = node
+			print("breakpoint: remote slot ", slot, " visible")
+		var feet: Vector3 = entry["pos"]
+		var crouched: bool = entry["crouched"]
+		var height := 0.91 if crouched else 1.42
+		node.scale = Vector3(1.0, height / 1.42, 1.0)
+		node.position = feet + Vector3(0.0, height * 0.5, 0.0)
+	for slot in remote_nodes.keys():
+		if not alive.has(slot):
+			remote_nodes[slot].queue_free()
+			remote_nodes.erase(slot)
+
 func _process(delta: float) -> void:
 	if sim == null or camera == null:
 		return
@@ -149,11 +206,23 @@ func _process(delta: float) -> void:
 	accumulator += delta
 	var ticks := 0
 	while accumulator >= TICK and ticks < 5:
-		sim.step()
+		if sim.is_networked():
+			sim.step_network()
+		else:
+			sim.step()
 		accumulator -= TICK
 		ticks += 1
 	if ticks == 5:
 		accumulator = 0.0
+
+	if sim.is_networked():
+		if sim.get_joined() and not joined_printed:
+			joined_printed = true
+			print("breakpoint: joined slot ", sim.get_player_slot())
+		if sim.get_peer_count() != last_peer_count:
+			last_peer_count = sim.get_peer_count()
+			print("breakpoint: peers ", last_peer_count)
+		_update_remote_players(sim.get_remote_players())
 
 	var events: Array = sim.drain_events()
 	for event in events:
@@ -172,7 +241,13 @@ func _process(delta: float) -> void:
 	var velocity: Vector3 = sim.get_velocity()
 	var speed := Vector2(velocity.x, velocity.z).length()
 	var states := ["ground", "air", "slide", "wallrun", "wallclimb", "vault"]
-	hud.text = "speed %5.2f m/s   %s   impulses %d\npos %.1f %.1f %.1f\nlast event %s" % [
+	var net_line := ""
+	if sim.is_networked():
+		net_line = "\nnet %s slot %d peers %d%s" % [
+			sim.get_role(), sim.get_player_slot(), sim.get_peer_count(),
+			"" if sim.get_joined() else " (connecting)"
+		]
+	hud.text = "speed %5.2f m/s   %s   impulses %d\npos %.1f %.1f %.1f\nlast event %s%s" % [
 		speed, states[sim.get_state()], sim.get_impulses(),
-		position.x, position.y, position.z, last_event
+		position.x, position.y, position.z, last_event, net_line
 	]

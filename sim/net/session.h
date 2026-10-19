@@ -77,6 +77,7 @@ public:
     int overflow_commands() const { return m_overflow_cmds; }
     int max_input_depth() const { return m_max_depth; }
     int accepted_commands() const { return m_accepted_cmds; }
+    int client_count() const { return static_cast<int>(m_links.size()); }
     uint32_t last_executed_tick(int link) const {
         return m_links[static_cast<std::size_t>(link)].inputs.last_executed();
     }

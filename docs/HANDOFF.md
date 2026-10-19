@@ -171,6 +171,14 @@ Godot 4.5 宿主 + GDExtension 桥可运行。所有试玩反馈都已落回 sim
   客户端领先的 7 tick，每次插入新 tick 都丢掉下一 tick 要执行的命令。
 - 修复：InputWindow 窗口与队列都改为 16（早到窗口，不是延迟缓冲）。
 - 证据：joins=2、accepted=417、far=0、moved=46.86m、clients_ok。
+### S21 Godot 组局（2026-10-19）
+
+- SimWorld::host（listen server + 本机 NetClient/loopback）/ join（UDP NetClient）/ step_network。
+- 本地状态统一走 NetClient::predicted()；远端走 SnapshotInterpolator；GDScript 画胶囊体。
+- CLI：--host / --connect[=ip] / --port=N；tools/run_net_demo.ps1 一键双实例。
+- headless 证据：host joined slot 0、peers 2、remote slot 1 visible；client joined slot 1、
+  remote slot 0 visible；stderr 空。
+- 未做：连接 UI、时钟漂移纠正、远端朝向/动画、断线重连 UI。
 
 ---
 
@@ -195,6 +203,7 @@ Godot 4.5 宿主 + GDExtension 桥可运行。所有试玩反馈都已落回 sim
 | 分片 | 3000 B 往返一致；30% 丢包下 0 损坏 |
 | UDP 双人会话 | 2 客户端 joined、148/148 快照、偏差 0.00000 m |
 | 两进程 | joins=2、accepted=417、far=0、moved=46.86 m |
+| Godot 组局 | host slot 0 / client slot 1，双方 remote visible |
 | 护甲 | 25 / 25 再生 / 50；吸收 66% |
 | demo | ~28 B/tick；600 tick ≈ 17 KB |
 

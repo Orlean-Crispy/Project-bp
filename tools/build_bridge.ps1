@@ -25,7 +25,18 @@ $sources = @(
     'sim/move/pmove.cpp',
     'sim/data/config.cpp',
     'sim/input/keycodes.cpp',
-    'sim/input/bindings.cpp'
+    'sim/input/bindings.cpp',
+    'sim/net/transport.cpp',
+    'sim/net/udp_socket.cpp',
+    'sim/net/udp_transport.cpp',
+    'sim/net/udp_hub.cpp',
+    'sim/net/handshake.cpp',
+    'sim/net/interp.cpp',
+    'sim/game/hitbox.cpp',
+    'sim/net/fragment.cpp',
+    'sim/net/netchan.cpp',
+    'sim/net/snapshot.cpp',
+    'sim/net/session.cpp'
 )
 
 New-Item -ItemType Directory -Force -Path (Join-Path $root 'godot\bin') | Out-Null
@@ -40,6 +51,7 @@ try {
         '-Wl,--whole-archive', $lib, '-Wl,--no-whole-archive',
         '-static-libgcc', '-static-libstdc++',
         '-Wl,-Bstatic', '-lwinpthread', '-Wl,-Bdynamic',
+        '-lws2_32',
         '-o', $out
     )
     & $gpp $opt

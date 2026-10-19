@@ -13,6 +13,9 @@
 #include <godot_cpp/variant/packed_vector3_array.hpp>
 #include <godot_cpp/variant/vector3.hpp>
 
+#include <chrono>
+#include <cstdio>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -20,6 +23,10 @@
 #include "sim/core/event.h"
 #include "sim/core/world.h"
 #include "sim/input/bindings.h"
+#include "sim/net/handshake.h"
+#include "sim/net/session.h"
+#include "sim/net/udp_hub.h"
+#include "sim/net/udp_transport.h"
 
 using namespace godot;
 
@@ -53,13 +60,15 @@ public:
     bool load_map(const String& map_path, const String& data_path) {
         sim::MapData map;
         std::string error;
-        if (!sim::parse_map_file(map_path.utf8().get_data(), map, error)) {
+        m_map_path = map_path.utf8().get_data();
+        m_data_path = data_path.utf8().get_data();
+        if (!sim::parse_map_file(m_map_path, map, error)) {
             ERR_PRINT(String("breakpoint: ") + String(error.c_str()));
             return false;
         }
 
         std::vector<std::string> warnings;
-        if (!sim::load_movement_params(data_path.utf8().get_data(), m_world.params, warnings, error)) {
+        if (!sim::load_movement_params(m_data_path, m_world.params, warnings, error)) {
             ERR_PRINT(String("breakpoint: ") + String(error.c_str()));
             return false;
         }
@@ -124,6 +133,124 @@ public:
         m_world.step({m_input}, 1.0f / 64.0f, &m_events);
     }
 
+    // ---- networking (host = listen server + local client, join = client) ----
+    bool host(int port, int players) {
+        if (m_net_client) return false;
+        std::string error;
+        m_server = std::make_unique<sim::NetServer>();
+        if (!m_server->init(m_map_path, m_data_path, players, error)) {
+            ERR_PRINT(String("breakpoint host: ") + String(error.c_str()));
+            return false;
+        }
+        m_hub = std::make_unique<sim::UdpPeerHub>();
+        if (!m_hub->open(static_cast<uint16_t>(port), error)) {
+            ERR_PRINT(String("breakpoint host: ") + String(error.c_str()));
+            return false;
+        }
+        m_local_to_server = std::make_unique<sim::LoopbackTransport>(sim::NetConditions{}, 1);
+        m_local_to_client = std::make_unique<sim::LoopbackTransport>(sim::NetConditions{}, 2);
+        m_server->add_client(m_local_to_server.get(), m_local_to_client.get(), 0);
+        m_net_client = std::make_unique<sim::NetClient>();
+        if (!m_net_client->init(m_local_to_server.get(), m_local_to_client.get(), 0, m_map_path,
+                                m_data_path, error)) {
+            ERR_PRINT(String("breakpoint host: ") + String(error.c_str()));
+            m_net_client.reset();
+            return false;
+        }
+        m_hosting = true;
+        m_next_slot = 1;
+        return true;
+    }
+
+    bool join(const String& host, int port) {
+        if (m_net_client) return false;
+        std::string error;
+        m_udp = std::make_unique<sim::UdpTransport>();
+        if (!m_udp->open(0, error) ||
+            !m_udp->connect_peer(host.utf8().get_data(), static_cast<uint16_t>(port), error)) {
+            ERR_PRINT(String("breakpoint join: ") + String(error.c_str()));
+            return false;
+        }
+        m_net_client = std::make_unique<sim::NetClient>();
+        if (!m_net_client->init(m_udp.get(), m_udp.get(), 0, m_map_path, m_data_path, error)) {
+            ERR_PRINT(String("breakpoint join: ") + String(error.c_str()));
+            m_net_client.reset();
+            return false;
+        }
+        m_udp->send(sim::make_hello());
+        m_last_hello = std::chrono::steady_clock::now();
+        return true;
+    }
+
+    void step_network() {
+        if (!m_net_client) return;
+        const auto now = std::chrono::steady_clock::now();
+        if (m_hosting) {
+            m_hub->poll();
+            std::string peer_host;
+            uint16_t peer_port = 0;
+            std::vector<uint8_t> packet;
+            while (m_hub->next_unknown(peer_host, peer_port, packet)) {
+                if (!sim::is_hello(packet)) continue;
+                const int slots = static_cast<int>(m_server->world().players.size());
+                if (m_next_slot >= slots) continue;
+                sim::PeerTransport* peer = m_hub->add_peer(peer_host, peer_port);
+                m_server->add_client(peer, peer, m_next_slot);
+                std::printf("breakpoint: peer joined slot %d\n", m_next_slot);
+                ++m_next_slot;
+            }
+            m_net_client->send_input(m_input);
+            m_net_client->step_local();
+            m_server->receive();
+            m_server->step();
+            m_server->send();
+            m_local_to_server->advance(1);
+            m_local_to_client->advance(1);
+            m_net_client->receive();
+        } else {
+            if (!m_net_client->joined() &&
+                std::chrono::duration<double>(now - m_last_hello).count() >= 0.25) {
+                m_udp->send(sim::make_hello());
+                m_last_hello = now;
+            }
+            m_net_client->send_input(m_input);
+            m_net_client->step_local();
+            m_net_client->receive();
+        }
+    }
+
+    bool is_networked() const { return m_net_client != nullptr; }
+    bool get_joined() const { return m_net_client != nullptr && m_net_client->joined(); }
+    int get_player_slot() const { return m_net_client ? m_net_client->player_index() : 0; }
+    int get_peer_count() const {
+        if (m_hosting && m_server) return m_server->client_count();
+        return (m_net_client && m_net_client->joined()) ? 1 : 0;
+    }
+    String get_role() const {
+        if (!m_net_client) return "solo";
+        return m_hosting ? "host" : "client";
+    }
+
+    Array get_remote_players() const {
+        Array out;
+        if (!m_net_client) return out;
+        const uint32_t tick = m_net_client->tick();
+        if (tick <= 1) return out;
+        std::vector<sim::PlayerSnap> players;
+        if (!m_net_client->remote().sample(tick - 1, 0.0f, players)) return out;
+        const int self = m_net_client->player_index();
+        for (size_t i = 0; i < players.size(); ++i) {
+            if (static_cast<int>(i) == self) continue;
+            Dictionary entry;
+            entry["slot"] = static_cast<int>(i);
+            entry["pos"] = to_godot(players[i].pos);
+            entry["crouched"] = (players[i].flags & 2) != 0;
+            entry["state"] = players[i].state;
+            out.push_back(entry);
+        }
+        return out;
+    }
+
     // Plan 3.4: the presentation layer drains the event channel once per frame.
     // Events carry a tick so a future rollback can discard stale predictions.
     Array drain_events() {
@@ -142,22 +269,33 @@ public:
         return out;
     }
 
-    uint32_t get_tick() const { return m_world.tick; }
+    const sim::PlayerState* local_player() const {
+        if (m_net_client) return &m_net_client->predicted();
+        return m_world.players.empty() ? nullptr : &m_world.players[0];
+    }
+
+    uint32_t get_tick() const {
+        return m_net_client ? m_net_client->tick() : m_world.tick;
+    }
 
     Vector3 get_position() const {
-        return m_world.players.empty() ? Vector3() : to_godot(m_world.players[0].pos);
+        const sim::PlayerState* p = local_player();
+        return p == nullptr ? Vector3() : to_godot(p->pos);
     }
 
     Vector3 get_velocity() const {
-        return m_world.players.empty() ? Vector3() : to_godot(m_world.players[0].vel);
+        const sim::PlayerState* p = local_player();
+        return p == nullptr ? Vector3() : to_godot(p->vel);
     }
 
     int get_state() const {
-        return m_world.players.empty() ? 0 : static_cast<int>(m_world.players[0].state);
+        const sim::PlayerState* p = local_player();
+        return p == nullptr ? 0 : static_cast<int>(p->state);
     }
 
     int get_impulses() const {
-        return m_world.players.empty() ? 0 : m_world.players[0].impulses;
+        const sim::PlayerState* p = local_player();
+        return p == nullptr ? 0 : p->impulses;
     }
 
     float get_eye_height() const { return 1.55f; }
@@ -177,6 +315,15 @@ protected:
                              &SimWorld::set_input);
         ClassDB::bind_method(D_METHOD("step"), &SimWorld::step);
         ClassDB::bind_method(D_METHOD("drain_events"), &SimWorld::drain_events);
+        ClassDB::bind_method(D_METHOD("host", "port", "players"), &SimWorld::host);
+        ClassDB::bind_method(D_METHOD("join", "host", "port"), &SimWorld::join);
+        ClassDB::bind_method(D_METHOD("step_network"), &SimWorld::step_network);
+        ClassDB::bind_method(D_METHOD("is_networked"), &SimWorld::is_networked);
+        ClassDB::bind_method(D_METHOD("get_joined"), &SimWorld::get_joined);
+        ClassDB::bind_method(D_METHOD("get_player_slot"), &SimWorld::get_player_slot);
+        ClassDB::bind_method(D_METHOD("get_peer_count"), &SimWorld::get_peer_count);
+        ClassDB::bind_method(D_METHOD("get_role"), &SimWorld::get_role);
+        ClassDB::bind_method(D_METHOD("get_remote_players"), &SimWorld::get_remote_players);
         ClassDB::bind_method(D_METHOD("get_tick"), &SimWorld::get_tick);
         ClassDB::bind_method(D_METHOD("get_position"), &SimWorld::get_position);
         ClassDB::bind_method(D_METHOD("get_velocity"), &SimWorld::get_velocity);
@@ -234,6 +381,18 @@ private:
     sim::Bindings m_bindings;
     sim::MoveInput m_input;
     sim::EventQueue m_events;
+
+    std::string m_map_path;
+    std::string m_data_path;
+    std::unique_ptr<sim::NetServer> m_server;
+    std::unique_ptr<sim::NetClient> m_net_client;
+    std::unique_ptr<sim::UdpPeerHub> m_hub;
+    std::unique_ptr<sim::UdpTransport> m_udp;
+    std::unique_ptr<sim::LoopbackTransport> m_local_to_server;
+    std::unique_ptr<sim::LoopbackTransport> m_local_to_client;
+    bool m_hosting = false;
+    int m_next_slot = 1;
+    std::chrono::steady_clock::time_point m_last_hello{};
     PackedVector3Array m_vertices;
     PackedVector3Array m_normals;
     PackedColorArray m_colors;
