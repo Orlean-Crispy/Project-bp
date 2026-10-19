@@ -179,6 +179,11 @@ Godot 4.5 宿主 + GDExtension 桥可运行。所有试玩反馈都已落回 sim
 - headless 证据：host joined slot 0、peers 2、remote slot 1 visible；client joined slot 1、
   remote slot 0 visible；stderr 空。
 - 未做：连接 UI、时钟漂移纠正、远端朝向/动画、断线重连 UI。
+### S22 连接 UI（2026-10-19）
+
+- 启动 LAN 菜单：Host / Join（IP+端口）/ Single player；--menu 可在 headless 下构建。
+- 菜单打开时暂停 tick；CLI 与 run_net_demo.ps1 保持可用。
+- headless --menu 输出 "net menu open"，无脚本错误。
 
 ---
 

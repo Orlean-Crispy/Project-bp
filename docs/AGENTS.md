@@ -31,7 +31,7 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 | M2 基础 pmove | ✅ | 走/跑/跳/蹲、step-up、蹲下空间、Q3 对标数值 |
 | M3 parkour | ✅ 首版 | slide / dash / wallrun / wallclimb / vault，全部有 headless 闸门 |
 | M4 demo 与跨机比对 | ✅ 同机 / ⏸ 跨机 | 录制回放、逐 tick 哈希、dump 比对工具就绪；**跨机需要第二台机器** |
-| M5 网络 | 🔶 部分 | 不可靠通道 + delta + 预测回滚 + 时间对齐 + 去重 + hitbox + 加入/重连 + 远端插值 + 事件通道 + 真实 UDP + B1 分片 + 多 peer 会话 + 两进程 + **Godot --host/--connect + 远端渲染**已通；**连接 UI、漂移纠正、A1/A2 未做** |
+| M5 网络 | 🔶 部分 | 不可靠通道 + delta + 预测回滚 + 时间对齐 + 去重 + hitbox + 加入/重连 + 远端插值 + 事件通道 + 真实 UDP + B1 分片 + 多 peer 会话 + 两进程 + Godot --host/--connect + 远端渲染 + **启动 LAN 菜单**已通；**漂移纠正、A1/A2 未做** |
 | M6 射击 | 🔶 起步 | HP/护甲规则已实现；hitscan、后坐力表、三段判定、穿透未做 |
 | M7 打磨 / M8 视角模型 | ❌ | 未开始 |
 
@@ -156,8 +156,8 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 
 ## 4. 未结案（按优先级，每条必须有 lead）
 
-1. **网络组局收尾** — Godot --host/--connect 与远端胶囊渲染已通；
-   仍缺连接 UI、客户端时钟漂移纠正、远端朝向/动画、断线重连 UI。lead：现在。
+1. **网络组局收尾** — Godot --host/--connect、远端胶囊与启动 LAN 菜单已通；
+   仍缺客户端时钟漂移纠正、远端朝向/动画、局内/断线重连 UI。lead：现在。
 2. **v0.4 的 M5 增量** — A1 信令、A2 可靠流 + configstring 分块、A5 重连票据；
    B1 分片已完成。v0.4 §12 估算 +6.5 天。lead：组局之后。
 3. **M6 射击** — hitscan、后坐力表、三段部位判定（hitbox 已就绪）、穿透、伤害衰减、
@@ -315,6 +315,8 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
 - Godot 桥：host = NetServer + 本机 NetClient(loopback)；join = NetClient(UDP)；
   本地状态统一取 predicted()，远端取 SnapshotInterpolator，GDScript 画胶囊。
   判据：host joined slot 0 / peers 2 / remote slot 1 visible；client 反之。
+- Godot 启动菜单：无参数且非 headless 时显示 Host/Join/Single player；--menu 可在 headless
+  下构建用于脚本检查；菜单打开时暂停 tick。
 - 判据：30% 丢包 2000 tick 回滚 51（曾 1428）；5% 丢包 60 s 位置修正 0 次；
   中途加入（tick 202）与重连（tick 701）偏差 0.00000 m；参数哈希不同被拒绝；
   远端缓冲 32 帧、newest == 最后一份快照。
@@ -385,7 +387,7 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
 
 ## 11. 下一步（严格按计划书顺序，不要跳）
 
-1. **组局收尾**：连接 UI（host/join + IP 输入）、客户端时钟漂移纠正、远端朝向/动画。
+1. **组局收尾**：客户端时钟漂移纠正、远端朝向/动画、局内/断线重连 UI。
 2. **v0.4 M5 增量**：A1 信令 → A2 可靠流 → A5 重连票据（B1 分片已完成）。
 3. **M6 射击**：hitscan + 后坐力表 + 三段部位判定（hitbox 已就绪，×5 / ×1 / ×0.7）
    + 穿透 + 伤害衰减；TTK 用 100 HP / 三甲复算。
@@ -398,5 +400,5 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
 1. `git log --oneline -5` 看最后几个提交。
 2. `git status` 看有没有未提交的半成品。
 3. 跑 smoke；**红的那一项就是当前战场**。
-4. 读 PROGRESS 最后一节（S20 两进程 / S21 Godot 组局）与 HANDOFF.md。
+4. 读 PROGRESS 最后一节（S21 Godot 组局 / S22 连接菜单）与 HANDOFF.md。
 5. 不要从头重做已完成的东西；本文件 §0.2 就是进度表。

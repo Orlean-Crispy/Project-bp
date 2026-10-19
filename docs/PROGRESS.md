@@ -885,3 +885,31 @@ CMake 只在 WIN32 链接 ws2_32，不污染 sim 的其它目标。
 1. Godot --host/--connect + 远端渲染（复用 SnapshotInterpolator）。
 2. 客户端时钟漂移纠正。
 3. A1/A2/A5 → M6。
+---
+
+## 2026-10-19 · S22 · 连接 UI（启动菜单）
+
+### 1. 实现
+
+- 没有 --host / --connect 且不是 headless 时，启动后显示 LAN 菜单：
+  Host / Join（IP + 端口）/ Single player。
+- --menu 强制在 headless 下也构建 UI（用于脚本检查，不依赖窗口）。
+- 菜单打开时暂停 tick（accumulator 清零），单机世界不会在后台空转。
+- CLI 仍然有效：--host、--connect=IP、--port=N；run_net_demo.ps1 直接双实例。
+
+### 2. 验收
+
+- headless `--menu`：脚本无错误，输出 "breakpoint: net menu open"。
+- 带 --host/--connect 的 headless 双实例仍按 S21 的日志正常加入。
+
+### 3. 未做
+
+- 局内菜单（Esc 呼出、断线重连按钮）。
+- 客户端时钟漂移纠正（两进程已量化 ~1 tick/s）。
+- 远端朝向/动画（快照暂无 yaw）。
+
+### 4. 下一步
+
+1. 客户端时钟漂移纠正（§7.0 的减速追赶，最多丢 2 cmd）。
+2. 远端朝向/动画。
+3. A1 信令 → A2 可靠流 → A5 票据。

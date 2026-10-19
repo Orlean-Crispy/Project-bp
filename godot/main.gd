@@ -36,6 +36,9 @@ var net_port := 27016
 var joined_printed := false
 var last_peer_count := -1
 var remote_nodes := {}
+var net_menu: CanvasLayer
+var menu_open := false
+var force_menu := false
 
 func _ready() -> void:
 	RenderingServer.set_default_clear_color(Color(0.07, 0.08, 0.1))
@@ -52,6 +55,8 @@ func _ready() -> void:
 			connect_ip = arg.substr(10)
 		elif arg.begins_with("--port="):
 			net_port = int(arg.substr(7))
+		elif arg == "--menu":
+			force_menu = true
 
 	sim = SimWorld.new()
 	var base := ProjectSettings.globalize_path("res://")
@@ -75,6 +80,8 @@ func _ready() -> void:
 			print("breakpoint: connecting to ", connect_ip, ":", net_port)
 		else:
 			push_error("join failed")
+	elif force_menu or (not autoplay and DisplayServer.get_name() != "headless"):
+		_show_net_menu()
 
 	camera = Camera3D.new()
 	camera.fov = 90.0
@@ -145,6 +152,79 @@ func _input(event: InputEvent) -> void:
 func _pressed(action: String) -> bool:
 	return Input.is_action_pressed("bp_" + action)
 
+func _close_net_menu() -> void:
+	menu_open = false
+	if net_menu != null:
+		net_menu.queue_free()
+		net_menu = null
+	mouse_captured = true
+	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+
+func _show_net_menu() -> void:
+	menu_open = true
+	mouse_captured = false
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+	net_menu = CanvasLayer.new()
+	add_child(net_menu)
+
+	var panel := PanelContainer.new()
+	panel.position = Vector2(40, 60)
+	panel.custom_minimum_size = Vector2(360, 0)
+	net_menu.add_child(panel)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 8)
+	panel.add_child(box)
+
+	var title := Label.new()
+	title.text = "Project Breakpoint - LAN"
+	title.add_theme_font_size_override("font_size", 20)
+	box.add_child(title)
+	var hint := Label.new()
+	hint.text = "Host on this machine, or join the host's IP."
+	box.add_child(hint)
+
+	var ip := LineEdit.new()
+	ip.text = "127.0.0.1"
+	ip.placeholder_text = "host IP"
+	box.add_child(ip)
+	var port := LineEdit.new()
+	port.text = str(net_port)
+	port.placeholder_text = "port"
+	box.add_child(port)
+	var status := Label.new()
+	status.text = ""
+	box.add_child(status)
+
+	var host_button := Button.new()
+	host_button.text = "Host"
+	box.add_child(host_button)
+	host_button.pressed.connect(func() -> void:
+		if sim.host(int(port.text), 2):
+			print("breakpoint: hosting on port ", port.text)
+			_close_net_menu()
+		else:
+			status.text = "host failed (is the port in use?)"
+	)
+
+	var join_button := Button.new()
+	join_button.text = "Join"
+	box.add_child(join_button)
+	join_button.pressed.connect(func() -> void:
+		if sim.join(ip.text, int(port.text)):
+			print("breakpoint: connecting to ", ip.text, ":", port.text)
+			_close_net_menu()
+		else:
+			status.text = "join failed (check IP/port)"
+	)
+
+	var solo_button := Button.new()
+	solo_button.text = "Single player"
+	box.add_child(solo_button)
+	solo_button.pressed.connect(func() -> void:
+		_close_net_menu()
+	)
+	print("breakpoint: net menu open")
+
 func _update_remote_players(players: Array) -> void:
 	var alive := {}
 	for entry in players:
@@ -176,6 +256,9 @@ func _update_remote_players(players: Array) -> void:
 
 func _process(delta: float) -> void:
 	if sim == null or camera == null:
+		return
+	if menu_open:
+		accumulator = 0.0
 		return
 
 	var forward := Input.get_action_strength("bp_MoveForward") - Input.get_action_strength("bp_MoveBack")
