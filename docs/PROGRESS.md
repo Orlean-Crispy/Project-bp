@@ -1155,3 +1155,140 @@ CMake 只在 WIN32 链接 ws2_32，不污染 sim 的其它目标。
 1. A1/A2/A5 接入组局。
 2. 局内/断线重连 UI。
 3. M6 射击。
+---
+
+# 开发日志（详细）
+
+> 从 2026-10-20 起，在 PROGRESS 末尾追加详细日志；上面的 S 编号短条目保留，作为索引。
+> 每篇固定六段：目标 / 做了什么 / 为什么这样做 / 证据 / 失败与修正 / 债与下一步。
+> 详细日志是给“三个月后的自己”看的：要能复现判断，而不只是知道结论。
+
+## 2026-10-20（凌晨）· 把 M5 收成可交付基线
+
+### 0. 目标与起点
+
+这一晚的目标不是加新玩法，而是把已经能跑的东西变成“丢了也能恢复、别人也能接手”的基线。
+起点是 S28 全量复查之后：M0–M4 全绿；M5 的不可靠通道、delta、预测回滚、FULL_STATE、
+远端插值、真实 UDP、两进程、Godot host/connect 都已通；A1/A2/A5 有独立实现和闸门，
+但没有接进组局；仓库只在 G:\自制游戏 一块盘上，没有远端。
+
+### 1. 先存档，再动代码
+
+判断：不等 v0.1。v0.1 还要几周，仓库只有约 2 MB，一次磁盘故障就会丢掉全部历史。
+做法是 3-2-1 的简化版：
+
+1. 版本历史：已有的 commit；打 checkpoint-2026-10-19 tag。
+2. 本地离线副本：git bundle --all 生成单文件，放到仓库外的 G:\BreakpointBackups。
+   第一版 314 KB，git bundle verify 通过；它自带全部 refs，换台机器直接 clone。
+3. 异地副本：GitHub 私有仓库。
+
+同时写了 tools/backup.ps1（时间戳 + 自动 verify）和 docs/backup.md（步骤、恢复、节奏）。
+这一步的价值不在“多了一个文件”，而在于把“怎么恢复”写成了可执行步骤。
+
+### 2. GitHub：连接问题和历史问题各翻一次车
+
+第一次是连接。git ls-remote 报 Failed to connect to github.com port 443 via 127.0.0.1。
+查下来 git 全局 http.proxy 指向 127.0.0.1:7897，但端口没有监听；进程里只有
+clash-verge-service（后台服务），主程序没启动。直连 443 的 TCP 能建立，但 TLS 阶段被 reset。
+
+绕法是 SSH over 443：ssh.github.com:443，本机 SSH key 已在 GitHub。探针返回
+Hi Orlean-Crispy! You have successfully authenticated。remote 设为
+ssh://git@ssh.github.com:443/Orlean-Crispy/unknow.git，SSH 不经过 HTTP 代理。
+
+第二次是历史。首次 push 被拒：远端有 Initial commit（LICENSE + README），与本地
+30 多个 commit 没有共同祖先。先试 git rebase origin/main，在第一个 M1 commit 就
+AA README.md 冲突——本地也有一份 README。没有硬解，直接 git rebase --abort，
+改用 git merge --allow-unrelated-histories；README 保留本项目版本（远端只有一行
+# unknow），LICENSE 一并合入。合并提交 59fa04a，之后 push 成功。
+
+这里的选择值得记录：rebase 适合“我的提交叠在别人后面”，不适合“两条独立历史的第一次握手”。
+第一次合并用 merge 更诚实，也更容易解释。SSH 443 到 GitHub 仍会间歇 reset，所以 push 写成
+“失败重试 2–3 次”的循环，而不是假设一次成功。
+
+### 3. 构建基建：把“两份清单”合成一份
+
+S28 审计把“CMake 与 build_bridge.ps1 各维护一份源文件清单”列为第一技术债。
+它不是洁癖：之前桥接构建就因为漏了 interp.cpp / hitbox.cpp 直接链接失败。
+
+做法：新增 tools/sim_sources.txt（26 个 sim .cpp 的唯一清单）；CMake 用 file(STRINGS)
+读它，add_library(sim STATIC ${SIM_SOURCES})；build_bridge.ps1 读同一份文件，删掉手写数组；
+新增 tools/check_sources.ps1 比对清单与 git ls-files，并接到 smoke.ps1 第一项。
+以后新增 .cpp 忘了登记，闸门直接红。
+
+代价是 bridge 现在会编译 demo/combat/reliable/ticket 等暂时没调用的文件，DLL 略大；
+换来的是“结构上不可能再漏文件”。这个交换在 v0.1 之前是划算的。
+
+### 4. 联机健壮性：幽灵、掉线、槽位
+
+这一节是今晚唯一改到网络行为的部分，三个问题串在一起：
+
+4.1 幽灵远端。服务器为所有预留槽位都发快照，host 在客户端加入前就渲染出 slot 1 的胶囊。
+修法：PlayerState.active → 快照 flags bit2；服务器 init 全 false、add_client true、
+remove_client false；桥接层跳过未激活槽位。修复后 host 日志顺序从 remote slot 1 先出现，
+变成 peers 2 之后才出现。
+
+4.2 掉线不释放。客户端静默后链路一直留在 m_links，槽位永远 active。修法：每条 Link
+记录 last_rx_tick（收到任何可解包的服务器 tick 都刷新），step() 开头扫描，连续 320 tick
+（5 秒）没有包就 remove_client。闸门 [timeout] joined 1 dropped 1。
+
+4.3 槽位只增不减。这是 4.2 暴露出来的真 bug：超时释放了 slot 1，但 bridge 的 m_next_slot
+和 net_loop 的 next_slot 只 ++，新客户端拿 slot 2 → 人满，重连永远进不来。修法：
+add_client(..., -1) 选第一个 inactive 槽位；bridge/net_loop 不再维护计数器；满员返回 -1。
+闸门扩展为 [timeout] joined 1 dropped 1 reuse 1。
+
+这三条合起来才闭环：掉线要释放、释放的槽要能复用、复用后要能重新激活。
+只做前两条，重连仍然进不来；只做第三条，幽灵仍然在。
+
+### 5. 协议件的验收（已有，但今晚重新跑过）
+
+| 件 | 输出 | 说明 |
+|---|---|---|
+| A1 信令 | [signal] hello 1 ack 1 manifest 1 ready 1 match 1 full 1 | 真 TCP 环回、六条消息逐字段 |
+| A2 可靠流 | [reliable] chunks 10 retrans 6 complete 1 same 1 corrupt 1 dead 0 | 5000 B / 30% 丢包 |
+| A5 票据 | [ticket] valid 1 expired 1 tamper 1 wrongkey 1 | HMAC-SHA256 截断 12 B |
+| 时钟 | [clock] skips 3 far 0 dev 0.00000 m | 强制漂移 6 tick |
+| 双客户端 | [udp session] joined 1/1 snapshots 148/148 dev 0.00000 m | 真 UDP + hub |
+| 掉线/复用 | [timeout] joined 1 dropped 1 reuse 1 | 5 s 超时 + 槽位复用 |
+
+bench（10 玩家）：mean 2.04 µs、p99 3.40 µs、max 4.30 µs、0 allocs/tick；单玩家 p99 0.40 µs。
+预算 4000 µs，余量三个数量级。
+
+### 6. 失败与修正（不写结论，写判断）
+
+1. 把“连接失败”误认成“认证失败”：ls-remote 报错先看 via 127.0.0.1，那是代理，不是凭据。
+   先查代理端口和进程，再谈 token。
+2. rebase 处理无关历史：第一次合并用 rebase，冲突在 README；正确做法是 abort + merge。
+   教训：历史关系不清楚时，merge 比 rebase 安全。
+3. A2 组装器“空槽也算完成”：resize(total) 会补空槽，size()==total 恒真；改成每块非空才算完成。
+   又一次证明“看起来完成”比“报错”更危险。
+4. 票据到期边界：expiry < now 让到期那一秒仍有效；改 now >= expiry。
+   时间边界要写成“有效区间”，不要写“过期条件”再取反。
+5. 输入窗口（更早）：客户端领先 7 tick，窗口 8 / 队列 4，丢的正是下一 tick 要执行的命令；
+   进程内测试因为两条循环同步而完全没发现。两进程测试是必要手段。
+
+### 7. v0.1 缺口（详见 docs/GAPS.md）
+
+P0：射击（无武器/hitscan/开火输入/准星）、伤害联网（快照无 hp/armor）、死亡与重生、
+开火键位、40×40 地图、A1/A2/A5 接入组局。P1：局内/断线 UI、5v5 槽位、音频、第三人称动画。
+P2：第一人称枪模、跨机 demo 比对、Godot 4.7。
+
+建议顺序：射击最小闭环 → A1/A2/A5 接入 → 地图/UI/音频。
+
+### 8. 债与下一步
+
+今晚清掉：源清单双份、幽灵远端、掉线不释放、槽位不复用、check_sources 手动化。
+仍欠：PROGRESS S21/S20 顺序、InputWindow::Overflow 死分支、signaling.cpp 与 udp_socket.cpp
+重复 Winsock 初始化、A2 单 socket 双队列、A1 信令线程、DLL dead-strip、远端插值 frac、
+10 分钟联机 soak。
+
+下一步不是继续造协议，而是做 M6 射击最小闭环：WeaponDef(toml) → 开火输入 →
+hitscan（复用 hitbox 历史）→ 三段伤害 → hp/armor 进快照 → 死亡/重生。
+判据先写：固定靶命中/未命中、三段倍率、TTK 0.6–1.2 s。
+
+### 9. 当前基线（明早从这里开始）
+
+- main = 732a8c6（已推 GitHub）；tag checkpoint-2026-10-19 指向合并提交 59fa04a。
+- 远端：ssh://git@ssh.github.com:443/Orlean-Crispy/unknow.git。
+- bundle：G:\BreakpointBackups\breakpoint-20261019.bundle（已 verify）。
+- 16 项闸门 + bench ALL GREEN；工作树干净。
+- 下一件事：开 sim/game/weapon.* 与开火输入，先写闸门再接表现层。
