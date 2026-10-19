@@ -31,7 +31,8 @@ PlayerSnap to_snap(const PlayerState& p) {
     s.pos = p.pos;
     s.vel = p.vel;
     s.yaw = p.yaw;
-    s.flags = static_cast<uint8_t>((p.on_ground ? 1 : 0) | (p.crouched ? 2 : 0));
+    s.flags = static_cast<uint8_t>((p.on_ground ? 1 : 0) | (p.crouched ? 2 : 0) |
+                                   (p.active ? 4 : 0));
     s.impulses = static_cast<uint8_t>(p.impulses);
     s.state = static_cast<uint8_t>(p.state);
     s.state_ticks = static_cast<uint16_t>(p.state_ticks);
@@ -45,6 +46,7 @@ void from_snap(const PlayerSnap& s, PlayerState& p) {
     p.yaw = s.yaw;
     p.on_ground = (s.flags & 1) != 0;
     p.crouched = (s.flags & 2) != 0;
+    p.active = (s.flags & 4) != 0;
     p.impulses = s.impulses;
     p.state = static_cast<ParkourState>(s.state);
     p.state_ticks = s.state_ticks;

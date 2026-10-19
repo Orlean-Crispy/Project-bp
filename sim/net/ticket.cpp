@@ -1,5 +1,10 @@
 #include "sim/net/ticket.h"
 
+#ifdef _WIN32
+#define _CRT_RAND_S
+#endif
+#include <chrono>
+#include <cstdlib>
 #include <cstring>
 #include <random>
 
@@ -140,9 +145,21 @@ void make_mac(const Ticket& t, const std::array<uint8_t, 32>& key, uint8_t out[1
 }  // namespace
 
 TicketIssuer::TicketIssuer() {
-    std::random_device rd;
     for (size_t i = 0; i < m_key.size(); i += 4) {
-        const uint32_t v = rd();
+        uint32_t v = 0;
+#ifdef _WIN32
+        // MinGW's std::random_device can be deterministic; rand_s is the CRT's
+        // OS-backed generator and needs no extra library.
+        unsigned int raw = 0;
+        if (rand_s(&raw) != 0) {
+            raw = static_cast<unsigned int>(
+                std::chrono::steady_clock::now().time_since_epoch().count());
+        }
+        v = raw;
+#else
+        std::random_device rd;
+        v = rd();
+#endif
         m_key[i] = static_cast<uint8_t>(v);
         if (i + 1 < m_key.size()) m_key[i + 1] = static_cast<uint8_t>(v >> 8);
         if (i + 2 < m_key.size()) m_key[i + 2] = static_cast<uint8_t>(v >> 16);

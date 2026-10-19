@@ -197,6 +197,7 @@ public:
                 sim::PeerTransport* peer = m_hub->add_peer(peer_host, peer_port);
                 m_server->add_client(peer, peer, m_next_slot);
                 std::printf("breakpoint: peer joined slot %d\n", m_next_slot);
+                std::fflush(stdout);
                 ++m_next_slot;
             }
             m_net_client->send_input(m_input);
@@ -241,6 +242,7 @@ public:
         const int self = m_net_client->player_index();
         for (size_t i = 0; i < players.size(); ++i) {
             if (static_cast<int>(i) == self) continue;
+            if ((players[i].flags & 4) == 0) continue;  // reserved slot, not joined
             Dictionary entry;
             entry["slot"] = static_cast<int>(i);
             entry["pos"] = to_godot(players[i].pos);

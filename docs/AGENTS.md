@@ -327,6 +327,8 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
   尚未与快照共用 socket。
 - A1 信令（sim/net/signaling.*）：TCP 27015、u16 长度前缀、六条消息、connect/accept 超时；
   资产只传清单。判据：真 TCP 环回六条消息逐字段一致。尚未接入 Godot（菜单仍走 UDP HELLO）。
+- 槽位激活：PlayerState.active → 快照 flags bit2；服务器 init 全 false、add_client true、
+  remove_client false；桥接层跳过未激活槽位（否则 host 会看到没加入的幽灵）。
 - 远端朝向：PlayerState.yaw 由 pmove 写入；PlayerSnap 的 kFieldYaw 独立字段组；协议版本 2。
   GDScript 用 rotation.y = atan2(-cos(yaw), sin(yaw))，插值器取前一帧 yaw。
   判据：[yaw] full 1 delta 1；host 看到 remote yaw 0.0→0.9。
@@ -413,5 +415,5 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
 1. `git log --oneline -5` 看最后几个提交。
 2. `git status` 看有没有未提交的半成品。
 3. 跑 smoke；**红的那一项就是当前战场**。
-4. 读 PROGRESS 最后一节（S26 A2 / S27 A5 票据）与 HANDOFF.md。
+4. 读 PROGRESS 最后一节（S27 A5 票据 / S28 全量复查）与 HANDOFF.md。
 5. 不要从头重做已完成的东西；本文件 §0.2 就是进度表。

@@ -1063,3 +1063,42 @@ CMake 只在 WIN32 链接 ws2_32，不污染 sim 的其它目标。
 1. A1/A2 接入组局（信令线程、单 socket 双队列）。
 2. 票据接 HELLO / 断线重连。
 3. M6 射击。
+---
+
+## 2026-10-19 · S28 · 全量复查（功能 + 质量）
+
+### 1. 复查范围
+
+- 全量构建（-Werror）、16 项闸门 + bench（10 玩家）、两进程 net_selftest、
+  Godot headless 双实例、静态检索（TODO/FIXME、rand、源文件清单）。
+
+### 2. 发现并修复
+
+- **幽灵远端**：服务器为未加入的槽位也发快照，host 在客户端加入前就渲染出 slot 1 胶囊。
+  修复：PlayerState/PlayerSnap 增加 active 位（flags bit2），服务器 init 全部置 false、
+  add_client 置 true、remove_client 置 false；桥接层跳过未激活槽位。
+  证据：host 日志变为 peers 2 → remote slot 1 visible（此前是先 remote）。
+- **票据密钥熵**：MinGW 的 std::random_device 可能确定性；Windows 改用 CRT 的 rand_s，
+  失败时退到 steady_clock，不再用 std::rand。
+- 顺带修掉：A2 组装器“空槽也算完成”（S26）、票据到期边界（S27）。
+
+### 3. 结果
+
+- 闸门：16 项 + bench ALL GREEN（10 玩家 mean 2.04 µs、p99 3.40 µs、max 4.30 µs、
+  0 allocs/tick；预算 4000 µs）。
+- 两进程：joins=2、accepted=420、far=0、moved=47.22 m。
+- Godot：host joined slot 0 → peers 1 → peers 2 → remote slot 1；client 对称；stderr 空。
+- 静态检索：sim/ 内无 TODO/FIXME、无 std::rand。
+
+### 4. 已知技术债（未改，记录）
+
+- CMake 与 build_bridge.ps1 各维护一份源文件清单，靠人同步；应改成单一清单。
+- PROGRESS 中 S21 被插在 S20 之前（时间顺序错乱），内容正确但不便阅读。
+- InputWindow 的 Overflow 分支在窗口=16 后不可达（防御性保留）。
+- net_loop 的诊断输出偏多，仅工具使用，不影响游戏。
+
+### 5. 下一步
+
+1. A1/A2/A5 接入组局（信令线程、单 socket 双队列、重连状态机）。
+2. 局内/断线重连 UI、第三人称动画。
+3. M6 射击。

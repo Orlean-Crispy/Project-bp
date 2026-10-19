@@ -33,6 +33,7 @@ struct PlayerState {
     Vec3 pos;  // feet position
     Vec3 vel;
     float yaw = 0.0f;  // view yaw; replicated so remote players can face the right way
+    bool active = true;  // false for reserved slots nobody has joined yet
     bool on_ground = false;
     bool crouched = false;
     int impulses = 4;

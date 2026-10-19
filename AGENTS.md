@@ -151,7 +151,7 @@ powershell -File tools\run_demo.ps1     # Godot demo
 | docs/网络层深化_v0.4.md | §7 网络专章：A1–A5 / B1–B3 / 冲突裁决 C1–C3 / N1–N8 判据 |
 | docs/8.3候选B_v0.4.md | §8.3 选定方案：可破坏入口、0.5 m 四档、时间预算 |
 | docs/AGENTS.md | 详细约束、判据、未结案、环境、文件地图 |
-| docs/HANDOFF.md | 本会话完整交接（S01–S27、每个坑的根因与证据） |
+| docs/HANDOFF.md | 本会话完整交接（S01–S28、每个坑的根因与证据） |
 | docs/PROGRESS.md | 进度日志（每节：做了什么/结论/下一步） |
 | docs/pitfalls/ | 事故案例（3 篇） |
 | docs/decisions/ | ADR（护甲 / 网络时间轴） |

@@ -212,6 +212,13 @@ Godot 4.5 宿主 + GDExtension 桥可运行。所有试玩反馈都已落回 sim
 - 32 B：client_id(16) + expiry(4) + HMAC-SHA256 截断 12；密钥只在房主内存。
 - 验收：valid 1 / expired 1 / tamper 1 / wrongkey 1；到期时刻即失效。
 - 未接信令与重连状态机；HELLO 已预留 ticket 字段。
+### S28 全量复查（2026-10-19）
+
+- 修复幽灵远端：快照 flags 增加 active 位，未加入槽位不渲染；host 日志 peers 2 → remote。
+- 票据密钥改用 rand_s（失败退 steady_clock），去掉 std::rand。
+- 复查：16 闸门 + bench（10 玩家 2.04/3.40/4.30 µs、0 alloc）、两进程 joins=2/420/47.22 m、
+  Godot 双实例正常；sim 无 TODO/FIXME、无 std::rand。
+- 技术债：CMake 与 build_bridge 源清单重复；PROGRESS S21/S20 顺序错乱；Overflow 不可达。
 
 ---
 

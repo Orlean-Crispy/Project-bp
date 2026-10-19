@@ -165,6 +165,7 @@ bool NetServer::init(const std::string& map_path, const std::string& params_path
         PlayerState p;
         p.pos = Vec3(-16.0f + static_cast<float>(i) * 2.0f, 0.0f, 0.05f);
         p.impulses = m_world.params.max_impulses;
+        p.active = false;  // reserved until a link joins this slot
         m_world.players.push_back(p);
     }
     m_world.tick = 0;
@@ -182,6 +183,9 @@ int NetServer::add_client(Transport* incoming, Transport* outgoing, int player_i
     link.tx = outgoing;
     link.player = player_index;
     link.join_id = m_next_join_id++;
+    if (player_index >= 0 && player_index < static_cast<int>(m_world.players.size())) {
+        m_world.players[static_cast<std::size_t>(player_index)].active = true;
+    }
     m_links.push_back(link);
     return static_cast<int>(m_links.size()) - 1;
 }
@@ -189,7 +193,13 @@ int NetServer::add_client(Transport* incoming, Transport* outgoing, int player_i
 void NetServer::remove_client(int link_index) {
     if (link_index < 0 || link_index >= static_cast<int>(m_links.size())) return;
     // The player stays in the world; a reconnect re-attaches a link to it and
-    // receives the full state again (plan 7.7).
+    // receives the full state again (plan 7.7). Until then it is not rendered
+    // by anyone (active=false).
+    if (m_links[static_cast<std::size_t>(link_index)].player <
+        static_cast<int>(m_world.players.size())) {
+        m_world.players[static_cast<std::size_t>(
+            m_links[static_cast<std::size_t>(link_index)].player)].active = false;
+    }
     m_links.erase(m_links.begin() + link_index);
 }
 
