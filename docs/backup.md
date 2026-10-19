@@ -12,19 +12,27 @@
 |---|---|---|
 | 1. 版本历史 | 每个功能一个 commit；里程碑打 tag | 已有 28 个会话的提交 |
 | 2. 本地离线副本 | `git bundle` 全历史单文件，放到另一块盘/U 盘 | 已生成 `G:\BreakpointBackups\breakpoint-20261019.bundle`（314 KB，verify 通过） |
-| 3. 异地副本 | GitHub 私有仓库，或云盘同步 bundle | 待办 |
+| 3. 异地副本 | GitHub 私有仓库，或云盘同步 bundle | ✅ 已推送 main + tag |
 
-## GitHub（推荐做第 3 层）
+## GitHub
 
-1. 新建**私有**空仓库（不要勾 README/gitignore，避免首推冲突）。
-2. 在仓库根目录：
-   ```powershell
-   git remote add origin https://github.com/<你>/<repo>.git
-   git push -u origin main
-   git push --tags
-   ```
-3. 凭据用 Git Credential Manager / PAT，**不要**写进仓库或脚本。
-4. 网络差时先 `tools\backup.ps1` 出 bundle，再找机会 push；push 失败不影响本地历史。
+- 仓库：<https://github.com/Orlean-Crispy/unknow>（私有）。
+- 本机 remote：`ssh://git@ssh.github.com:443/Orlean-Crispy/unknow.git`
+  （SSH 走 443，绕过本机指向 7897 的 HTTPS 代理）。
+- 首次推送时远端已有 `Initial commit`（LICENSE + README），本地用
+  `git merge --allow-unrelated-histories` 合并；README 保留本项目的版本。
+- 日常推送：
+
+  ```powershell
+  git push
+  git push --tags
+  ```
+
+- 网络备注：全局 `http.proxy` 指向 `127.0.0.1:7897`，**Clash Verge 没启动时 HTTPS 会失败**；
+  SSH 443 可绕过，但本机到 GitHub 会间歇性 reset，失败就重试 2–3 次。
+  需要稳定 HTTPS 时先启动 Clash Verge。
+- 凭据用 SSH key 或 Git Credential Manager，**不要**写进仓库或脚本。
+- 网络差时先 `tools\backup.ps1` 出 bundle，再找机会 push；push 失败不影响本地历史。
 
 如果 GitHub 推送长期不稳，可以加一个 Gitee 私有镜像，或用坚果云/OneDrive 同步
 `G:\BreakpointBackups` 目录——bundle 是单文件，同步即可。
