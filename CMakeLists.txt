@@ -18,6 +18,8 @@ if(MINGW)
   add_link_options(-static -static-libgcc -static-libstdc++)
 endif()
 
+# Keep the core files in sync with tools/build_bridge.ps1: the DLL links only the
+# simulation core, while the headless library also has net/demo/game.
 add_library(sim STATIC
   sim/core/event.cpp
   sim/core/tick.cpp

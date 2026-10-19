@@ -12,6 +12,8 @@ if (-not (Test-Path $gpp)) { throw "g++ not found at $gpp" }
 $lib = Join-Path $cpp 'bin\libgodot-cpp.windows.template_debug.x86_64.a'
 if (-not (Test-Path $lib)) { throw 'godot-cpp static library not found' }
 
+# Keep the sim core list in sync with the "sim" target in CMakeLists.txt.
+# The DLL only links the core (no net/demo/game); the headless library has more.
 $sources = @(
     'bridge/sim_bridge.cpp',
     'sim/core/tick.cpp',
