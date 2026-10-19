@@ -128,6 +128,15 @@ Godot 4.5 宿主 + GDExtension 桥可运行。所有试玩反馈都已落回 sim
 - 参数哈希不一致的客户端被拒绝（join_failed）。
 - 证据：tick 202 中途加入、tick 701 重连，偏差均 0.00000 m；30% 丢包回滚 51（曾 185）。
 
+### S15 §7.1 远端玩家 1 tick 插值（2026-10-19）
+
+- sim/net/interp.*：SnapshotInterpolator，32 帧环形（0.5 s），按 tick+frac 插值 pos/vel；
+  flags/state 取前一帧；越界夹到最近帧、不外推；重复 push 忽略。
+- NetClient 每份快照 push，FULL_STATE 时 reset；暴露 remote() 给表现层。
+- 只读：不参与 pmove / 命中判定；命中用 hitbox 历史。
+- 证据：合成 10/11/12 两玩家中点 1.5/8.5 m；30% 丢包下缓冲 32 帧且 newest == 最后快照。
+- 待办：Godot demo 接入远端渲染（目前仍只画本地玩家）。
+
 ---
 
 ## 2. 当前基线数字（2026-10-19）
@@ -145,6 +154,7 @@ Godot 4.5 宿主 + GDExtension 桥可运行。所有试玩反馈都已落回 sim
 | 网络回滚 | 51 / 2000 tick（30% loss；曾 1428） |
 | N3 位置修正 | 0 次 / 60 s（5% loss + 10 ms jitter；阈值 <3） |
 | 中途加入 / 重连 | 偏差 0.00000 m（FS tick 202 / 701） |
+| 远端插值 | 32 帧缓冲（0.5 s），中点插值 1.5 m / 8.5 m |
 | 护甲 | 25 / 25 再生 / 50；吸收 66% |
 | demo | ~28 B/tick；600 tick ≈ 17 KB |
 

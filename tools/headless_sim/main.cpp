@@ -1059,6 +1059,9 @@ struct NetRunStats {
     int hitbox_size = 0;
     uint32_t hitbox_newest = 0;
     uint32_t server_tick = 0;
+    int remote_frames = 0;
+    uint32_t remote_newest = 0;
+    uint32_t last_snapshot = 0;
 };
 
 sim::MoveInput net_test_input(int i) {
@@ -1124,6 +1127,9 @@ NetRunStats run_net_scenario(const std::string& data_path, float loss, float jit
     stats.server_tick = server.tick();
     stats.hitbox_size = server.hitboxes(0).size();
     stats.hitbox_newest = server.hitboxes(0).newest_tick();
+    stats.remote_frames = client.remote().size();
+    stats.remote_newest = client.remote().newest_tick();
+    stats.last_snapshot = client.last_snapshot_tick();
 
     // Let both sides come to rest so positions are comparable without latency.
     client.reset_stats();
@@ -1359,6 +1365,44 @@ int run_net_test(const Options& opt) {
         }
     }
 
+    // Plan 7.1: remote players interpolate between the two bracketing frames;
+    // outside the buffer the nearest frame is used, never an extrapolation.
+    {
+        sim::SnapshotInterpolator interp;
+        sim::PlayerSnap a;
+        sim::PlayerSnap b;
+        for (uint32_t t = 10; t <= 12; ++t) {
+            sim::Snapshot snap;
+            snap.tick = t;
+            a.pos = sim::Vec3(static_cast<float>(t - 10), 0.0f, 0.0f);
+            a.vel = sim::Vec3(1.0f, 0.0f, 0.0f);
+            b.pos = sim::Vec3(10.0f - static_cast<float>(t - 10), 0.0f, 0.0f);
+            b.vel = sim::Vec3(-1.0f, 0.0f, 0.0f);
+            snap.players = {a, b};
+            interp.push(snap);
+        }
+        std::vector<sim::PlayerSnap> out;
+        const bool sampled = interp.sample(11, 0.5f, out);
+        const bool midpoint =
+            sampled && out.size() == 2 && std::fabs(out[0].pos.x - 1.5f) < 1e-5f &&
+            std::fabs(out[1].pos.x - 8.5f) < 1e-5f;
+        const bool exact = interp.sample(12, 0.0f, out) && std::fabs(out[0].pos.x - 2.0f) < 1e-6f;
+        const bool clamped =
+            interp.sample(20, 0.5f, out) && std::fabs(out[0].pos.x - 2.0f) < 1e-6f;
+        const int before_dup = interp.size();
+        sim::Snapshot duplicate;
+        duplicate.tick = 11;
+        duplicate.players = {a, b};
+        interp.push(duplicate);
+        const bool duplicate_ignored = interp.size() == before_dup;
+        std::printf("  interp: midpoint %d exact %d clamp %d duplicate-ignored %d\n",
+                    midpoint, exact, clamped, duplicate_ignored);
+        if (!midpoint || !exact || !clamped || !duplicate_ignored) {
+            std::printf("FAIL: snapshot interpolation is wrong\n");
+            ++failures;
+        }
+    }
+
     // Gate 8a: the original lossy link must converge and stay delta-based.
     const int ticks = 2000;
     const NetRunStats lossy = run_net_scenario(opt.data_path, 0.30f, 10.0f, ticks, 100);
@@ -1370,6 +1414,8 @@ int run_net_test(const Options& opt) {
                 static_cast<double>(lossy.deviation));
     std::printf("              hitbox %d frames, newest %u (server tick %u)\n",
                 lossy.hitbox_size, lossy.hitbox_newest, lossy.server_tick);
+    std::printf("              remote buffer %d frames, newest %u (last snapshot %u)\n",
+                lossy.remote_frames, lossy.remote_newest, lossy.last_snapshot);
 
     if (lossy.deviation > 0.01f) {
         std::printf("FAIL: client and server disagree by more than 1 cm\n");
@@ -1403,6 +1449,10 @@ int run_net_test(const Options& opt) {
     if (lossy.hitbox_size != sim::HitboxHistory::kCapacity ||
         lossy.hitbox_newest != lossy.server_tick) {
         std::printf("FAIL: server hitbox history is not one sample per tick\n");
+        ++failures;
+    }
+    if (lossy.remote_frames == 0 || lossy.remote_newest != lossy.last_snapshot) {
+        std::printf("FAIL: client remote buffer does not track the newest snapshot\n");
         ++failures;
     }
 

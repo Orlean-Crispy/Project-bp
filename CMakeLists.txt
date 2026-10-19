@@ -32,6 +32,7 @@ add_library(sim STATIC
   sim/net/transport.cpp
   sim/net/netchan.cpp
   sim/net/snapshot.cpp
+  sim/net/interp.cpp
   sim/net/session.cpp
   sim/game/combat.cpp
   sim/game/hitbox.cpp

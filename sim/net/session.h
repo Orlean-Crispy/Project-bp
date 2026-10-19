@@ -9,6 +9,7 @@
 
 #include "sim/core/world.h"
 #include "sim/game/hitbox.h"
+#include "sim/net/interp.h"
 #include "sim/net/snapshot.h"
 #include "sim/net/transport.h"
 
@@ -138,6 +139,7 @@ public:
     int full_states() const { return m_full_states; }
     uint32_t join_tick() const { return m_join_tick; }
     bool join_failed() const { return m_join_failed; }
+    const SnapshotInterpolator& remote() const { return m_remote; }
     const HitboxHistory& hitbox() const { return m_hitbox; }
     void reset_stats();
     ServerClock& clock() { return m_clock; }
@@ -178,6 +180,7 @@ private:
     uint32_t m_join_tick = 0;
     uint32_t m_join_id = 0;
     HitboxHistory m_hitbox;
+    SnapshotInterpolator m_remote;
     ServerClock m_clock;
 };
 

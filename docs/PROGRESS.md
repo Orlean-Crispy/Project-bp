@@ -636,3 +636,37 @@ C:\bp-toolchain\godot\Godot_v4.5-stable_win64.exe --path godot
 
 - “回合内加入观战到下一回合”：还没有回合系统，等爆破/回合落地后再接。
 - 重连票据（v0.4 A5 的 HMAC / 120 s）：当前按 player_index 重新挂链路。
+
+---
+
+## 2026-10-19 · S15 · §7.1 远端玩家 1 tick 插值
+
+### 1. 模块
+
+`sim/net/interp.h/.cpp`：`SnapshotInterpolator`
+
+| 项 | 规定 |
+|---|---|
+| 缓冲 | 32 帧环形（0.5 s @ 64 Hz），按 `tick % 32` 定位 |
+| 采样 | `sample(tick, frac)`：精确取 tick 与 tick+1，插值 pos/vel |
+| 非连续字段 | flags / impulses / state / state_ticks 取前一帧，不插值 |
+| 越界 | 夹到最近帧，**不外推**；空缓冲返回 false |
+| 重复 | 同 tick 再 push 直接忽略；超过 32 帧的空洞触发 reset |
+
+### 2. 集成
+
+- `NetClient` 每解出一份快照 push；FULL_STATE 时先 reset 再 push。
+- 暴露 `remote()`；表现层用 `server_time - 1 tick` 采样（计划书 §7.1 的 1 tick 延迟）。
+- 只读表现层数据：不写回 pmove，不影响命中判定（命中走 hitbox 历史）。
+
+### 3. 验收（闸门 8 内）
+
+- 合成快照 tick 10/11/12、两名玩家相向移动：
+  `sample(11, 0.5)` → 1.5 m / 8.5 m；精确帧与越界夹取正确；重复 push 不改变帧数。
+- 30% 丢包 2000 tick：远端缓冲 32 帧，`newest == client.last_snapshot_tick()`。
+
+### 4. 下一步
+
+1. v0.4 M5 增量：B1 分片 → A1 信令 → A2 可靠流 → A5 重连票据。
+2. M6：hitscan、后坐力表、穿透、衰减、hitmarker。
+3. Godot 多玩家 demo 时把 `remote()` 接到渲染（当前 demo 仍只渲染本地玩家）。

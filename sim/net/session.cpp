@@ -368,6 +368,9 @@ void NetClient::apply_full_state(const Snapshot& snap) {
     m_ack = 0;
     m_ack_bits = 0;
 
+    m_remote.reset();
+    m_remote.push(snap);
+
     m_local.players.resize(1);
     from_snap(snap.players[static_cast<size_t>(m_player)], m_local.players[0]);
     m_local.tick = snap.tick;
@@ -494,6 +497,7 @@ void NetClient::receive() {
         m_last_snapshot_tick = snap.tick;
         m_recent[snap.tick] = snap;
         while (m_recent.size() > 64) m_recent.erase(m_recent.begin());
+        m_remote.push(snap);
 
         if (m_player < 0 || m_player >= static_cast<int>(snap.players.size())) continue;
         apply_snapshot(snap);

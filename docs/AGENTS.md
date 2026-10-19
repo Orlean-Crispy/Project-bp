@@ -31,7 +31,7 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 | M2 基础 pmove | ✅ | 走/跑/跳/蹲、step-up、蹲下空间、Q3 对标数值 |
 | M3 parkour | ✅ 首版 | slide / dash / wallrun / wallclimb / vault，全部有 headless 闸门 |
 | M4 demo 与跨机比对 | ✅ 同机 / ⏸ 跨机 | 录制回放、逐 tick 哈希、dump 比对工具就绪；**跨机需要第二台机器** |
-| M5 网络 | 🔶 部分 | 不可靠通道 + delta 快照 + 预测回滚 + 时间对齐 + v0.4 §5.2 去重 + §7.3 hitbox + **§7.7 FULL_STATE/中途加入/重连**已通；**§7.1 插值、A1/A2/B1 未做** |
+| M5 网络 | 🔶 部分 | 不可靠通道 + delta + 预测回滚 + 时间对齐 + 去重 + hitbox + **§7.7 加入/重连** + **§7.1 远端插值**已通；**A1/A2/B1 未做** |
 | M6 射击 | 🔶 起步 | HP/护甲规则已实现；hitscan、后坐力表、三段判定、穿透未做 |
 | M7 打磨 / M8 视角模型 | ❌ | 未开始 |
 
@@ -140,7 +140,7 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 | 5 | 台阶/蹲下 | 0.20/0.35/0.45 可上、0.55 挡住、1.0 m 净高不能站 | --test-step |
 | 6 | 跳跃语义 | 按住 300 tick 只跳 1 次；点按 3 次跳 3 次 | --test-jump |
 | 7 | HP/护甲 | 规则与 TTK 落在 0.6–1.2 s | --test-health |
-| 8 | 网络收敛 + 去重 + 加入 | 30% 丢包偏差 < 0.01 m、回滚 < 500；5% 丢包 60 s 修正 < 3 次（N3）；中途加入/重连偏差 < 0.01 m | --test-net |
+| 8 | 网络收敛 + 去重 + 加入 + 插值 | 30% 丢包偏差 < 0.01 m、回滚 < 500；N3 修正 < 3；加入/重连 < 0.01 m；远端插值中点/夹取正确 | --test-net |
 | 9 | 卡死恢复 | 从 brush 内部出生能自行脱困 | --test-stuck |
 | 10 | 乱按压力 | 6000 tick 乱按，最长连续实心 ≤ 2 | --test-soak |
 | 11 | 平台边缘 | 落到边缘后仍能继续走 | --test-edge |
@@ -155,18 +155,17 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 
 ## 4. 未结案（按优先级，每条必须有 lead）
 
-1. **其他玩家 1 tick 插值（§7.1）** — 未做，目前只预测自己。lead：M5。
-2. **v0.4 的 M5 增量** — B1 快照分片（MTU 1200）、A1 信令、A2 可靠流 + configstring
-   分块、A5 重连票据；v0.4 §12 估算 +6.5 天。lead：§7.1 之后。
-3. **M6 射击** — hitscan、后坐力表、三段部位判定（hitbox 已就绪）、穿透、伤害衰减、
+1. **v0.4 的 M5 增量** — B1 快照分片（MTU 1200）、A1 信令、A2 可靠流 + configstring
+   分块、A5 重连票据；v0.4 §12 估算 +6.5 天。lead：事件通道之后。
+2. **M6 射击** — hitscan、后坐力表、三段部位判定（hitbox 已就绪）、穿透、伤害衰减、
    hitmarker 全未做。护甲的**吸收比例 66%** 与**再生 5 s / 10 s** 是提案值，需要确认。
-4. **Godot 版本** — 计划书写 4.7 Mono，但 godot-cpp 最高只有 4.5，现用 4.5。
+3. **Godot 版本** — 计划书写 4.7 Mono，但 godot-cpp 最高只有 4.5，现用 4.5。
    lead：M7（Godot-Locomotion 绑定 4.7.2）之前必须解决。
-5. **跨机 demo 比对** — 工具与流程就绪（docs/demo-format.md），缺第二台机器。
-6. **游戏内改键 UI** — 键位系统已数据驱动，UI 未做。lead：M5 之后。
-7. **穿透两套模型** — .map 的 _penetrable 与武器 penetration_count 谁优先未定。lead：M6。
-8. **事件通道（§3.4）** — 计划书要求的状态流 + 事件通道，事件通道未实现。lead：M5/M6。
-9. **movement.toml 热重载** — 铁律 I 只做了哈希，没有 reload 路径。lead：M6 前。
+4. **跨机 demo 比对** — 工具与流程就绪（docs/demo-format.md），缺第二台机器。
+5. **游戏内改键 UI** — 键位系统已数据驱动，UI 未做。lead：M5 之后。
+6. **穿透两套模型** — .map 的 _penetrable 与武器 penetration_count 谁优先未定。lead：M6。
+7. **事件通道（§3.4）** — 计划书要求的状态流 + 事件通道，事件通道未实现。lead：M5/M6。
+8. **movement.toml 热重载** — 铁律 I 只做了哈希，没有 reload 路径。lead：M6 前。
 
 ---
 
@@ -300,8 +299,11 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
 - 加入/重连（§7.7）：新链路 pending_full_state，每 tick 发 FULL_STATE
   （join_id + player + params_hash + geometry_hash + 全量快照），收到“未来 tick”的命令
   才转正常 delta；客户端重置历史、tick = 快照 tick + 7（3 传输余量 + 4 lead）后预跑。
+- 其他玩家（§7.1）：SnapshotInterpolator 存最近 32 帧（0.5 s），`sample(tick, frac)`
+  在相邻两帧间插值 pos/vel；超出范围夹到最近帧、不外推；客户端每收一份快照就 push。
 - 判据：30% 丢包 2000 tick 回滚 51（曾 1428）；5% 丢包 60 s 位置修正 0 次；
-  中途加入（tick 202）与重连（tick 701）偏差 0.00000 m；参数哈希不同被拒绝。
+  中途加入（tick 202）与重连（tick 701）偏差 0.00000 m；参数哈希不同被拒绝；
+  远端缓冲 32 帧、newest == 最后一份快照。
 
 ### 8.5 战斗（sim/game/combat.*）
 
@@ -361,11 +363,10 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
 
 ## 11. 下一步（严格按计划书顺序，不要跳）
 
-1. **§7.1 其他玩家 1 tick 插值**：表现层，不改 sim 语义。
-2. **v0.4 M5 增量**：B1 分片 → A1 信令 → A2 可靠流 → A5 重连票据（按 v0.4 §12 的顺序）。
-3. **M6 射击**：hitscan + 后坐力表 + 三段部位判定（hitbox 已就绪，×5 / ×1 / ×0.7）
+1. **v0.4 M5 增量**：B1 分片 → A1 信令 → A2 可靠流 → A5 重连票据（按 v0.4 §12 的顺序）。
+2. **M6 射击**：hitscan + 后坐力表 + 三段部位判定（hitbox 已就绪，×5 / ×1 / ×0.7）
    + 穿透 + 伤害衰减；TTK 用 100 HP / 三甲复算。
-4. **M7 / M8**：动画、视角模型、音频垂直定位（§9.2 的楼层低通）。
+3. **M7 / M8**：动画、视角模型、音频垂直定位（§9.2 的楼层低通）。
 
 ---
 
@@ -374,5 +375,5 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
 1. `git log --oneline -5` 看最后几个提交。
 2. `git status` 看有没有未提交的半成品。
 3. 跑 smoke；**红的那一项就是当前战场**。
-4. 读 PROGRESS 最后一节（S13 性能 / S14 加入与重连）与 HANDOFF.md。
+4. 读 PROGRESS 最后一节（S14 加入与重连 / S15 远端插值）与 HANDOFF.md。
 5. 不要从头重做已完成的东西；本文件 §0.2 就是进度表。
