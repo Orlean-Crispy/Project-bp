@@ -33,6 +33,7 @@ add_library(sim STATIC
   sim/input/bindings.cpp
   sim/demo/demo.cpp
   sim/net/transport.cpp
+  sim/net/udp_transport.cpp
   sim/net/netchan.cpp
   sim/net/snapshot.cpp
   sim/net/interp.cpp
@@ -41,6 +42,9 @@ add_library(sim STATIC
   sim/game/hitbox.cpp
 )
 target_include_directories(sim PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+if(WIN32)
+  target_link_libraries(sim PUBLIC ws2_32)
+endif()
 
 # Demo headers carry the build id, so "a demo from yesterday" can say exactly
 # which binary recorded it (plan section 10.3 / B3).

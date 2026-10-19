@@ -145,6 +145,12 @@ Godot 4.5 宿主 + GDExtension 桥可运行。所有试玩反馈都已落回 sim
 - autoplay 改为按 sim tick 驱动（按帧会因 headless 帧率与 tick 脱钩而把起跳丢在空中）。
 - 证据：--test-events（jump 5 / land 47、两次一致、溢出丢 76）；Godot 输出
   land @13 / jump @20 / land @62；bench 0.23 µs、0 allocs/tick。
+### S17 真实 UDP 传输（2026-10-19）
+
+- sim/net/udp_transport.*：非阻塞 Winsock UDP；客户端 connect_peer，服务端 recv_from→adopt_peer。
+- CMake 仅 WIN32 链接 ws2_32；Loopback 保留给确定性闸门。
+- 证据：--test-net 的 [udp] hello/adopt/pong/1200B/empty-poll 全过。
+- 边界：一个 transport 一个 peer；Godot 组局与多 peer 适配是下一步。
 
 ---
 
@@ -165,6 +171,7 @@ Godot 4.5 宿主 + GDExtension 桥可运行。所有试玩反馈都已落回 sim
 | 中途加入 / 重连 | 偏差 0.00000 m（FS tick 202 / 701） |
 | 远端插值 | 32 帧缓冲（0.5 s），中点插值 1.5 m / 8.5 m |
 | 事件通道 | 1024 环，溢出丢 76；Godot 收到 land/jump/land |
+| 真实 UDP | 回环 hello/pong/1200 B 往返全过 |
 | 护甲 | 25 / 25 再生 / 50；吸收 66% |
 | demo | ~28 B/tick；600 tick ≈ 17 KB |
 

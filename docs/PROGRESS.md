@@ -710,3 +710,49 @@ C:\bp-toolchain\godot\Godot_v4.5-stable_win64.exe --path godot
 
 1. v0.4 M5 增量：B1 分片 → A1 信令 → A2 可靠流 → A5 重连票据。
 2. M6：hitscan、后坐力表、穿透、衰减、hitmarker（事件类型再加 Muzzle/Impact）。
+---
+
+## 2026-10-19 · S17 · 真实 UDP 传输（M5 的第一块硬缺口）
+
+### 1. 为什么现在做
+
+在此之前 sim/net/transport.* 只有进程内 LoopbackTransport。所有网络闸门都是“同进程、可控丢包”的
+模拟，**没有一个字节真的离开过进程**；M5 的验收却是“2 人局域网”。先补传输层，后面的组局才有地基。
+
+### 2. 实现
+
+sim/net/udp_transport.h/.cpp：UdpTransport : Transport
+
+| 项 | 规定 |
+|---|---|
+| 套接字 | Winsock UDP，FIONBIO 非阻塞；open(port) 支持 0 = 临时端口 |
+| 客户端 | connect_peer(host, port) |
+| 服务端 | recv_from() 拿到发送者地址 → adopt_peer()，之后正常 send/recv |
+| 收 | recvfrom 一次一个包；空队列立即返回 false，**不阻塞 tick** |
+| advance | 空实现（真实网络没有模拟时钟） |
+| 跨平台 | Windows 走 ws2_32；POSIX 分支保留（未在 CI 验证） |
+
+CMake 只在 WIN32 链接 ws2_32，不污染 sim 的其它目标。
+
+### 3. 验收（并入闸门 8，未新增闸门）
+
+| 检查 | 结果 |
+|---|---|
+| client → server 首包 + adopt | ok |
+| server → client 回包 | ok |
+| 1200 B 大数据报往返 | ok |
+| 空队列 poll | 立即返回 false |
+
+--test-net 输出：[udp] hello 1 adopt 1 pong 1 1200B 1 empty-poll 1。
+
+### 4. 已知边界
+
+- 一个 UdpTransport 只对应一个 peer；5v5 的多客户端需要“共享 socket + 每 peer 队列”的适配层。
+- 组局（Godot 里 host/join、服务端循环、远端玩家渲染）还没接；这是下一步。
+- 真实 UDP 的丢包会打到 tick 上，所以游戏循环必须“每 tick 收一次、不等待”。
+
+### 5. 下一步
+
+1. 组局：headless server 或 Godot listen server + 客户端连接；多 peer 适配。
+2. B1 分片（v0.4，MTU 1200）——大包（full_state/config）必经。
+3. A2 可靠流 + configstring 分块 → A1 信令 → A5 票据。

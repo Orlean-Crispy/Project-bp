@@ -2,12 +2,14 @@
 // Godot, a GPU or a display (plan section 3.2).
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <new>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "sim/core/tick.h"
@@ -18,6 +20,7 @@
 #include "sim/game/combat.h"
 #include "sim/net/session.h"
 #include "sim/net/transport.h"
+#include "sim/net/udp_transport.h"
 
 // Allocation counter for the "steady state allocates nothing" rule (iron law E).
 // These replace the global operators for this test executable only.
@@ -1421,8 +1424,71 @@ int run_join_phase(const std::string& data_path) {
     return failures;
 }
 
+int run_udp_check() {
+    int failures = 0;
+    std::string error;
+    sim::UdpTransport server;
+    sim::UdpTransport client;
+    if (!server.open(0, error) || !client.open(0, error)) {
+        std::printf("FAIL: udp open: %s\n", error.c_str());
+        return 1;
+    }
+    if (!client.connect_peer("127.0.0.1", server.local_port(), error)) {
+        std::printf("FAIL: udp connect: %s\n", error.c_str());
+        return 1;
+    }
+
+    const std::vector<uint8_t> hello = {0x42, 0x50, 0x01, 0x02};
+    std::vector<uint8_t> got;
+    std::string from_host;
+    uint16_t from_port = 0;
+    std::vector<uint8_t> pong;
+
+    auto poll = [](auto&& fn) {
+        for (int i = 0; i < 200; ++i) {
+            if (fn()) return true;
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        return false;
+    };
+
+    client.send(hello);
+    const bool hello_ok = poll([&] { return server.recv_from(got, from_host, from_port); }) &&
+                          got == hello;
+    const bool adopted = hello_ok && server.adopt_peer(from_host, from_port, error);
+
+    bool pong_ok = false;
+    bool large_ok = false;
+    bool empty_ok = false;
+    if (adopted) {
+        pong = {0x50, 0x4f, 0x4e, 0x47};
+        server.send(pong);
+        pong_ok = poll([&] { return client.recv(got); }) && got == pong;
+
+        std::vector<uint8_t> large(1200);
+        for (size_t i = 0; i < large.size(); ++i) {
+            large[i] = static_cast<uint8_t>((i * 7 + 3) & 0xFF);
+        }
+        client.send(large);
+        large_ok = poll([&] { return server.recv(got); }) && got == large;
+        empty_ok = !client.recv(got);
+    }
+
+    std::printf("  [udp] hello %d adopt %d pong %d 1200B %d empty-poll %d\n", hello_ok,
+                adopted, pong_ok, large_ok, empty_ok);
+    if (!hello_ok || !adopted || !pong_ok || !large_ok || !empty_ok) {
+        std::printf("FAIL: UDP transport round-trip failed\n");
+        ++failures;
+    }
+    return failures;
+}
+
 int run_net_test(const Options& opt) {
     int failures = 0;
+
+    // The real transport is exercised first: the deterministic loopback tests
+    // above it are meaningless if a datagram cannot leave the process.
+    failures += run_udp_check();
 
     // v0.4 5.2: duplicates, late and far commands never enter the queue twice.
     {
