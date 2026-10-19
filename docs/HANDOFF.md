@@ -7,7 +7,7 @@
 
 ## 0. 一句话总结
 
-从零搭起 M0–M4 全部、M5 的网络骨架、M6 的 HP/护甲规则；15 项 headless 行为闸门 + bench 全绿；
+从零搭起 M0–M4 全部、M5 的网络骨架、M6 的 HP/护甲规则；16 项 headless 行为闸门 + bench 全绿；
 Godot 4.5 宿主 + GDExtension 桥可运行。所有试玩反馈都已落回 sim 层并带回归测试。
 
 ---
@@ -137,6 +137,15 @@ Godot 4.5 宿主 + GDExtension 桥可运行。所有试玩反馈都已落回 sim
 - 证据：合成 10/11/12 两玩家中点 1.5/8.5 m；30% 丢包下缓冲 32 帧且 newest == 最后快照。
 - 待办：Godot demo 接入远端渲染（目前仍只画本地玩家）。
 
+### S16 §3.4 事件通道（2026-10-19）
+
+- sim/core/event.*：SimEvent + 1024 条固定环；World::step 可选 sink，pmove 不知道事件。
+- 跳跃/落地由 World 比较前后 on_ground 发射；事件带 tick，不承载伤害等权威数据。
+- bridge：drain_events() + get_tick()；Godot 每帧消费，HUD 显示 last event。
+- autoplay 改为按 sim tick 驱动（按帧会因 headless 帧率与 tick 脱钩而把起跳丢在空中）。
+- 证据：--test-events（jump 5 / land 47、两次一致、溢出丢 76）；Godot 输出
+  land @13 / jump @20 / land @62；bench 0.23 µs、0 allocs/tick。
+
 ---
 
 ## 2. 当前基线数字（2026-10-19）
@@ -155,6 +164,7 @@ Godot 4.5 宿主 + GDExtension 桥可运行。所有试玩反馈都已落回 sim
 | N3 位置修正 | 0 次 / 60 s（5% loss + 10 ms jitter；阈值 <3） |
 | 中途加入 / 重连 | 偏差 0.00000 m（FS tick 202 / 701） |
 | 远端插值 | 32 帧缓冲（0.5 s），中点插值 1.5 m / 8.5 m |
+| 事件通道 | 1024 环，溢出丢 76；Godot 收到 land/jump/land |
 | 护甲 | 25 / 25 再生 / 50；吸收 66% |
 | demo | ~28 B/tick；600 tick ≈ 17 KB |
 
@@ -190,7 +200,7 @@ Godot 4.5 宿主 + GDExtension 桥可运行。所有试玩反馈都已落回 sim
 
 ~~~powershell
 powershell -File tools\build.ps1
-powershell -File tools\smoke.ps1                 # 15 项行为闸门 + bench，必须 ALL GREEN
+powershell -File tools\smoke.ps1                 # 16 项行为闸门 + bench，必须 ALL GREEN
 
 build\headless_sim.exe --test-net                 # 网络收敛/回滚数
 build\headless_sim.exe --test-health              # 护甲规则与 TTK

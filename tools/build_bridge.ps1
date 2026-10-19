@@ -15,6 +15,7 @@ if (-not (Test-Path $lib)) { throw 'godot-cpp static library not found' }
 $sources = @(
     'bridge/sim_bridge.cpp',
     'sim/core/tick.cpp',
+    'sim/core/event.cpp',
     'sim/core/world.cpp',
     'sim/collision/brush.cpp',
     'sim/collision/map_parse.cpp',

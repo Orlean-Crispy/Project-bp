@@ -670,3 +670,43 @@ C:\bp-toolchain\godot\Godot_v4.5-stable_win64.exe --path godot
 1. v0.4 M5 增量：B1 分片 → A1 信令 → A2 可靠流 → A5 重连票据。
 2. M6：hitscan、后坐力表、穿透、衰减、hitmarker。
 3. Godot 多玩家 demo 时把 `remote()` 接到渲染（当前 demo 仍只渲染本地玩家）。
+
+---
+
+## 2026-10-19 · S16 · §3.4 事件通道
+
+### 1. 架构
+
+- `sim/core/event.h/.cpp`：`SimEvent`（tick / type / entity / a / b / param）+
+  `EventQueue`（1024 条固定环，满了丢最旧并计数，**零分配**）。
+- 生产端：`World::step(inputs, dt, EventQueue* events = nullptr)`。只有传 sink 才发射；
+  不传时零开销，所有既有调用点不用改。
+- 跳跃/落地由 World 对比 pmove 前后的 `on_ground` 得出；**pmove 完全不知道事件**，
+  保持纯函数，避免把表现层概念塞进移动核心。
+- 事件**不承载权威数据**：伤害/血量只走快照（计划书 §3.4 的硬规则）。
+
+### 2. 消费端
+
+- bridge：`step()` 传 `&m_events`；新增 `drain_events()`（Array<Dictionary>）与
+  `get_tick()`。
+- Godot：每帧 drain，HUD 显示 `last event`；autoplay 改为**按 sim tick 驱动**
+  （不再按帧），tick 20 起跳、tick 40 后移动——帧率不再影响 demo 行为。
+- 单向数据流：GDScript 只消费事件，不反向查询 sim。
+
+### 3. 验收
+
+| 项 | 结果 |
+|---|---|
+| 新闸门 `--test-events` | jump tick 5、land tick 47；两次运行序列完全一致 |
+| 环形溢出 | 1100 条 → 1024 条 + 丢 76，弹出最旧 tick 76 |
+| Godot headless autoplay | `event: land @13 / jump @20 / land @62`（真实跨边界） |
+| 性能 | bench 0.23 µs、0.00 allocs/tick，事件分支未影响核心 |
+
+> 调试中发现 autoplay 原按**帧**计数，headless 帧率与 sim tick 脱钩，导致起跳落在
+> 空中被丢弃；改为按 `sim.get_tick()` 驱动后稳定复现。这条经验对以后所有 demo
+> 自动化都成立：**自动化必须绑定 sim tick，不能绑定帧**。
+
+### 4. 下一步
+
+1. v0.4 M5 增量：B1 分片 → A1 信令 → A2 可靠流 → A5 重连票据。
+2. M6：hitscan、后坐力表、穿透、衰减、hitmarker（事件类型再加 Muzzle/Impact）。

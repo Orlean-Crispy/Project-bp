@@ -70,6 +70,7 @@ struct Options {
     bool test_net = false;
     bool test_health = false;
     bool test_hitbox = false;
+    bool test_events = false;
     bool test_bindings = false;
     bool print_keys = false;
     bool map_explicit = false;
@@ -116,6 +117,7 @@ void usage() {
         "  --test-net        client/server over a 30%% loss link: prediction converges\n"
         "  --test-health     HP 100 + 25 / 25 regen / 50 armour damage and regen rules\n"
         "  --test-hitbox     verify the 64-tick hitbox history and the 3-zone multipliers\n"
+        "  --test-events     event channel: jump/land emission, determinism, ring overflow\n"
         "  --bench [n]       time n ticks and report mean/p99/max\n"
         "  --players <n>     with --bench: simulate n players (default 1)\n");
 }
@@ -1140,6 +1142,87 @@ NetRunStats run_net_scenario(const std::string& data_path, float loss, float jit
     return stats;
 }
 
+int run_event_test(const Options& opt) {
+    Options local = opt;
+    if (!opt.map_explicit) local.map_path = "sim/data/maps/test_box.map";
+
+    std::string error;
+    int failures = 0;
+
+    auto collect = [&](std::vector<std::pair<uint32_t, uint16_t>>& out) {
+        World world;
+        if (!load_world(local, world, error)) return false;
+        sim::EventQueue events;
+        for (int i = 0; i < 90; ++i) {
+            MoveInput in;
+            in.jump = (i == 5);
+            world.step({in}, kDt, &events);
+            sim::SimEvent event;
+            while (events.pop(event)) {
+                out.emplace_back(event.tick, static_cast<uint16_t>(event.type));
+            }
+        }
+        return true;
+    };
+
+    std::vector<std::pair<uint32_t, uint16_t>> first;
+    std::vector<std::pair<uint32_t, uint16_t>> second;
+    if (!collect(first) || !collect(second)) {
+        std::fprintf(stderr, "error: %s\n", error.c_str());
+        return 1;
+    }
+
+    uint32_t jump_tick = 0;
+    uint32_t land_tick = 0;
+    int jumps = 0;
+    int lands = 0;
+    for (const auto& e : first) {
+        if (e.second == static_cast<uint16_t>(sim::EventType::Jump)) {
+            ++jumps;
+            jump_tick = e.first;
+        } else if (e.second == static_cast<uint16_t>(sim::EventType::Land)) {
+            ++lands;
+            land_tick = e.first;
+        }
+    }
+
+    const bool deterministic = first == second;
+    const bool sequence_ok = jumps == 1 && lands == 1 && jump_tick == 5 && land_tick > jump_tick;
+    std::printf("  events: jump tick %u, land tick %u, jumps %d, lands %d, deterministic %d\n",
+                jump_tick, land_tick, jumps, lands, deterministic);
+    if (!sequence_ok || !deterministic) {
+        std::printf("FAIL: event emission is wrong or non-deterministic\n");
+        ++failures;
+    }
+
+    // Ring overflow drops the oldest and counts it, never allocates.
+    sim::EventQueue ring;
+    for (uint32_t i = 0; i < sim::EventQueue::kCapacity + 76; ++i) {
+        sim::SimEvent event;
+        event.tick = i;
+        event.type = sim::EventType::Land;
+        ring.push(event);
+    }
+    const size_t ring_size = ring.size();
+    sim::SimEvent oldest;
+    ring.pop(oldest);
+    const bool ring_ok = ring_size == sim::EventQueue::kCapacity && ring.dropped() == 76 &&
+                         oldest.tick == 76;
+    std::printf("  ring: size %zu, dropped %llu, first tick %u\n", ring_size,
+                static_cast<unsigned long long>(ring.dropped()), oldest.tick);
+    if (!ring_ok) {
+        std::printf("FAIL: event ring does not drop the oldest entry\n");
+        ++failures;
+    }
+
+    if (failures != 0) {
+        std::printf("FAIL: %d event checks failed\n", failures);
+        return 1;
+    }
+    std::printf("PASS: events carry ticks, are deterministic, and never grow\n");
+    return 0;
+}
+
 int run_hitbox_test(const Options& opt) {
     sim::MovementParams params;
     std::vector<std::string> warnings;
@@ -1953,6 +2036,8 @@ int main(int argc, char** argv) {
             opt.test_health = true;
         } else if (arg == "--test-hitbox") {
             opt.test_hitbox = true;
+        } else if (arg == "--test-events") {
+            opt.test_events = true;
         } else if (arg == "--players") {
             const char* v = need_value("--players");
             if (!v) return 2;
@@ -1971,6 +2056,7 @@ int main(int argc, char** argv) {
     }
 
     if (opt.test_hitbox) return run_hitbox_test(opt);
+    if (opt.test_events) return run_event_test(opt);
     if (opt.test_health) return run_health_test(opt);
     if (opt.test_net) return run_net_test(opt);
     if (opt.test_jump) return run_jump_test(opt);

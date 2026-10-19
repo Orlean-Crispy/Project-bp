@@ -19,6 +19,7 @@ if(MINGW)
 endif()
 
 add_library(sim STATIC
+  sim/core/event.cpp
   sim/core/tick.cpp
   sim/core/world.cpp
   sim/collision/brush.cpp

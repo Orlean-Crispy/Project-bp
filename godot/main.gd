@@ -6,6 +6,9 @@ const TICK := 1.0 / 64.0
 const SENSITIVITY := 0.0022
 const EYE_FALLBACK := 1.55
 
+# SimEvent::type -> display name (plan 3.4). M6 adds muzzle/impact/etc.
+const EVENT_NAMES := { 1: "jump", 2: "land" }
+
 # sim key name -> Godot key constant
 const KEYCODES := {
 	"A": KEY_A, "B": KEY_B, "C": KEY_C, "D": KEY_D, "E": KEY_E, "F": KEY_F,
@@ -26,7 +29,7 @@ var pitch := 0.0
 var accumulator := 0.0
 var mouse_captured := true
 var autoplay := false
-var autoplay_ticks := 0
+var last_event := "-"
 
 func _ready() -> void:
 	RenderingServer.set_default_clear_color(Color(0.07, 0.08, 0.1))
@@ -123,16 +126,23 @@ func _process(delta: float) -> void:
 
 	# --autoplay: hold forward for two seconds. Used by the smoke check to prove
 	# that input -> simulation -> camera actually works without a human.
-	if autoplay and autoplay_ticks < 128:
-		if autoplay_ticks < 64:
-			forward = 1.0
-		else:
-			right = 1.0
-		autoplay_ticks += 1
+	# Drive autoplay from simulation ticks, not frames: the frame rate must not
+	# change what the demo does (and headless runs at a different rate).
+	var tick := int(sim.get_tick())
+	var jump := _pressed("Jump")
+	if autoplay and tick < 128:
+		# Stand still until grounded, jump once, then move. This makes the
+		# event-channel check deterministic instead of depending on the spawn.
+		jump = jump or tick == 20
+		if tick >= 40:
+			if tick < 90:
+				forward = 1.0
+			else:
+				right = 1.0
 
 	sim.set_input(
 		forward, right, yaw,
-		_pressed("Jump"), _pressed("Crouch"), _pressed("Slide"), _pressed("Dash"),
+		jump, _pressed("Crouch"), _pressed("Slide"), _pressed("Dash"),
 		_pressed("WallRun"), _pressed("WallClimb"), _pressed("Vault")
 	)
 
@@ -145,6 +155,14 @@ func _process(delta: float) -> void:
 	if ticks == 5:
 		accumulator = 0.0
 
+	var events: Array = sim.drain_events()
+	for event in events:
+		last_event = "%s @%d" % [
+			EVENT_NAMES.get(int(event["type"]), "?"), int(event["tick"])
+		]
+		if autoplay:
+			print("event: ", last_event)
+
 	var position: Vector3 = sim.get_position()
 	camera.position = position + Vector3(0.0, sim.get_eye_height(), 0.0)
 	# sim yaw 0 looks down +X and maps to Godot (x, z, -y)
@@ -154,7 +172,7 @@ func _process(delta: float) -> void:
 	var velocity: Vector3 = sim.get_velocity()
 	var speed := Vector2(velocity.x, velocity.z).length()
 	var states := ["ground", "air", "slide", "wallrun", "wallclimb", "vault"]
-	hud.text = "speed %5.2f m/s   %s   impulses %d\npos %.1f %.1f %.1f" % [
+	hud.text = "speed %5.2f m/s   %s   impulses %d\npos %.1f %.1f %.1f\nlast event %s" % [
 		speed, states[sim.get_state()], sim.get_impulses(),
-		position.x, position.y, position.z
+		position.x, position.y, position.z, last_event
 	]

@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "sim/collision/map_parse.h"
+#include "sim/core/event.h"
 #include "sim/core/world.h"
 #include "sim/input/bindings.h"
 
@@ -120,8 +121,28 @@ public:
 
     void step() {
         if (m_world.players.empty()) return;
-        m_world.step({m_input}, 1.0f / 64.0f);
+        m_world.step({m_input}, 1.0f / 64.0f, &m_events);
     }
+
+    // Plan 3.4: the presentation layer drains the event channel once per frame.
+    // Events carry a tick so a future rollback can discard stale predictions.
+    Array drain_events() {
+        Array out;
+        sim::SimEvent event;
+        while (m_events.pop(event)) {
+            Dictionary entry;
+            entry["tick"] = event.tick;
+            entry["type"] = static_cast<int>(event.type);
+            entry["entity"] = event.entity_id;
+            entry["a"] = to_godot(event.a);
+            entry["b"] = to_godot(event.b);
+            entry["param"] = event.param;
+            out.push_back(entry);
+        }
+        return out;
+    }
+
+    uint32_t get_tick() const { return m_world.tick; }
 
     Vector3 get_position() const {
         return m_world.players.empty() ? Vector3() : to_godot(m_world.players[0].pos);
@@ -155,6 +176,8 @@ protected:
                                       "slide", "dash", "wallrun", "wallclimb", "vault"),
                              &SimWorld::set_input);
         ClassDB::bind_method(D_METHOD("step"), &SimWorld::step);
+        ClassDB::bind_method(D_METHOD("drain_events"), &SimWorld::drain_events);
+        ClassDB::bind_method(D_METHOD("get_tick"), &SimWorld::get_tick);
         ClassDB::bind_method(D_METHOD("get_position"), &SimWorld::get_position);
         ClassDB::bind_method(D_METHOD("get_velocity"), &SimWorld::get_velocity);
         ClassDB::bind_method(D_METHOD("get_state"), &SimWorld::get_state);
@@ -210,6 +233,7 @@ private:
     sim::World m_world;
     sim::Bindings m_bindings;
     sim::MoveInput m_input;
+    sim::EventQueue m_events;
     PackedVector3Array m_vertices;
     PackedVector3Array m_normals;
     PackedColorArray m_colors;

@@ -31,13 +31,13 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 | M2 基础 pmove | ✅ | 走/跑/跳/蹲、step-up、蹲下空间、Q3 对标数值 |
 | M3 parkour | ✅ 首版 | slide / dash / wallrun / wallclimb / vault，全部有 headless 闸门 |
 | M4 demo 与跨机比对 | ✅ 同机 / ⏸ 跨机 | 录制回放、逐 tick 哈希、dump 比对工具就绪；**跨机需要第二台机器** |
-| M5 网络 | 🔶 部分 | 不可靠通道 + delta + 预测回滚 + 时间对齐 + 去重 + hitbox + **§7.7 加入/重连** + **§7.1 远端插值**已通；**A1/A2/B1 未做** |
+| M5 网络 | 🔶 部分 | 不可靠通道 + delta + 预测回滚 + 时间对齐 + 去重 + hitbox + 加入/重连 + 远端插值 + **§3.4 事件通道**已通；**A1/A2/B1 未做** |
 | M6 射击 | 🔶 起步 | HP/护甲规则已实现；hitscan、后坐力表、三段判定、穿透未做 |
 | M7 打磨 / M8 视角模型 | ❌ | 未开始 |
 
 ### 0.3 现在能跑什么
 
-- `headless_sim` 15 项行为闸门 + bench 全绿（见 §3）
+- `headless_sim` 16 项行为闸门 + bench 全绿（见 §3）
 - Godot demo：`demo.bat` 或 `powershell -File tools/run_demo.ps1`，可走跑跳滑铲墙跑爬墙翻越
 - 手感数值可改 sim/data/movement.toml 后重跑，不用改代码
 
@@ -63,7 +63,7 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 
 ### C — 边界（2026-10-18，代价 = 表现层轮询漏帧 + 回滚错乱）
 
-- 跨 GDExtension 只有两条通道：状态流与事件通道（事件通道**尚未实现**，见未结案）。
+- 跨 GDExtension 只有两条通道：状态流与事件通道（EventQueue，1024 条固定环）。
 - 表现层不反向查询 sim；伤害数字只走快照，不走事件。
 - 判据：bridge/ 内不出现轮询式反向查询。
 
@@ -129,7 +129,7 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 
 ---
 
-## 3. 判据清单（tools/smoke.ps1 串起 15 项行为闸门 + bench）
+## 3. 判据清单（tools/smoke.ps1 串起 16 项行为闸门 + bench）
 
 | # | 判据 | 阈值 | 命令 |
 |---|---|---|---|
@@ -148,6 +148,7 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 | 13 | 键位 | 加载/改键/保存/重载 + 冲突检测 | --test-bindings |
 | 14 | demo | 同构建逐 tick 一致；改动参数必被检出 | --test-demo |
 | 15 | hitbox 历史 | 64 tick 环形、帧间插值、三段 ×5/×1/×0.7、蹲下自动跟随 | --test-hitbox |
+| 16 | 事件通道 | 跳跃/落地事件带 tick、可复现、环形溢出丢最旧 | --test-events |
 
 当前全部 PASS。`--compare`（跨机 dump 比对）需要第二台机器，尚未执行。
 
@@ -156,7 +157,7 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 ## 4. 未结案（按优先级，每条必须有 lead）
 
 1. **v0.4 的 M5 增量** — B1 快照分片（MTU 1200）、A1 信令、A2 可靠流 + configstring
-   分块、A5 重连票据；v0.4 §12 估算 +6.5 天。lead：事件通道之后。
+   分块、A5 重连票据；v0.4 §12 估算 +6.5 天。lead：现在。
 2. **M6 射击** — hitscan、后坐力表、三段部位判定（hitbox 已就绪）、穿透、伤害衰减、
    hitmarker 全未做。护甲的**吸收比例 66%** 与**再生 5 s / 10 s** 是提案值，需要确认。
 3. **Godot 版本** — 计划书写 4.7 Mono，但 godot-cpp 最高只有 4.5，现用 4.5。
@@ -164,8 +165,7 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 4. **跨机 demo 比对** — 工具与流程就绪（docs/demo-format.md），缺第二台机器。
 5. **游戏内改键 UI** — 键位系统已数据驱动，UI 未做。lead：M5 之后。
 6. **穿透两套模型** — .map 的 _penetrable 与武器 penetration_count 谁优先未定。lead：M6。
-7. **事件通道（§3.4）** — 计划书要求的状态流 + 事件通道，事件通道未实现。lead：M5/M6。
-8. **movement.toml 热重载** — 铁律 I 只做了哈希，没有 reload 路径。lead：M6 前。
+7. **movement.toml 热重载** — 铁律 I 只做了哈希，没有 reload 路径。lead：M6 前。
 
 ---
 
@@ -203,7 +203,7 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 ```powershell
 powershell -File tools\setup_toolchain.ps1   # 仅首次：下载 GCC/CMake/Ninja
 powershell -File tools\build.ps1             # 配置 + 全量构建（headless_sim, move_metrics）
-powershell -File tools\smoke.ps1             # 15 项行为闸门 + bench，必须全绿
+powershell -File tools\smoke.ps1             # 16 项行为闸门 + bench，必须全绿
 powershell -File tools\build_bridge.ps1      # 重建 GDExtension DLL
 powershell -File tools\run_demo.ps1          # 构建桥 + 启动 Godot demo
 ```
@@ -324,6 +324,14 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
 - 回溯取相邻两帧按 frac 插值（v0.4 §9.2），不取整帧；没有下一帧就不外推。
 - 判据：--test-hitbox（25 项）；--test-net 顺带断言服务器每 tick 一条、newest == tick。
 
+### 8.8 事件通道（sim/core/event.*）
+
+- `SimEvent`：tick + type + entity + a/b + param；**绝不承载权威数据**（伤害只走快照）。
+- `EventQueue`：1024 条固定环，满了丢最旧并计数，零分配。
+- 生产：`World::step(inputs, dt, &events)` 在起跳/落地沿发射；不传 sink 时零开销。
+- 消费：bridge `drain_events()` 每帧取空；Godot 侧只更新 HUD/音效，不反向查询。
+- 判据：--test-events（跳跃 tick 5、落地 tick 47、两次运行一致、溢出 76 条丢最旧）。
+
 ---
 
 ## 9. 开场 / 收尾协议
@@ -333,7 +341,7 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
 ```
 1. 读 docs/AGENTS.md（本文件）
 2. 读 docs/PROGRESS.md 最后一节 + docs/HANDOFF.md（若存在）
-3. 跑 tools\build.ps1，再跑 tools\smoke.ps1，确认 15 项行为闸门 + bench 全绿
+3. 跑 tools\build.ps1，再跑 tools\smoke.ps1，确认 16 项行为闸门 + bench 全绿
 4. 只改一个文件集；大文件只做精确 edit
 5. 改完立刻 commit（一个功能一个 commit）
 6. 更新 docs/PROGRESS.md（做了什么/结论/下一步）
@@ -363,11 +371,10 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
 
 ## 11. 下一步（严格按计划书顺序，不要跳）
 
-1. **§3.4 事件通道**：状态流之外的独立事件队列（命中/击杀/破坏/声音），表现层只消费。
-2. **v0.4 M5 增量**：B1 分片 → A1 信令 → A2 可靠流 → A5 重连票据（按 v0.4 §12 的顺序）。
-3. **M6 射击**：hitscan + 后坐力表 + 三段部位判定（hitbox 已就绪，×5 / ×1 / ×0.7）
+1. **v0.4 M5 增量**：B1 分片 → A1 信令 → A2 可靠流 → A5 重连票据（按 v0.4 §12 的顺序）。
+2. **M6 射击**：hitscan + 后坐力表 + 三段部位判定（hitbox 已就绪，×5 / ×1 / ×0.7）
    + 穿透 + 伤害衰减；TTK 用 100 HP / 三甲复算。
-4. **M7 / M8**：动画、视角模型、音频垂直定位（§9.2 的楼层低通）。
+3. **M7 / M8**：动画、视角模型、音频垂直定位（§9.2 的楼层低通）。
 
 ---
 
@@ -376,5 +383,5 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
 1. `git log --oneline -5` 看最后几个提交。
 2. `git status` 看有没有未提交的半成品。
 3. 跑 smoke；**红的那一项就是当前战场**。
-4. 读 PROGRESS 最后一节（S14 加入与重连 / S15 远端插值）与 HANDOFF.md。
+4. 读 PROGRESS 最后一节（S15 远端插值 / S16 事件通道）与 HANDOFF.md。
 5. 不要从头重做已完成的东西；本文件 §0.2 就是进度表。

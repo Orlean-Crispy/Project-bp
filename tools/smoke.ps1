@@ -64,6 +64,10 @@ try {
     & $exe --test-hitbox
     if ($LASTEXITCODE -ne 0) { throw 'hitbox history test failed' }
 
+    Write-Host '== event channel ==' -ForegroundColor Cyan
+    & $exe --test-events
+    if ($LASTEXITCODE -ne 0) { throw 'event channel test failed' }
+
     Write-Host '== bench ==' -ForegroundColor Cyan
     & $exe --bench 1000
     if ($LASTEXITCODE -ne 0) { throw 'bench failed' }

@@ -13,7 +13,7 @@
    前者是 §7 的扩张与冲突裁决，后者是 §8.3 的选定方案）。
 3. 完整读 **docs/AGENTS.md**（铁律 / 判据清单 / 未结案 / 环境事实 / 文件地图）。
 4. 读 **docs/PROGRESS.md** 最后一节，再读 **docs/HANDOFF.md**。
-5. 跑 tools\build.ps1，再跑 tools\smoke.ps1，确认 **15 项行为闸门 + bench 全绿**。
+5. 跑 tools\build.ps1，再跑 tools\smoke.ps1，确认 **16 项行为闸门 + bench 全绿**。
 6. 只改一个文件集；改完立刻 commit；更新 PROGRESS。
 
 > 为什么摘要不能替代原文：计划书里**被否决的方案与理由**（§2.2）、参数出处（§5.6/§6.2）、
@@ -99,12 +99,12 @@ v0.1 定义：**两个人、局域网、1 张 40×40 图、对枪 10 分钟不�
 | 里程碑 | 状态 |
 |---|---|
 | M0–M4 | ✅（M4 跨机比对缺第二台机器） |
-| M5 | 🔶 不可靠通道/delta/预测回滚/时间对齐/输入去重/hitbox/full_state·加入·重连/**远端插值**已通；**v0.4 的 A1/A2/B1 未做** |
+| M5 | 🔶 不可靠通道/delta/预测回滚/时间对齐/输入去重/hitbox/full_state·加入·重连/远端插值/**事件通道**已通；**v0.4 的 A1/A2/B1 未做** |
 | M6 | 🔶 仅 HP/护甲规则（HP 100；甲 25/25 再生/50） |
 | M7/M8 | ❌ |
 
 - 宿主实际是 **Godot 4.5**（godot-cpp 最高只有 4.5；计划书目标 4.7，记为未结案）。
-- 15 项行为闸门 + bench 全绿；Godot demo 可运行（demo.bat）。
+- 16 项行为闸门 + bench 全绿；Godot demo 可运行（demo.bat）。
 - --test-net：30% 丢包回滚 1428 → **51/2000**；5% 丢包 60 s 修正 0 次；
   中途加入/重连偏差 **0.00000 m**（加入走 FULL_STATE）。
 
@@ -112,11 +112,10 @@ v0.1 定义：**两个人、局域网、1 张 40×40 图、对枪 10 分钟不�
 
 ## 3. 下一步（严格按计划书顺序，禁止跳步）
 
-1. §3.4 事件通道。
-2. v0.4 的 M5 增量：B1 快照分片（MTU 1200）、A1 信令、A2 可靠流 + configstring 分块、
+1. v0.4 的 M5 增量：B1 快照分片（MTU 1200）、A1 信令、A2 可靠流 + configstring 分块、
    A5 重连票据。
-3. M6：hitscan、后坐力表、三段判定（hitbox 已就绪）、穿透、伤害衰减、hitmarker。
-4. M7/M8。
+2. M6：hitscan、后坐力表、三段判定（hitbox 已就绪）、穿透、伤害衰减、hitmarker。
+3. M7/M8。
 
 ---
 
@@ -137,7 +136,7 @@ v0.1 定义：**两个人、局域网、1 张 40×40 图、对枪 10 分钟不�
 
 ~~~powershell
 powershell -File tools\build.ps1        # 全量构建（-Werror）
-powershell -File tools\smoke.ps1        # 15 项行为闸门 + bench，必须 ALL GREEN
+powershell -File tools\smoke.ps1        # 16 项行为闸门 + bench，必须 ALL GREEN
 powershell -File tools\build_bridge.ps1 # GDExtension DLL
 powershell -File tools\run_demo.ps1     # Godot demo
 ~~~
@@ -152,7 +151,7 @@ powershell -File tools\run_demo.ps1     # Godot demo
 | docs/网络层深化_v0.4.md | §7 网络专章：A1–A5 / B1–B3 / 冲突裁决 C1–C3 / N1–N8 判据 |
 | docs/8.3候选B_v0.4.md | §8.3 选定方案：可破坏入口、0.5 m 四档、时间预算 |
 | docs/AGENTS.md | 详细约束、判据、未结案、环境、文件地图 |
-| docs/HANDOFF.md | 本会话完整交接（S01–S15、每个坑的根因与证据） |
+| docs/HANDOFF.md | 本会话完整交接（S01–S16、每个坑的根因与证据） |
 | docs/PROGRESS.md | 进度日志（每节：做了什么/结论/下一步） |
 | docs/pitfalls/ | 事故案例（3 篇） |
 | docs/decisions/ | ADR（护甲 / 网络时间轴） |
