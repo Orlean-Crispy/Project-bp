@@ -23,6 +23,7 @@
 #include "sim/net/reliable.h"
 #include "sim/net/session.h"
 #include "sim/net/signaling.h"
+#include "sim/net/ticket.h"
 #include "sim/net/transport.h"
 #include "sim/net/udp_hub.h"
 #include "sim/net/udp_transport.h"
@@ -1662,6 +1663,34 @@ int run_udp_session_check(const std::string& data_path) {
     return failures;
 }
 
+int run_ticket_test() {
+    std::array<uint8_t, 32> key{};
+    for (size_t i = 0; i < key.size(); ++i) key[i] = static_cast<uint8_t>(i * 3 + 1);
+    sim::TicketIssuer issuer(key);
+
+    sim::ClientId id{};
+    for (size_t i = 0; i < id.size(); ++i) id[i] = static_cast<uint8_t>(0x10 + i);
+    const sim::Ticket ticket = issuer.issue(id, 1000, 120);
+
+    const bool valid = issuer.verify(ticket, 1119);
+    const bool expired = !issuer.verify(ticket, 1120);
+    sim::Ticket tampered = ticket;
+    tampered.client_id[0] ^= 0x01;
+    const bool tamper = !issuer.verify(tampered, 1000);
+    std::array<uint8_t, 32> other_key{};
+    other_key[0] = 0x7F;
+    sim::TicketIssuer other(other_key);
+    const bool wrong_key = !other.verify(ticket, 1000);
+
+    std::printf("  [ticket] valid %d expired %d tamper %d wrongkey %d\n", valid ? 1 : 0,
+                expired ? 1 : 0, tamper ? 1 : 0, wrong_key ? 1 : 0);
+    if (!valid || !expired || !tamper || !wrong_key) {
+        std::printf("FAIL: A5 ticket test failed\n");
+        return 1;
+    }
+    return 0;
+}
+
 int run_reliable_test() {
     std::vector<uint8_t> data(5000);
     for (size_t i = 0; i < data.size(); ++i) {
@@ -1884,6 +1913,7 @@ int run_net_test(const Options& opt) {
     failures += run_clock_check(opt.data_path);
     failures += run_signal_test();
     failures += run_reliable_test();
+    failures += run_ticket_test();
 
     // v0.4 5.2: duplicates, late and far commands never enter the queue twice.
     {

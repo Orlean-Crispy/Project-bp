@@ -31,7 +31,7 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 | M2 基础 pmove | ✅ | 走/跑/跳/蹲、step-up、蹲下空间、Q3 对标数值 |
 | M3 parkour | ✅ 首版 | slide / dash / wallrun / wallclimb / vault，全部有 headless 闸门 |
 | M4 demo 与跨机比对 | ✅ 同机 / ⏸ 跨机 | 录制回放、逐 tick 哈希、dump 比对工具就绪；**跨机需要第二台机器** |
-| M5 网络 | 🔶 部分 | 不可靠通道 + delta + 预测回滚 + 时间对齐 + 去重 + hitbox + 加入/重连 + 远端插值 + 事件通道 + 真实 UDP + B1 分片 + 多 peer 会话 + 两进程 + Godot --host/--connect + 远端渲染 + LAN 菜单 + 时钟纠正 + **远端 yaw**已通；**A1/A2 协议已通（未接组局）、A5、局内 UI 未做** |
+| M5 网络 | 🔶 部分 | 不可靠通道 + delta + 预测回滚 + 时间对齐 + 去重 + hitbox + 加入/重连 + 远端插值 + 事件通道 + 真实 UDP + B1 分片 + 多 peer 会话 + 两进程 + Godot --host/--connect + 远端渲染 + LAN 菜单 + 时钟纠正 + **远端 yaw**已通；**A1/A2/A5 协议已通（未接组局）、局内 UI 未做** |
 | M6 射击 | 🔶 起步 | HP/护甲规则已实现；hitscan、后坐力表、三段判定、穿透未做 |
 | M7 打磨 / M8 视角模型 | ❌ | 未开始 |
 
@@ -158,8 +158,8 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 
 1. **网络组局收尾** — Godot --host/--connect、远端胶囊、LAN 菜单、时钟纠正、远端 yaw 已通；
    仍缺局内/断线重连 UI、第三人称动画。lead：现在。
-2. **v0.4 的 M5 增量** — A1 协议与 A2 可靠流/分块均已通且测试，待接入组局
-   （信令线程、单 socket 双队列）；A5 票据未做；B1 分片已完成。lead：现在。
+2. **v0.4 的 M5 增量** — A1/A2/A5 协议均已通且测试，待接入组局
+   （信令线程、单 socket 双队列、重连状态机）；B1 分片已完成。lead：现在。
 3. **M6 射击** — hitscan、后坐力表、三段部位判定（hitbox 已就绪）、穿透、伤害衰减、
    hitmarker 全未做。护甲的**吸收比例 66%** 与**再生 5 s / 10 s** 是提案值，需要确认。
 4. **Godot 版本** — 计划书写 4.7 Mono，但 godot-cpp 最高只有 4.5，现用 4.5。
@@ -319,6 +319,8 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
   下构建用于脚本检查；菜单打开时暂停 tick。
 - 时钟纠正（§7.0）：客户端按快照 ahead 的最小值检测漂移；超过 min+3 且冷却结束时跳过
   一次 send+step（世界冻结 ~15.6 ms），领先量永久减 1；无 tick 空洞、不改历史。
+- A5 票据（sim/net/ticket.*）：32 B（client_id 16 + expiry 4 + HMAC-SHA256/12），
+  密钥只在房主内存；now >= expiry 即失效。判据：valid 1 expired 1 tamper 1 wrongkey 1。
 - A2 可靠流（sim/net/reliable.*）：独立 rel_seq（1 起）、窗口 32、累积 ACK + 32 位位图、
   RFC 6298 RTO（250 ms，100–1000）、5 次重传上限；configstring 512 B 分块 + CRC32。
   判据：5000 B / 10 块 / 30% 丢包 → retrans 6、complete 1、same 1、corrupt 1。
@@ -399,7 +401,7 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
 ## 11. 下一步（严格按计划书顺序，不要跳）
 
 1. **组局收尾**：局内/断线重连 UI、第三人称动画。
-2. **v0.4 M5 增量**：A1/A2 接入组局（信令线程、单 socket 双队列）→ A5 重连票据。
+2. **v0.4 M5 增量**：A1/A2/A5 接入组局（信令线程、单 socket 双队列、重连状态机）。
 3. **M6 射击**：hitscan + 后坐力表 + 三段部位判定（hitbox 已就绪，×5 / ×1 / ×0.7）
    + 穿透 + 伤害衰减；TTK 用 100 HP / 三甲复算。
 4. **M7 / M8**：动画、视角模型、音频垂直定位（§9.2 的楼层低通）。
@@ -411,5 +413,5 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
 1. `git log --oneline -5` 看最后几个提交。
 2. `git status` 看有没有未提交的半成品。
 3. 跑 smoke；**红的那一项就是当前战场**。
-4. 读 PROGRESS 最后一节（S25 A1 信令 / S26 A2 可靠流）与 HANDOFF.md。
+4. 读 PROGRESS 最后一节（S26 A2 / S27 A5 票据）与 HANDOFF.md。
 5. 不要从头重做已完成的东西；本文件 §0.2 就是进度表。

@@ -1035,3 +1035,31 @@ CMake 只在 WIN32 链接 ws2_32，不污染 sim 的其它目标。
 1. 把 A2 接进 NetServer 的单 socket（高优先快照队列 + 低优先可靠队列）。
 2. A5 票据。
 3. A1 信令线程接入组局。
+---
+
+## 2026-10-19 · S27 · A5 重连票据
+
+### 1. 实现
+
+- sim/net/ticket.*：32 B = client_id(16) + expiry(4, 秒) + HMAC-SHA256 截断 12 B。
+- 房主内存持有随机密钥（TicketIssuer 默认构造用 random_device，不落盘）。
+- verify：常量时间比较 + 过期边界（now >= expiry 即无效）。
+
+### 2. 验收
+
+- [ticket] valid 1 expired 1 tamper 1 wrongkey 1。
+- 覆盖：到期前 1 秒有效、到期时刻失效、篡改 client_id、换密钥。
+
+### 3. 抓到的边界
+
+- 第一版用 expiry < now，导致到期那一秒仍有效；改为 now >= expiry。
+
+### 4. 边界
+
+- 尚未接进信令/重连流程：HELLO 已带 ticket 字段，服务端校验与重连状态机是下一步。
+
+### 5. 下一步
+
+1. A1/A2 接入组局（信令线程、单 socket 双队列）。
+2. 票据接 HELLO / 断线重连。
+3. M6 射击。

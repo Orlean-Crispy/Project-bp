@@ -207,6 +207,11 @@ Godot 4.5 宿主 + GDExtension 桥可运行。所有试玩反馈都已落回 sim
 - configstring 512 B 分块 + CRC32；组装器逐块校验，缺块不 complete。
 - 30% 丢包：5000 B / 10 块 → retrans 6、complete 1、same 1、corrupt 1、dead 0。
 - 尚未与快照共用 socket；单 socket 双队列是下一步。
+### S27 A5 重连票据（2026-10-19）
+
+- 32 B：client_id(16) + expiry(4) + HMAC-SHA256 截断 12；密钥只在房主内存。
+- 验收：valid 1 / expired 1 / tamper 1 / wrongkey 1；到期时刻即失效。
+- 未接信令与重连状态机；HELLO 已预留 ticket 字段。
 
 ---
 
