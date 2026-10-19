@@ -157,6 +157,13 @@ Godot 4.5 宿主 + GDExtension 桥可运行。所有试玩反馈都已落回 sim
   5 B 头（marker/id/index/total），接收端按 id 重组，半包绝不交付。
 - 3000 B 往返一致、小包透传；30% 丢包 20 个 2500 B 包：送达 9、损坏 0。
 - 尚未接组局路径；届时 FragmentedTransport(UdpTransport) 包一层即可。
+### S19 多 peer UDP 与会话（2026-10-19）
+
+- 拆分 UdpSocket / UdpTransport；新增 PeerTransport + UdpPeerHub（按源地址 demux，
+  未知来源有界队列）+ 6 字节 HELLO（magic + 协议版本）。
+- 闸门 8 新增：真 UDP 环回、两个客户端、同一 hub、2 名服务器玩家。
+- 结果：joined 1/1、snapshots 148/148、dev 0.00000 / 0.00000 m。
+- 仍在一个进程内；下一步是两进程 net_loop 与 Godot --host/--connect。
 
 ---
 
@@ -179,6 +186,7 @@ Godot 4.5 宿主 + GDExtension 桥可运行。所有试玩反馈都已落回 sim
 | 事件通道 | 1024 环，溢出丢 76；Godot 收到 land/jump/land |
 | 真实 UDP | 回环 hello/pong/1200 B 往返全过 |
 | 分片 | 3000 B 往返一致；30% 丢包下 0 损坏 |
+| UDP 双人会话 | 2 客户端 joined、148/148 快照、偏差 0.00000 m |
 | 护甲 | 25 / 25 再生 / 50；吸收 66% |
 | demo | ~28 B/tick；600 tick ≈ 17 KB |
 

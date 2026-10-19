@@ -19,8 +19,10 @@
 #include "sim/input/bindings.h"
 #include "sim/game/combat.h"
 #include "sim/net/fragment.h"
+#include "sim/net/handshake.h"
 #include "sim/net/session.h"
 #include "sim/net/transport.h"
+#include "sim/net/udp_hub.h"
 #include "sim/net/udp_transport.h"
 
 // Allocation counter for the "steady state allocates nothing" rule (iron law E).
@@ -1539,6 +1541,125 @@ int run_fragment_check() {
     return failures;
 }
 
+int run_udp_session_check(const std::string& data_path) {
+    const std::string map_path = "sim/data/maps/metrics_flat.map";
+    std::string error;
+
+    sim::UdpPeerHub hub;
+    if (!hub.open(0, error)) {
+        std::printf("FAIL: hub open: %s\n", error.c_str());
+        return 1;
+    }
+    sim::NetServer server;
+    if (!server.init(map_path, data_path, 2, error)) {
+        std::printf("FAIL: server init: %s\n", error.c_str());
+        return 1;
+    }
+    sim::UdpTransport transport;
+    if (!transport.open(0, error) ||
+        !transport.connect_peer("127.0.0.1", hub.local_port(), error)) {
+        std::printf("FAIL: client socket: %s\n", error.c_str());
+        return 1;
+    }
+    sim::NetClient client;
+    if (!client.init(&transport, &transport, 0, map_path, data_path, error)) {
+        std::printf("FAIL: client init: %s\n", error.c_str());
+        return 1;
+    }
+
+    sim::UdpTransport transport2;
+    if (!transport2.open(0, error) ||
+        !transport2.connect_peer("127.0.0.1", hub.local_port(), error)) {
+        std::printf("FAIL: second client socket: %s\n", error.c_str());
+        return 1;
+    }
+    sim::NetClient client2;
+    if (!client2.init(&transport2, &transport2, 1, map_path, data_path, error)) {
+        std::printf("FAIL: second client init: %s\n", error.c_str());
+        return 1;
+    }
+
+    // Admit the two peers in a known order; the server assigns player slots.
+    transport.send(sim::make_hello());
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    transport2.send(sim::make_hello());
+
+    int next_slot = 0;
+    int ticks = 0;
+    double accumulator = 0.0;
+    auto last = std::chrono::steady_clock::now();
+    const auto started = last;
+
+    auto pump = [&](const sim::MoveInput& input) {
+        hub.poll();
+        std::string host;
+        uint16_t port = 0;
+        std::vector<uint8_t> packet;
+        while (hub.next_unknown(host, port, packet)) {
+            if (next_slot < 2 && sim::is_hello(packet)) {
+                sim::PeerTransport* peer = hub.add_peer(host, port);
+                server.add_client(peer, peer, next_slot++);
+            }
+        }
+        client.send_input(input);
+        client.step_local();
+        client2.send_input(input);
+        client2.step_local();
+        server.receive();
+        server.step();
+        server.send();
+        client.receive();
+        client2.receive();
+        ++ticks;
+    };
+
+    while (ticks < 120) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        const auto now = std::chrono::steady_clock::now();
+        accumulator += std::chrono::duration<double>(now - last).count();
+        last = now;
+        while (accumulator >= 1.0 / 64.0) {
+            sim::MoveInput input;
+            input.forward = 1.0f;
+            input.yaw = 0.4f * std::sin(static_cast<float>(ticks) * 0.01f);
+            pump(input);
+            accumulator -= 1.0 / 64.0;
+        }
+        if (std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count() > 5.0) {
+            break;
+        }
+    }
+    for (int i = 0; i < 30; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        pump(sim::MoveInput{});
+    }
+
+    const float deviation =
+        sim::length(client.predicted().pos - server.world().players[0].pos);
+    const float deviation2 =
+        sim::length(client2.predicted().pos - server.world().players[1].pos);
+    std::printf("  [udp session] joined %d/%d snapshots %d/%d dev %.5f / %.5f m\n",
+                client.joined() ? 1 : 0, client2.joined() ? 1 : 0,
+                client.snapshots_received(), client2.snapshots_received(),
+                static_cast<double>(deviation), static_cast<double>(deviation2));
+
+    int failures = 0;
+    if (!client.joined() || !client2.joined() || client.join_failed() ||
+        client2.join_failed()) {
+        std::printf("FAIL: a client did not join over UDP\n");
+        ++failures;
+    }
+    if (client.snapshots_received() < 20 || client2.snapshots_received() < 20) {
+        std::printf("FAIL: too few snapshots over UDP\n");
+        ++failures;
+    }
+    if (deviation > 0.01f || deviation2 > 0.01f) {
+        std::printf("FAIL: UDP session diverged\n");
+        ++failures;
+    }
+    return failures;
+}
+
 int run_net_test(const Options& opt) {
     int failures = 0;
 
@@ -1546,6 +1667,7 @@ int run_net_test(const Options& opt) {
     // above it are meaningless if a datagram cannot leave the process.
     failures += run_udp_check();
     failures += run_fragment_check();
+    failures += run_udp_session_check(opt.data_path);
 
     // v0.4 5.2: duplicates, late and far commands never enter the queue twice.
     {

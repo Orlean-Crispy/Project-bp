@@ -787,3 +787,31 @@ CMake 只在 WIN32 链接 ws2_32，不污染 sim 的其它目标。
 1. Godot 组局（多 peer UDP + 服务端循环 + 远端渲染）。
 2. A1 信令 → A2 可靠流 → A5 票据。
 3. M6。
+---
+
+## 2026-10-19 · S19 · 多 peer UDP 与会话（两个客户端真连）
+
+### 1. 拆分
+
+- sim/net/udp_socket.*：非阻塞 UDP socket（open / send_to / recv_from）。
+- UdpTransport 改为 “socket + peer 地址”，仍是一个 peer 的客户端端点。
+- sim/net/udp_hub.*：PeerTransport（共享 socket 的每 peer 收件队列）+ UdpPeerHub
+  （按源地址 demux；未知来源进有界队列，最多 64 条）。
+- sim/net/handshake.*：6 字节 HELLO（magic “BPH0” + 协议版本），版本不符直接忽略。
+
+### 2. 会话测试（并入闸门 8）
+
+- 真 UDP 环回、两个客户端、同一个 hub、服务器 2 名玩家。
+- 客户端先后 HELLO（间隔 20 ms），服务器按到达顺序分配槽位。
+- 结果：joined 1/1，snapshots 148/148，dev **0.00000 / 0.00000 m**。
+
+### 3. 意义
+
+- 这已经是“2 人局域网”的会话层：真 UDP、FULL_STATE 加入、多 peer demux、预测回滚。
+- 还差：独立进程/Godot 组局（UI、循环、远端渲染），以及 A1/A2/A5。
+
+### 4. 下一步
+
+1. 两进程 net_loop（--serve/--join）验证跨进程时钟。
+2. Godot 组局：--host/--connect、远端玩家用 SnapshotInterpolator 渲染。
+3. A1 信令 → A2 可靠流 → A5 票据。
