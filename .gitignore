@@ -26,6 +26,9 @@ desktop.ini
 *.a
 *.dll
 
+# backups (keep full-history bundles outside the repo)
+*.bundle
+
 # generated data
 /tools/move_metrics/out/
 *.csv
