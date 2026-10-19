@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "sim/core/world.h"
+#include "sim/game/hitbox.h"
 #include "sim/net/snapshot.h"
 #include "sim/net/transport.h"
 
@@ -73,6 +74,9 @@ public:
     int far_commands() const { return m_far_cmds; }
     int overflow_commands() const { return m_overflow_cmds; }
     int max_input_depth() const { return m_max_depth; }
+    const HitboxHistory& hitboxes(int player) const {
+        return m_hitboxes[static_cast<std::size_t>(player)];
+    }
 
 private:
     struct Link {
@@ -102,6 +106,7 @@ private:
     int m_far_cmds = 0;
     int m_overflow_cmds = 0;
     int m_max_depth = 0;
+    std::vector<HitboxHistory> m_hitboxes;
 };
 
 class NetClient {
@@ -122,6 +127,7 @@ public:
     uint32_t last_snapshot_tick() const { return m_last_snapshot_tick; }
     int corrections() const { return m_corrections; }
     float max_correction() const { return m_max_correction; }
+    const HitboxHistory& hitbox() const { return m_hitbox; }
     void reset_stats();
     ServerClock& clock() { return m_clock; }
 
@@ -154,6 +160,7 @@ private:
     int m_stale = 0;
     int m_corrections = 0;
     float m_max_correction = 0.0f;
+    HitboxHistory m_hitbox;
     ServerClock m_clock;
 };
 

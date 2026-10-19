@@ -60,6 +60,10 @@ try {
     & $exe --test-demo
     if ($LASTEXITCODE -ne 0) { throw 'demo test failed' }
 
+    Write-Host '== hitbox history ==' -ForegroundColor Cyan
+    & $exe --test-hitbox
+    if ($LASTEXITCODE -ne 0) { throw 'hitbox history test failed' }
+
     Write-Host '== bench ==' -ForegroundColor Cyan
     & $exe --bench 1000
     if ($LASTEXITCODE -ne 0) { throw 'bench failed' }

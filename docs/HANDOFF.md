@@ -7,7 +7,7 @@
 
 ## 0. 一句话总结
 
-从零搭起 M0–M4 全部、M5 的网络骨架、M6 的 HP/护甲规则；14 项 headless 行为闸门 + bench 全绿；
+从零搭起 M0–M4 全部、M5 的网络骨架、M6 的 HP/护甲规则；15 项 headless 行为闸门 + bench 全绿；
 Godot 4.5 宿主 + GDExtension 桥可运行。所有试玩反馈都已落回 sim 层并带回归测试。
 
 ---
@@ -99,6 +99,15 @@ Godot 4.5 宿主 + GDExtension 桥可运行。所有试玩反馈都已落回 sim
   InputWindow 丢弃迟到/重复；比历史更旧的快照直接忽略。
 - 证据：--test-net 回滚 1428 → 185；N3（5% 丢包 60 s）位置修正 0 次；偏差 0.00000 m。
 
+### S12 §7.3 hitbox 历史（2026-10-19）
+
+- sim/game/hitbox.*：HitboxSample（脚点 / 高 / 半径 / 蹲）+ 64 帧环形；
+  服务器与客户端每 tick 各记一条。
+- 三段按高度比例（0.82 / 0.45），倍率 **5 / 1 / 0.7**；蹲下高度变，分档自动跟随。
+- 回溯 `sample(tick, frac)` 在相邻两帧间插值（v0.4 §9.2）；缺下一帧不外推。
+- 判据：--test-hitbox（25 项）；--test-net 顺带断言服务器 newest == tick。
+- 成本：10 人 × 64 帧 × ~40 B ≈ 25 KB；bench p99 0.5 µs 不受影响。
+
 ---
 
 ## 2. 当前基线数字（2026-10-19）
@@ -135,14 +144,13 @@ Godot 4.5 宿主 + GDExtension 桥可运行。所有试玩反馈都已落回 sim
 
 ## 4. 没做完的事（按计划书顺序）
 
-1. §7.3 hitbox 历史环形缓冲（64 tick + 相邻帧插值）
-2. §7.7 full_state / 重连 / 中途加入
-3. §7.1 其他玩家 1 tick 插值
-4. 事件通道（§3.4）
-5. v0.4 M5 增量：B1 分片、A1 信令、A2 可靠流、A5 恢复
-6. M6：hitscan、后坐力表、三段判定、穿透、伤害衰减、hitmarker
-7. 跨机 demo 比对（缺第二台机器）
-8. 游戏内改键 UI、movement.toml 热重载
+1. §7.7 full_state / 重连 / 中途加入
+2. §7.1 其他玩家 1 tick 插值
+3. 事件通道（§3.4）
+4. v0.4 M5 增量：B1 分片、A1 信令、A2 可靠流、A5 恢复
+5. M6：hitscan、后坐力表、三段判定、穿透、伤害衰减、hitmarker
+6. 跨机 demo 比对（缺第二台机器）
+7. 游戏内改键 UI、movement.toml 热重载
 
 ---
 
@@ -150,7 +158,7 @@ Godot 4.5 宿主 + GDExtension 桥可运行。所有试玩反馈都已落回 sim
 
 ~~~powershell
 powershell -File tools\build.ps1
-powershell -File tools\smoke.ps1                 # 14 项行为闸门 + bench，必须 ALL GREEN
+powershell -File tools\smoke.ps1                 # 15 项行为闸门 + bench，必须 ALL GREEN
 
 build\headless_sim.exe --test-net                 # 网络收敛/回滚数
 build\headless_sim.exe --test-health              # 护甲规则与 TTK

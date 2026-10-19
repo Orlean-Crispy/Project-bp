@@ -503,4 +503,46 @@ C:\bp-toolchain\godot\Godot_v4.5-stable_win64.exe --path godot
 3. §7.1 其他玩家 1 tick 插值。
 4. v0.4 的 B1 分片 / A1 信令 / A2 可靠流 / A5 恢复。
 
+---
+
+## 2026-10-19 · S12 · §7.3 hitbox 历史（M6 的前置）
+
+### 1. 模块
+
+`sim/game/hitbox.h/.cpp`：
+
+| 类型/函数 | 内容 |
+|---|---|
+| `HitboxSample` | 脚点、高、半径、蹲标志、tick（倍率不入样本，避免两份真相） |
+| `hit_zone_at` / `zone_multiplier` | >0.82 h 头 ×5、>0.45 h 胸 ×1、其余腿 ×0.7 |
+| `hitbox_contains` | 径向 AABB + z 区间（M6 的命中查询直接用） |
+| `HitboxHistory` | 64 帧环形；`at(tick)` 精确/最近，`sample(tick, frac)` 相邻帧插值 |
+
+### 2. 集成
+
+- `NetServer`：每个玩家一条历史；init 记 tick 0，之后每 step 记一条。
+- `NetClient`：tick 0 + 预跑 4 个空 tick + 每次预测/回滚重放都记；为 v0.4 §9.3
+  的客户端预测命中保留同一份历史。
+- 回滚重放会覆盖被重算的 tick；这与“历史 = 最终预测”一致。
+
+### 3. 验收（--test-hitbox，进冒烟）
+
+25 项：精确帧 / 中点插值 / 不外推 / 三段边界（上下各一侧）/ 倍率 5·1·0.7 /
+蹲下 0.91 m 自动重分档 / 点在内、超半径、超头顶 / 环形 64 帧 oldest=6 newest=69 /
+被覆盖的 tick 夹到最旧。
+
+--test-net 追加断言：服务器 hitbox 帧数 64、newest == 服务器 tick（2000）。
+
+### 4. 为什么现在做而不是 M6
+
+计划书 §7.3 要求「第一天建」，因为**回溯命中的前提是历史存在**；M6 才写会同时改
+网络、判定、武器三处。现在只有 50 行，且立即被 --test-net 覆盖。
+
+### 5. 下一步
+
+1. §7.7 full_state / 重连 / 中途加入。
+2. §7.1 其他玩家 1 tick 插值。
+3. v0.4 的 B1 分片 / A1 信令 / A2 可靠流 / A5 恢复。
+4. M6：hitscan（用 hitbox 历史 + 回溯窗 6 tick）、后坐力表、穿透、衰减、hitmarker。
+
 - 护甲尚未接入 PlayerState / 快照 / 网络（M6 再挂）

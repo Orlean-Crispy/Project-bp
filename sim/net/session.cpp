@@ -161,6 +161,11 @@ bool NetServer::init(const std::string& map_path, const std::string& params_path
         m_world.players.push_back(p);
     }
     m_world.tick = 0;
+    m_hitboxes.assign(static_cast<std::size_t>(player_count), HitboxHistory{});
+    for (int i = 0; i < player_count; ++i) {
+        m_hitboxes[static_cast<std::size_t>(i)].record(
+            m_world.players[static_cast<std::size_t>(i)], m_world.params, 0);
+    }
     return true;
 }
 
@@ -242,6 +247,9 @@ void NetServer::step() {
         }
     }
     m_world.step(inputs, kDt);
+    for (std::size_t i = 0; i < m_world.players.size() && i < m_hitboxes.size(); ++i) {
+        m_hitboxes[i].record(m_world.players[i], m_world.params, m_world.tick);
+    }
 }
 
 void NetServer::send() {
@@ -298,6 +306,7 @@ bool NetClient::init(Transport* outgoing, Transport* incoming, int player_index,
     // Without the warm-up, the first snapshot would look like a mispredict and
     // every later comparison would be shifted by the lead.
     m_clock.align(0);
+    m_hitbox.record(m_local.players[0], m_local.params, 0);
     while (m_local.tick < m_clock.command_tick()) {
         const MoveInput none;
         m_local.step({none}, kDt);
@@ -306,6 +315,7 @@ bool NetClient::init(Transport* outgoing, Transport* incoming, int player_index,
         entry.state = m_local.players[0];
         entry.input = none;
         m_history.push_back(entry);
+        m_hitbox.record(m_local.players[0], m_local.params, m_local.tick);
     }
     return true;
 }
@@ -347,6 +357,7 @@ void NetClient::step_local() {
     entry.state = m_local.players[0];
     entry.input = m_last_input;
     m_history.push_back(entry);
+    m_hitbox.record(m_local.players[0], m_local.params, m_local.tick);
     if (m_history.size() > 128) m_history.erase(m_history.begin());
 }
 
@@ -405,6 +416,7 @@ void NetClient::apply_snapshot(const Snapshot& snap) {
         // forward gap (mid-match join) is allowed to snap.
         if (!m_history.empty() && snap.tick < m_history.front().tick) return;
         from_snap(auth, m_local.players[0]);
+        m_hitbox.record(m_local.players[0], m_local.params, snap.tick);
         return;
     }
 
@@ -428,6 +440,7 @@ void NetClient::apply_snapshot(const Snapshot& snap) {
     for (size_t i = index + 1; i < m_history.size(); ++i) {
         m_local.step({m_history[i].input}, kDt);
         m_history[i].state = m_local.players[0];
+        m_hitbox.record(m_local.players[0], m_local.params, m_local.tick);
     }
     m_history.erase(m_history.begin(), m_history.begin() + static_cast<long>(index));
 }

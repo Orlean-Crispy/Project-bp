@@ -46,6 +46,7 @@ struct Options {
     bool test_jump = false;
     bool test_net = false;
     bool test_health = false;
+    bool test_hitbox = false;
     bool test_bindings = false;
     bool print_keys = false;
     bool map_explicit = false;
@@ -91,6 +92,7 @@ void usage() {
         "  --test-jump       holding space must jump once, tapping must jump each time\n"
         "  --test-net        client/server over a 30%% loss link: prediction converges\n"
         "  --test-health     HP 100 + 25 / 25 regen / 50 armour damage and regen rules\n"
+        "  --test-hitbox     verify the 64-tick hitbox history and the 3-zone multipliers\n"
         "  --bench [n]       time n ticks and report mean/p99/max\n");
 }
 
@@ -1030,6 +1032,9 @@ struct NetRunStats {
     int max_depth = 0;
     int corrections = 0;
     float max_correction = 0.0f;
+    int hitbox_size = 0;
+    uint32_t hitbox_newest = 0;
+    uint32_t server_tick = 0;
 };
 
 sim::MoveInput net_test_input(int i) {
@@ -1092,6 +1097,9 @@ NetRunStats run_net_scenario(const std::string& data_path, float loss, float jit
     stats.far = server.far_commands();
     stats.overflow = server.overflow_commands();
     stats.max_depth = server.max_input_depth();
+    stats.server_tick = server.tick();
+    stats.hitbox_size = server.hitboxes(0).size();
+    stats.hitbox_newest = server.hitboxes(0).newest_tick();
 
     // Let both sides come to rest so positions are comparable without latency.
     client.reset_stats();
@@ -1100,6 +1108,87 @@ NetRunStats run_net_scenario(const std::string& data_path, float loss, float jit
     stats.deviation = sim::length(client.predicted().pos - server.world().players[0].pos);
     stats.ok = true;
     return stats;
+}
+
+int run_hitbox_test(const Options& opt) {
+    sim::MovementParams params;
+    std::vector<std::string> warnings;
+    std::string error;
+    if (!sim::load_movement_params(opt.data_path, params, warnings, error)) {
+        std::fprintf(stderr, "error: %s\n", error.c_str());
+        return 1;
+    }
+
+    int failures = 0;
+    auto check = [&](const char* what, bool ok) {
+        std::printf("  %-50s %s\n", what, ok ? "ok" : "FAIL");
+        if (!ok) ++failures;
+    };
+
+    sim::HitboxHistory history;
+    sim::PlayerState p;
+    p.pos = sim::Vec3(0.0f, 0.0f, 0.0f);
+    for (uint32_t t = 10; t <= 12; ++t) {
+        p.pos.x = static_cast<float>(t - 10);
+        history.record(p, params, t);
+    }
+
+    check("history records the sampled ticks", history.size() == 3);
+    check("exact frame lookup", history.at(11).pos.x == 1.0f);
+    const sim::HitboxSample mid = history.sample(11, 0.5f);
+    check("midpoint interpolation", std::fabs(mid.pos.x - 1.5f) < 1e-5f);
+    check("frac 0 returns the earlier frame", history.sample(11, 0.0f).pos.x == 1.0f);
+    check("no extrapolation past the newest frame", history.sample(12, 0.5f).tick == 12);
+
+    // Plan 6.8: head > 0.82 h, chest > 0.45 h. Standing h = 1.42 m.
+    const sim::HitboxSample stand = history.at(11);
+    check("standing height is 1.42 m", std::fabs(stand.height - 1.42f) < 1e-4f);
+    check("head band", sim::hit_zone_at(stand, 1.30f) == sim::HitZone::Head);
+    check("head multiplier is x5", sim::hit_multiplier(stand, 1.30f) == 5.0f);
+    check("chest band", sim::hit_zone_at(stand, 0.90f) == sim::HitZone::Chest);
+    check("leg band", sim::hit_zone_at(stand, 0.30f) == sim::HitZone::Legs);
+    check("leg multiplier is x0.7", sim::hit_multiplier(stand, 0.30f) == 0.7f);
+    check("just above the head line is head", sim::hit_zone_at(stand, 0.84f * 1.42f) ==
+                                                  sim::HitZone::Head);
+    check("just below the head line is chest", sim::hit_zone_at(stand, 0.80f * 1.42f) ==
+                                                   sim::HitZone::Chest);
+
+    // Crouching moves the bands with the hull (0.91 m), no special case.
+    p.crouched = true;
+    p.pos = sim::Vec3(0.0f, 0.0f, 0.0f);
+    history.record(p, params, 20);
+    const sim::HitboxSample crouch = history.at(20);
+    check("crouched height is 0.91 m", std::fabs(crouch.height - 0.91f) < 1e-4f);
+    check("crouched head band", sim::hit_zone_at(crouch, 0.80f) == sim::HitZone::Head);
+    check("crouched chest band", sim::hit_zone_at(crouch, 0.50f) == sim::HitZone::Chest);
+    check("crouched leg band", sim::hit_zone_at(crouch, 0.20f) == sim::HitZone::Legs);
+
+    const sim::Vec3 center = stand.pos;
+    check("point inside the hull",
+          sim::hitbox_contains(stand, sim::Vec3(center.x + 0.40f, center.y, center.z + 0.50f)));
+    check("point outside the radius",
+          !sim::hitbox_contains(stand, sim::Vec3(center.x + 0.41f, center.y, center.z + 0.50f)));
+    check("point above the head",
+          !sim::hitbox_contains(stand, sim::Vec3(center.x, center.y, center.z + 1.43f)));
+
+    // Plan 7.3 ring: 64 ticks = 1 s; older ticks are overwritten.
+    for (uint32_t t = 0; t <= 69; ++t) {
+        p.crouched = false;
+        p.pos = sim::Vec3(0.01f * static_cast<float>(t), 0.0f, 0.0f);
+        history.record(p, params, t);
+    }
+    check("ring keeps one second (64 ticks)", history.size() == 64);
+    check("oldest tick advances", history.oldest_tick() == 6);
+    check("newest tick is the last record", history.newest_tick() == 69);
+    check("overwritten tick clamps to the oldest", history.at(5).tick == 6);
+    check("wrapped lookup works", std::fabs(history.at(6).pos.x - 0.06f) < 1e-5f);
+
+    if (failures != 0) {
+        std::printf("FAIL: %d hitbox checks failed\n", failures);
+        return 1;
+    }
+    std::printf("PASS: hitbox history interpolates and the 3-zone bands follow crouch\n");
+    return 0;
 }
 
 int run_net_test(const Options& opt) {
@@ -1138,6 +1227,8 @@ int run_net_test(const Options& opt) {
     std::printf("              late %d   dup %d   far %d   overflow %d   dev %.5f m\n",
                 lossy.late, lossy.duplicate, lossy.far, lossy.overflow,
                 static_cast<double>(lossy.deviation));
+    std::printf("              hitbox %d frames, newest %u (server tick %u)\n",
+                lossy.hitbox_size, lossy.hitbox_newest, lossy.server_tick);
 
     if (lossy.deviation > 0.01f) {
         std::printf("FAIL: client and server disagree by more than 1 cm\n");
@@ -1166,6 +1257,11 @@ int run_net_test(const Options& opt) {
     }
     if (lossy.far != 0) {
         std::printf("FAIL: %d commands were outside the input window\n", lossy.far);
+        ++failures;
+    }
+    if (lossy.hitbox_size != sim::HitboxHistory::kCapacity ||
+        lossy.hitbox_newest != lossy.server_tick) {
+        std::printf("FAIL: server hitbox history is not one sample per tick\n");
         ++failures;
     }
 
@@ -1648,6 +1744,8 @@ int main(int argc, char** argv) {
             opt.test_net = true;
         } else if (arg == "--test-health") {
             opt.test_health = true;
+        } else if (arg == "--test-hitbox") {
+            opt.test_hitbox = true;
         } else if (arg == "--bench") {
             opt.bench = true;
             if (i + 1 < argc && argv[i + 1][0] != '-') opt.bench_ticks = std::atoi(argv[++i]);
@@ -1661,6 +1759,7 @@ int main(int argc, char** argv) {
         }
     }
 
+    if (opt.test_hitbox) return run_hitbox_test(opt);
     if (opt.test_health) return run_health_test(opt);
     if (opt.test_net) return run_net_test(opt);
     if (opt.test_jump) return run_jump_test(opt);
