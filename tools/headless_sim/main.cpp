@@ -1660,6 +1660,74 @@ int run_udp_session_check(const std::string& data_path) {
     return failures;
 }
 
+int run_clock_check(const std::string& data_path) {
+    const std::string map_path = "sim/data/maps/metrics_flat.map";
+    std::string error;
+
+    sim::NetServer server;
+    if (!server.init(map_path, data_path, 1, error)) {
+        std::printf("FAIL: clock server init: %s\n", error.c_str());
+        return 1;
+    }
+    sim::LoopbackTransport to_server(sim::NetConditions{}, 31);
+    sim::LoopbackTransport to_client(sim::NetConditions{}, 32);
+    server.add_client(&to_server, &to_client, 0);
+
+    sim::NetClient client;
+    if (!client.init(&to_server, &to_client, 0, map_path, data_path, error)) {
+        std::printf("FAIL: clock client init: %s\n", error.c_str());
+        return 1;
+    }
+
+    auto tick_once = [&](const sim::MoveInput& in) {
+        client.send_input(in);
+        client.step_local();
+        server.receive();
+        server.step();
+        server.send();
+        to_server.advance(0);
+        to_client.advance(0);
+        client.receive();
+    };
+
+    sim::MoveInput input;
+    input.forward = 1.0f;
+    input.yaw = 0.4f;
+    for (int i = 0; i < 120; ++i) tick_once(input);
+
+    // Simulate a client loop that ran faster than the server: six extra local
+    // ticks, each with its own command, so the lead grows by six.
+    for (int i = 0; i < 6; ++i) {
+        client.send_input(input);
+        client.step_local();
+    }
+    for (int i = 0; i < 240; ++i) tick_once(input);
+    for (int i = 0; i < 60; ++i) tick_once(sim::MoveInput{});
+
+    const float deviation = sim::length(client.predicted().pos - server.world().players[0].pos);
+    std::printf("  [clock] skips %d far %d dev %.5f m\n", client.clock_skips(),
+                server.far_commands(), static_cast<double>(deviation));
+
+    int failures = 0;
+    if (!client.joined()) {
+        std::printf("FAIL: clock client did not join\n");
+        ++failures;
+    }
+    if (client.clock_skips() == 0) {
+        std::printf("FAIL: forced drift did not trigger a clock skip\n");
+        ++failures;
+    }
+    if (server.far_commands() != 0) {
+        std::printf("FAIL: drift pushed commands outside the input window\n");
+        ++failures;
+    }
+    if (deviation > 0.01f) {
+        std::printf("FAIL: clock correction diverged\n");
+        ++failures;
+    }
+    return failures;
+}
+
 int run_net_test(const Options& opt) {
     int failures = 0;
 
@@ -1668,6 +1736,7 @@ int run_net_test(const Options& opt) {
     failures += run_udp_check();
     failures += run_fragment_check();
     failures += run_udp_session_check(opt.data_path);
+    failures += run_clock_check(opt.data_path);
 
     // v0.4 5.2: duplicates, late and far commands never enter the queue twice.
     {

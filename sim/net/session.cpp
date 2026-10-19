@@ -368,6 +368,9 @@ void NetClient::apply_full_state(const Snapshot& snap) {
     ++m_full_states;
     m_join_tick = snap.tick;
     m_join_failed = false;
+    m_ahead_min = 1000000;
+    m_skip_cooldown = 0;
+    m_skip_next = false;
 
     // Everything predicted before the join/reconnect refers to a different
     // history; drop it rather than trying to reconcile it.
@@ -409,6 +412,7 @@ void NetClient::apply_full_state(const Snapshot& snap) {
 
 void NetClient::send_input(const MoveInput& input) {
     if (!m_joined) return;  // no tick axis until FULL_STATE arrives
+    if (m_skip_next) return;  // clock correction: hold this loop, send nothing
     m_last_input = input;
     InputCmd cmd;
     cmd.tick = m_clock.command_tick();
@@ -426,6 +430,14 @@ void NetClient::send_input(const MoveInput& input) {
 
 void NetClient::step_local() {
     if (!m_joined) return;
+    if (m_skip_next) {
+        // Plan 7.0: when the client has drifted ahead, skip one loop. The world
+        // simply does not advance this iteration; commands stay labelled by
+        // their own tick, so there is no gap and no history repair.
+        m_skip_next = false;
+        return;
+    }
+    if (m_skip_cooldown > 0) --m_skip_cooldown;
     // Prediction uses exactly the input that was just sent, on the server's tick
     // axis; the clock advances with the world so the two never drift apart.
     m_local.step({m_last_input}, kDt);
@@ -508,6 +520,16 @@ void NetClient::receive() {
         m_recent[snap.tick] = snap;
         while (m_recent.size() > 64) m_recent.erase(m_recent.begin());
         m_remote.push(snap);
+
+        if (m_local.tick > snap.tick) {
+            const int ahead = static_cast<int>(m_local.tick - snap.tick);
+            if (ahead < m_ahead_min) m_ahead_min = ahead;
+            if (ahead > m_ahead_min + 3 && m_skip_cooldown == 0) {
+                m_skip_next = true;
+                m_skip_cooldown = 32;
+                ++m_clock_skips;
+            }
+        }
 
         if (m_player < 0 || m_player >= static_cast<int>(snap.players.size())) continue;
         apply_snapshot(snap);

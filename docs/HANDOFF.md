@@ -184,6 +184,12 @@ Godot 4.5 宿主 + GDExtension 桥可运行。所有试玩反馈都已落回 sim
 - 启动 LAN 菜单：Host / Join（IP+端口）/ Single player；--menu 可在 headless 下构建。
 - 菜单打开时暂停 tick；CLI 与 run_net_demo.ps1 保持可用。
 - headless --menu 输出 "net menu open"，无脚本错误。
+### S23 客户端时钟漂移纠正（2026-10-19）
+
+- 客户端按快照 ahead 的最小值检测漂移；超过 min+3 且冷却结束时跳过下一次循环
+  （不发命令、不推进），领先量永久减 1，无 tick 空洞、无历史修复。
+- 强制漂移测试：skips=3、far=0、dev 0.00000 m；12 秒两进程 far=0，最终位置一致。
+- 实测环境 12 秒内自然漂移未越阈值（skips=0）；纠正作为长局保险。
 
 ---
 

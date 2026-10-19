@@ -148,6 +148,7 @@ public:
     int stale_skips() const { return m_stale; }
     uint32_t last_snapshot_tick() const { return m_last_snapshot_tick; }
     int corrections() const { return m_corrections; }
+    int clock_skips() const { return m_clock_skips; }
     float max_correction() const { return m_max_correction; }
     bool joined() const { return m_joined; }
     int player_index() const { return m_player; }
@@ -194,6 +195,10 @@ private:
     float m_max_correction = 0.0f;
     bool m_joined = false;
     bool m_join_failed = false;
+    int m_ahead_min = 1000000;
+    int m_skip_cooldown = 0;
+    bool m_skip_next = false;
+    int m_clock_skips = 0;
     int m_full_states = 0;
     uint32_t m_join_tick = 0;
     uint32_t m_join_id = 0;

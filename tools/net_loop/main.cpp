@@ -152,10 +152,10 @@ int run_client(const Options& opt) {
             last_report = now;
             const auto& p = client.predicted();
             const double elapsed = std::chrono::duration<double>(now - start).count();
-            std::printf("t=%.1f tick=%d local=%u clock=%u sent=%u join=%u full=%d joined=%d snapshots=%d slot=%d pos=%.3f,%.3f,%.3f\n",
+            std::printf("t=%.1f tick=%d local=%u clock=%u sent=%u skips=%d join=%u full=%d joined=%d snapshots=%d slot=%d pos=%.3f,%.3f,%.3f\n",
                         elapsed, tick, client.tick(), client.clock().command_tick(),
-                        client.last_sent_tick(), client.join_tick(), client.full_states(),
-                        client.joined() ? 1 : 0,
+                        client.last_sent_tick(), client.clock_skips(), client.join_tick(),
+                        client.full_states(), client.joined() ? 1 : 0,
                         client.snapshots_received(), client.player_index(),
                         static_cast<double>(p.pos.x), static_cast<double>(p.pos.y),
                         static_cast<double>(p.pos.z));
