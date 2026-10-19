@@ -18,6 +18,7 @@
 #include "sim/demo/demo.h"
 #include "sim/input/bindings.h"
 #include "sim/game/combat.h"
+#include "sim/net/fragment.h"
 #include "sim/net/session.h"
 #include "sim/net/transport.h"
 #include "sim/net/udp_transport.h"
@@ -1483,12 +1484,68 @@ int run_udp_check() {
     return failures;
 }
 
+int run_fragment_check() {
+    int failures = 0;
+    sim::NetConditions clean;
+    sim::LoopbackTransport link(clean, 11);
+    sim::FragmentedTransport fa(link);
+    sim::FragmentedTransport fb(link);
+
+    auto pump = [&] {
+        for (int k = 0; k < 4; ++k) link.advance(0);
+    };
+
+    std::vector<uint8_t> big(3000);
+    for (size_t i = 0; i < big.size(); ++i) {
+        big[i] = static_cast<uint8_t>((i * 13 + 7) & 0xFF);
+    }
+    std::vector<uint8_t> got;
+    fa.send(big);
+    pump();
+    const bool big_ok = fb.recv(got) && got == big;
+
+    const std::vector<uint8_t> small = {1, 2, 3, 4};
+    fa.send(small);
+    pump();
+    const bool small_ok = fb.recv(got) && got == small;
+
+    // Incomplete fragment sets must vanish, never arrive truncated or mixed.
+    sim::NetConditions lossy;
+    lossy.loss = 0.30f;
+    sim::LoopbackTransport lossy_link(lossy, 21);
+    sim::FragmentedTransport lfa(lossy_link);
+    sim::FragmentedTransport lfb(lossy_link);
+    int delivered = 0;
+    int corrupted = 0;
+    for (int i = 0; i < 20; ++i) {
+        std::vector<uint8_t> payload(2500, static_cast<uint8_t>(i + 1));
+        lfa.send(payload);
+        for (int k = 0; k < 4; ++k) lossy_link.advance(0);
+        while (lfb.recv(got)) {
+            if (got.size() != payload.size() || got != payload) {
+                ++corrupted;
+            } else {
+                ++delivered;
+            }
+        }
+    }
+
+    std::printf("  [fragment] 3000B %d small %d lossy delivered %d corrupted %d\n", big_ok,
+                small_ok, delivered, corrupted);
+    if (!big_ok || !small_ok || corrupted != 0) {
+        std::printf("FAIL: fragment reassembly is wrong\n");
+        ++failures;
+    }
+    return failures;
+}
+
 int run_net_test(const Options& opt) {
     int failures = 0;
 
     // The real transport is exercised first: the deterministic loopback tests
     // above it are meaningless if a datagram cannot leave the process.
     failures += run_udp_check();
+    failures += run_fragment_check();
 
     // v0.4 5.2: duplicates, late and far commands never enter the queue twice.
     {

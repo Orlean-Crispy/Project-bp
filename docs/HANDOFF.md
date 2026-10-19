@@ -151,6 +151,12 @@ Godot 4.5 宿主 + GDExtension 桥可运行。所有试玩反馈都已落回 sim
 - CMake 仅 WIN32 链接 ws2_32；Loopback 保留给确定性闸门。
 - 证据：--test-net 的 [udp] hello/adopt/pong/1200B/empty-poll 全过。
 - 边界：一个 transport 一个 peer；Godot 组局与多 peer 适配是下一步。
+### S18 B1 快照分片（2026-10-19）
+
+- sim/net/fragment.*：FragmentedTransport 装饰器；小包零开销透传，大包按 1100 B 切片，
+  5 B 头（marker/id/index/total），接收端按 id 重组，半包绝不交付。
+- 3000 B 往返一致、小包透传；30% 丢包 20 个 2500 B 包：送达 9、损坏 0。
+- 尚未接组局路径；届时 FragmentedTransport(UdpTransport) 包一层即可。
 
 ---
 
@@ -172,6 +178,7 @@ Godot 4.5 宿主 + GDExtension 桥可运行。所有试玩反馈都已落回 sim
 | 远端插值 | 32 帧缓冲（0.5 s），中点插值 1.5 m / 8.5 m |
 | 事件通道 | 1024 环，溢出丢 76；Godot 收到 land/jump/land |
 | 真实 UDP | 回环 hello/pong/1200 B 往返全过 |
+| 分片 | 3000 B 往返一致；30% 丢包下 0 损坏 |
 | 护甲 | 25 / 25 再生 / 50；吸收 66% |
 | demo | ~28 B/tick；600 tick ≈ 17 KB |
 

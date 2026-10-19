@@ -756,3 +756,34 @@ CMake 只在 WIN32 链接 ws2_32，不污染 sim 的其它目标。
 1. 组局：headless server 或 Godot listen server + 客户端连接；多 peer 适配。
 2. B1 分片（v0.4，MTU 1200）——大包（full_state/config）必经。
 3. A2 可靠流 + configstring 分块 → A1 信令 → A5 票据。
+---
+
+## 2026-10-19 · S18 · B1 快照分片（MTU 1200）
+
+### 1. 实现
+
+- sim/net/fragment.*：FragmentedTransport 装饰器，可包住任意 Transport。
+- 小包（≤1100 B）原样透传，零分配；大包按 1100 B 切片：
+  [0xF0][id lo][id hi][index][total][chunk]。
+- 接收端按 id 重组；同 id 重复片忽略；新 id 到来时未完成的旧包直接丢弃并计数，
+  **绝不把半包交给上层**。
+- 最大 255 片（≈280 KB）；超过直接丢弃（设计上限，不是错误路径）。
+
+### 2. 验收（并入闸门 8）
+
+- 3000 B → 3 片，往返逐字节一致。
+- 4 B 小包透传。
+- 30% 丢包 × 20 个 2500 B 包：完整送达 9 个，**0 个损坏/截断**。
+
+### 3. 边界
+
+- 装饰器尚未在组局路径启用；等 Godot/UDP 组局时用 FragmentedTransport(UdpTransport)
+  包一层即可，NetServer/NetClient 不用改。
+- “丢一片整包等下一 tick”由上层语义保证：重组不出完整包就 recv 不到数据，
+  快照自然等下一份。
+
+### 4. 下一步
+
+1. Godot 组局（多 peer UDP + 服务端循环 + 远端渲染）。
+2. A1 信令 → A2 可靠流 → A5 票据。
+3. M6。

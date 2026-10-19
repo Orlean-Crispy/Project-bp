@@ -31,7 +31,7 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 | M2 基础 pmove | ✅ | 走/跑/跳/蹲、step-up、蹲下空间、Q3 对标数值 |
 | M3 parkour | ✅ 首版 | slide / dash / wallrun / wallclimb / vault，全部有 headless 闸门 |
 | M4 demo 与跨机比对 | ✅ 同机 / ⏸ 跨机 | 录制回放、逐 tick 哈希、dump 比对工具就绪；**跨机需要第二台机器** |
-| M5 网络 | 🔶 部分 | 不可靠通道 + delta + 预测回滚 + 时间对齐 + 去重 + hitbox + 加入/重连 + 远端插值 + 事件通道 + **真实 UDP**已通；**A1/A2/B1 与组局未做** |
+| M5 网络 | 🔶 部分 | 不可靠通道 + delta + 预测回滚 + 时间对齐 + 去重 + hitbox + 加入/重连 + 远端插值 + 事件通道 + 真实 UDP + **B1 分片**已通；**A1/A2 与组局未做** |
 | M6 射击 | 🔶 起步 | HP/护甲规则已实现；hitscan、后坐力表、三段判定、穿透未做 |
 | M7 打磨 / M8 视角模型 | ❌ | 未开始 |
 
@@ -140,7 +140,7 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 | 5 | 台阶/蹲下 | 0.20/0.35/0.45 可上、0.55 挡住、1.0 m 净高不能站 | --test-step |
 | 6 | 跳跃语义 | 按住 300 tick 只跳 1 次；点按 3 次跳 3 次 | --test-jump |
 | 7 | HP/护甲 | 规则与 TTK 落在 0.6–1.2 s | --test-health |
-| 8 | 网络收敛 + 去重 + 加入 + 插值 + UDP | 30% 丢包偏差 < 0.01 m、回滚 < 500；N3 修正 < 3；加入/重连 < 0.01 m；插值正确；真实 UDP 往返 | --test-net |
+| 8 | 网络收敛 + 去重 + 加入 + 插值 + UDP + 分片 | 30% 丢包偏差 < 0.01 m、回滚 < 500；N3 修正 < 3；加入/重连 < 0.01 m；插值正确；UDP 往返；3000 B 分片往返且 0 损坏 | --test-net |
 | 9 | 卡死恢复 | 从 brush 内部出生能自行脱困 | --test-stuck |
 | 10 | 乱按压力 | 6000 tick 乱按，最长连续实心 ≤ 2 | --test-soak |
 | 11 | 平台边缘 | 落到边缘后仍能继续走 | --test-edge |
@@ -158,8 +158,8 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 
 1. **真实网络组局** — UdpTransport 目前一个对象一个 peer；需要共享 socket + 每 peer 队列、
    headless/listen server 循环、客户端连接与远端玩家渲染。lead：现在。
-2. **v0.4 的 M5 增量** — B1 快照分片（MTU 1200）、A1 信令、A2 可靠流 + configstring
-   分块、A5 重连票据；v0.4 §12 估算 +6.5 天。lead：组局之后。
+2. **v0.4 的 M5 增量** — A1 信令、A2 可靠流 + configstring 分块、A5 重连票据；
+   B1 分片已完成。v0.4 §12 估算 +6.5 天。lead：组局之后。
 3. **M6 射击** — hitscan、后坐力表、三段部位判定（hitbox 已就绪）、穿透、伤害衰减、
    hitmarker 全未做。护甲的**吸收比例 66%** 与**再生 5 s / 10 s** 是提案值，需要确认。
 4. **Godot 版本** — 计划书写 4.7 Mono，但 godot-cpp 最高只有 4.5，现用 4.5。
@@ -305,6 +305,8 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
   在相邻两帧间插值 pos/vel；超出范围夹到最近帧、不外推；客户端每收一份快照就 push。
 - 传输：LoopbackTransport 用于确定性闸门；UdpTransport（非阻塞 Winsock，客户端 connect_peer、
   服务端 recv_from→adopt_peer）用于真实局域网；一个对象一个 peer。
+- 分片（v0.4 B1）：FragmentedTransport 包住任意 Transport；≤1100 B 透传，以上切成
+  5 B 头（marker/id/index/total）的片；接收端按 id 重组，半包绝不交付，新 id 丢弃旧包。
 - 判据：30% 丢包 2000 tick 回滚 51（曾 1428）；5% 丢包 60 s 位置修正 0 次；
   中途加入（tick 202）与重连（tick 701）偏差 0.00000 m；参数哈希不同被拒绝；
   远端缓冲 32 帧、newest == 最后一份快照。
@@ -376,7 +378,7 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
 ## 11. 下一步（严格按计划书顺序，不要跳）
 
 1. **Godot 组局**：多 peer UDP 适配、headless/listen server、客户端连接与远端玩家渲染。
-2. **v0.4 M5 增量**：B1 分片 → A1 信令 → A2 可靠流 → A5 重连票据（按 v0.4 §12 的顺序）。
+2. **v0.4 M5 增量**：A1 信令 → A2 可靠流 → A5 重连票据（B1 分片已完成）。
 3. **M6 射击**：hitscan + 后坐力表 + 三段部位判定（hitbox 已就绪，×5 / ×1 / ×0.7）
    + 穿透 + 伤害衰减；TTK 用 100 HP / 三甲复算。
 4. **M7 / M8**：动画、视角模型、音频垂直定位（§9.2 的楼层低通）。

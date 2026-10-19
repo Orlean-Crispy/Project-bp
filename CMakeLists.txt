@@ -34,6 +34,7 @@ add_library(sim STATIC
   sim/demo/demo.cpp
   sim/net/transport.cpp
   sim/net/udp_transport.cpp
+  sim/net/fragment.cpp
   sim/net/netchan.cpp
   sim/net/snapshot.cpp
   sim/net/interp.cpp
