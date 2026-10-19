@@ -31,7 +31,7 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 | M2 基础 pmove | ✅ | 走/跑/跳/蹲、step-up、蹲下空间、Q3 对标数值 |
 | M3 parkour | ✅ 首版 | slide / dash / wallrun / wallclimb / vault，全部有 headless 闸门 |
 | M4 demo 与跨机比对 | ✅ 同机 / ⏸ 跨机 | 录制回放、逐 tick 哈希、dump 比对工具就绪；**跨机需要第二台机器** |
-| M5 网络 | 🔶 部分 | 不可靠通道 + delta + 预测回滚 + 时间对齐 + 去重 + hitbox + 加入/重连 + 远端插值 + 事件通道 + 真实 UDP + B1 分片 + **多 peer 会话（2 客户端）**已通；**独立进程/Godot 组局、A1/A2 未做** |
+| M5 网络 | 🔶 部分 | 不可靠通道 + delta + 预测回滚 + 时间对齐 + 去重 + hitbox + 加入/重连 + 远端插值 + 事件通道 + 真实 UDP + B1 分片 + 多 peer 会话 + **两进程 net_loop**已通；**Godot 组局、A1/A2 未做** |
 | M6 射击 | 🔶 起步 | HP/护甲规则已实现；hitscan、后坐力表、三段判定、穿透未做 |
 | M7 打磨 / M8 视角模型 | ❌ | 未开始 |
 
@@ -156,8 +156,8 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 
 ## 4. 未结案（按优先级，每条必须有 lead）
 
-1. **真实网络组局** — 多 peer hub 与 2 客户端会话已通；仍缺两进程 net_loop、
-   Godot --host/--connect、远端玩家渲染与连接 UI。lead：现在。
+1. **真实网络组局** — 多 peer hub、2 客户端会话、两进程 net_loop 已通；
+   仍缺 Godot --host/--connect、远端玩家渲染、连接 UI 与客户端时钟漂移纠正。lead：现在。
 2. **v0.4 的 M5 增量** — A1 信令、A2 可靠流 + configstring 分块、A5 重连票据；
    B1 分片已完成。v0.4 §12 估算 +6.5 天。lead：组局之后。
 3. **M6 射击** — hitscan、后坐力表、三段部位判定（hitbox 已就绪）、穿透、伤害衰减、
@@ -244,7 +244,7 @@ sim/game/        combat：HP 100 + 三种护甲（数据驱动）
 sim/data/        movement.toml、combat.toml、keybinds.toml、maps/*.map
 bridge/          GDExtension 桥（唯一跨边界层）
 godot/           project.godot / main.tscn / main.gd / breakpoint.gdextension
-tools/           headless_sim（所有闸门）、move_metrics、build/smoke/build_bridge/run_demo/setup 脚本
+tools/           headless_sim（所有闸门）、move_metrics、net_loop（两进程联机）、build/smoke/build_bridge/run_demo/setup 脚本
 docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/、decisions/、keymap.md、demo-format.md、计划书_v0.3.md
 ```
 
@@ -296,8 +296,9 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
 - 客户端：本地预测 + 128 tick 历史 + 回滚重放；命令包带最近 4 个输入。
 - 时间轴：客户端 = 服务器 tick + 4（单程 30 ms ≈ 2 tick + 2 tick 前瞻）；初始化时
   预跑 4 个空 tick，复刻服务器在首个命令到达前的状态。
-- 服务器：InputWindow 只接受 [last+1, last+8]；重复丢弃不记日志；迟到丢弃并只计一次；
-  队列 >4 丢最旧；tick T 没有输入就沿用上一个。
+- 服务器：InputWindow 是“早到窗口”（16）不是延迟缓冲：接受 [last+1, last+16]；重复丢弃
+  不记日志；迟到丢弃并只计一次；tick T 没有输入就沿用上一个。客户端领先 7 tick
+  （lead 4 + join slack 3），窗口必须大于它，否则会丢掉下一 tick 要执行的命令。
 - 加入/重连（§7.7）：新链路 pending_full_state，每 tick 发 FULL_STATE
   （join_id + player + params_hash + geometry_hash + 全量快照），收到“未来 tick”的命令
   才转正常 delta；客户端重置历史、tick = 快照 tick + 7（3 传输余量 + 4 lead）后预跑。
@@ -309,7 +310,8 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
   5 B 头（marker/id/index/total）的片；接收端按 id 重组，半包绝不交付，新 id 丢弃旧包。
 - 多 peer：UdpSocket 共享 + UdpPeerHub 按源地址 demux；PeerTransport 每 peer 一个收件队列；
   未知来源进有界队列（64），HELLO（6 B，magic “BPH0” + 协议版本）通过后才 add_peer。
-- 判据：真 UDP 环回 2 客户端 joined 1/1、148/148 快照、偏差 0.00000 m。
+- 判据：真 UDP 环回 2 客户端 joined 1/1、148/148 快照、偏差 0.00000 m；
+  两进程 net_loop：joins=2、accepted=417、far=0、moved=46.86 m。
 - 判据：30% 丢包 2000 tick 回滚 51（曾 1428）；5% 丢包 60 s 位置修正 0 次；
   中途加入（tick 202）与重连（tick 701）偏差 0.00000 m；参数哈希不同被拒绝；
   远端缓冲 32 帧、newest == 最后一份快照。
@@ -380,7 +382,7 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
 
 ## 11. 下一步（严格按计划书顺序，不要跳）
 
-1. **两进程 + Godot 组局**：net_loop（--serve/--join）、--host/--connect、远端玩家渲染。
+1. **Godot 组局**：--host/--connect、远端玩家渲染、连接 UI；客户端时钟漂移纠正。
 2. **v0.4 M5 增量**：A1 信令 → A2 可靠流 → A5 重连票据（B1 分片已完成）。
 3. **M6 射击**：hitscan + 后坐力表 + 三段部位判定（hitbox 已就绪，×5 / ×1 / ×0.7）
    + 穿透 + 伤害衰减；TTK 用 100 HP / 三甲复算。
@@ -393,5 +395,5 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
 1. `git log --oneline -5` 看最后几个提交。
 2. `git status` 看有没有未提交的半成品。
 3. 跑 smoke；**红的那一项就是当前战场**。
-4. 读 PROGRESS 最后一节（S18 分片 / S19 多 peer 会话）与 HANDOFF.md。
+4. 读 PROGRESS 最后一节（S19 多 peer 会话 / S20 两进程）与 HANDOFF.md。
 5. 不要从头重做已完成的东西；本文件 §0.2 就是进度表。

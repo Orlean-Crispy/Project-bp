@@ -815,3 +815,35 @@ CMake 只在 WIN32 链接 ws2_32，不污染 sim 的其它目标。
 1. 两进程 net_loop（--serve/--join）验证跨进程时钟。
 2. Godot 组局：--host/--connect、远端玩家用 SnapshotInterpolator 渲染。
 3. A1 信令 → A2 可靠流 → A5 票据。
+---
+
+## 2026-10-19 · S20 · 两进程 net_loop + 输入窗口修复
+
+### 1. 工具
+
+- tools/net_loop（--serve/--join）：真 UDP 服务端 + 两个客户端进程，64 Hz。
+- tools/net_selftest.ps1：起 1 服务器 + 2 客户端，校验 join、输入应用、快照流。
+- 结果：joins=2 accepted=417 far=0 moved=46.86m clients_ok=True。
+
+### 2. 抓到的真 bug
+
+- 现象：两进程下服务器玩家不动，客户端贴着出生点。
+- 诊断：acc 停在 8、cmd0 停在 52，dup 每 tick 涨；seen 却一直跟上客户端。
+- 根因：客户端领先 7 tick（lead 4 + join slack 3），输入窗口只有 8、队列只有 4；
+  每来一个新 tick 就“丢最旧”，丢掉的正是服务器下一 tick 要执行的命令。
+  进程内测试两条循环严格同步，掩盖了它（服务器一直没执行输入，偏差仍是 0）。
+- 修复：InputWindow 的窗口与队列都改为 16；窗口是“早到窗口”不是延迟缓冲，
+  命令仍按自己的 tick 执行，延迟不变。
+- 证据：修复后 acc 持续增长、depth 7–8、far=0；服务器两名玩家都跑起来。
+
+### 3. 已知
+
+- 客户端时钟相对服务器仍有 ~1 tick/s 漂移（两进程 sleep_until 节奏不同）；
+  16 tick 窗口能扛十几秒，长局需要 §7.0 的漂移纠正（减速/丢 cmd）。
+- net_selftest 不进 smoke：依赖墙钟调度。
+
+### 4. 下一步
+
+1. Godot --host/--connect + 远端渲染（复用 SnapshotInterpolator）。
+2. 客户端时钟漂移纠正。
+3. A1/A2/A5 → M6。

@@ -99,7 +99,7 @@ v0.1 定义：**两个人、局域网、1 张 40×40 图、对枪 10 分钟不�
 | 里程碑 | 状态 |
 |---|---|
 | M0–M4 | ✅（M4 跨机比对缺第二台机器） |
-| M5 | 🔶 不可靠通道/delta/预测回滚/时间对齐/输入去重/hitbox/full_state·加入·重连/远端插值/事件通道/真实 UDP/**多 peer 会话（2 客户端）**已通；**独立进程/Godot 组局、A1/A2 未做** |
+| M5 | 🔶 不可靠通道/delta/预测回滚/时间对齐/输入去重/hitbox/full_state·加入·重连/远端插值/事件通道/真实 UDP/多 peer 会话/**两进程 net_loop**已通；**Godot 组局、A1/A2 未做** |
 | M6 | 🔶 仅 HP/护甲规则（HP 100；甲 25/25 再生/50） |
 | M7/M8 | ❌ |
 
@@ -112,7 +112,7 @@ v0.1 定义：**两个人、局域网、1 张 40×40 图、对枪 10 分钟不�
 
 ## 3. 下一步（严格按计划书顺序，禁止跳步）
 
-1. 两进程 + Godot 组局：net_loop（--serve/--join）、--host/--connect、远端玩家渲染。
+1. Godot 组局：--host/--connect、远端玩家渲染、连接 UI；客户端时钟漂移纠正。
 2. v0.4 的 M5 增量：A1 信令、A2 可靠流 + configstring 分块、A5 重连票据。
 3. M6：hitscan、后坐力表、三段判定（hitbox 已就绪）、穿透、伤害衰减、hitmarker。
 4. M7/M8。
@@ -151,7 +151,7 @@ powershell -File tools\run_demo.ps1     # Godot demo
 | docs/网络层深化_v0.4.md | §7 网络专章：A1–A5 / B1–B3 / 冲突裁决 C1–C3 / N1–N8 判据 |
 | docs/8.3候选B_v0.4.md | §8.3 选定方案：可破坏入口、0.5 m 四档、时间预算 |
 | docs/AGENTS.md | 详细约束、判据、未结案、环境、文件地图 |
-| docs/HANDOFF.md | 本会话完整交接（S01–S17、每个坑的根因与证据） |
+| docs/HANDOFF.md | 本会话完整交接（S01–S20、每个坑的根因与证据） |
 | docs/PROGRESS.md | 进度日志（每节：做了什么/结论/下一步） |
 | docs/pitfalls/ | 事故案例（3 篇） |
 | docs/decisions/ | ADR（护甲 / 网络时间轴） |

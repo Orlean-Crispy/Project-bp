@@ -96,25 +96,32 @@ void ServerClock::align(uint32_t server_tick) {
     m_initialized = true;
 }
 
+// The queue is an earliness window, not a latency buffer: a command labelled T is
+// applied at tick T no matter how early it arrives. Clients run kInputLead (4)
+// plus join slack (3) ahead, so the window must comfortably exceed 7 or the
+// oldest entry would be evicted before its tick is executed.
+static constexpr uint32_t kWindowTicks = 16;
+static constexpr std::size_t kWindowDepth = 16;
+
 InputWindow::Result InputWindow::push(uint32_t tick, const MoveInput& input) {
     if (tick <= m_last_executed) {
         // Already executed. A resend of a tick that was applied is the normal
         // redundancy path; one that arrives after a tick executed without input
         // is a genuine late command and is counted once.
         const uint32_t age = m_last_executed - tick;
-        if (age >= 16) return Result::Duplicate;
+        if (age >= kWindowTicks) return Result::Duplicate;
         const uint16_t bit = static_cast<uint16_t>(1u << age);
         if ((m_executed_seen & bit) != 0) return Result::Duplicate;
         m_executed_seen = static_cast<uint16_t>(m_executed_seen | bit);
         return Result::Late;
     }
     const uint32_t offset = tick - m_last_executed - 1;
-    if (offset >= 8) return Result::TooFar;
+    if (offset >= kWindowTicks) return Result::TooFar;
     const uint16_t bit = static_cast<uint16_t>(1u << offset);
     if ((m_seen & bit) != 0) return Result::Duplicate;
 
     bool overflow = false;
-    if (m_queue.size() >= 4) {  // Plan 7.9: more than 4 buffered ticks is pathological.
+    if (m_queue.size() >= kWindowDepth) {  // pathological earliness only
         m_queue.erase(m_queue.begin());
         overflow = true;
     }
@@ -126,9 +133,9 @@ InputWindow::Result InputWindow::push(uint32_t tick, const MoveInput& input) {
 bool InputWindow::take(uint32_t tick, MoveInput& out) {
     if (tick > m_last_executed) {
         const uint32_t steps = tick - m_last_executed;
-        m_seen = steps >= 16 ? 0 : static_cast<uint16_t>(m_seen >> steps);
+        m_seen = steps >= kWindowTicks ? 0 : static_cast<uint16_t>(m_seen >> steps);
         m_executed_seen =
-            steps >= 16 ? 0 : static_cast<uint16_t>(m_executed_seen << steps);
+            steps >= kWindowTicks ? 0 : static_cast<uint16_t>(m_executed_seen << steps);
         m_last_executed = tick;
     }
     const auto it = m_queue.find(tick);
@@ -213,12 +220,15 @@ void NetServer::receive() {
             for (const InputCmd& cmd : cmds) {
                 link.has_command = true;
                 link.last_cmd_seq = header.seq;
+                link.last_seen_tick = cmd.tick;
                 switch (link.inputs.push(cmd.tick, cmd.input)) {
                     case InputWindow::Result::Accepted:
                         // A command for a future tick proves the client has
                         // received the full state; stale packets cannot, because
                         // they resolve to Late below.
                         link.pending_full_state = false;
+                        link.last_cmd_tick = cmd.tick;
+                        ++m_accepted_cmds;
                         break;
                     case InputWindow::Result::Overflow:
                         ++m_overflow_cmds;  // pathological jitter

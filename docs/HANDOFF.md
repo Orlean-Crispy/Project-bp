@@ -164,6 +164,13 @@ Godot 4.5 宿主 + GDExtension 桥可运行。所有试玩反馈都已落回 sim
 - 闸门 8 新增：真 UDP 环回、两个客户端、同一 hub、2 名服务器玩家。
 - 结果：joined 1/1、snapshots 148/148、dev 0.00000 / 0.00000 m。
 - 仍在一个进程内；下一步是两进程 net_loop 与 Godot --host/--connect。
+### S20 两进程 net_loop + 输入窗口修复（2026-10-19）
+
+- tools/net_loop（--serve/--join）+ tools/net_selftest.ps1：真 UDP、64Hz、两客户端进程。
+- 抓到：服务器不执行输入。acc 卡在 8、cmd0 卡在 52；根因是窗口 8 / 队列 4 小于
+  客户端领先的 7 tick，每次插入新 tick 都丢掉下一 tick 要执行的命令。
+- 修复：InputWindow 窗口与队列都改为 16（早到窗口，不是延迟缓冲）。
+- 证据：joins=2、accepted=417、far=0、moved=46.86m、clients_ok。
 
 ---
 
@@ -187,6 +194,7 @@ Godot 4.5 宿主 + GDExtension 桥可运行。所有试玩反馈都已落回 sim
 | 真实 UDP | 回环 hello/pong/1200 B 往返全过 |
 | 分片 | 3000 B 往返一致；30% 丢包下 0 损坏 |
 | UDP 双人会话 | 2 客户端 joined、148/148 快照、偏差 0.00000 m |
+| 两进程 | joins=2、accepted=417、far=0、moved=46.86 m |
 | 护甲 | 25 / 25 再生 / 50；吸收 66% |
 | demo | ~28 B/tick；600 tick ≈ 17 KB |
 

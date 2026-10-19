@@ -75,3 +75,6 @@ target_link_libraries(headless_sim PRIVATE sim)
 add_executable(move_metrics tools/move_metrics/main.cpp)
 target_link_libraries(move_metrics PRIVATE sim)
 
+add_executable(net_loop tools/net_loop/main.cpp)
+target_link_libraries(net_loop PRIVATE sim)
+

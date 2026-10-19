@@ -1681,12 +1681,13 @@ int run_net_test(const Options& opt) {
         const bool executed_duplicate =
             window.push(2, in) == sim::InputWindow::Result::Duplicate;
         const bool far = window.push(40, in) == sim::InputWindow::Result::TooFar;
-        for (uint32_t t = 3; t <= 6; ++t) window.push(t, in);
-        const bool overflow = window.push(7, in) == sim::InputWindow::Result::Overflow;
-        const bool bounded = window.depth() == 4;
-        std::printf("  window: accept %d dup %d late %d far %d exec-dup %d overflow %d depth %zu\n",
-                    accepted, duplicate, late, far, executed_duplicate, overflow, window.depth());
-        if (!accepted || !duplicate || !late || !far || !executed_duplicate || !overflow ||
+        for (uint32_t t = 3; t <= 18; ++t) window.push(t, in);
+        const bool full_window = window.push(19, in) == sim::InputWindow::Result::TooFar;
+        const bool bounded = window.depth() == 16;
+        std::printf("  window: accept %d dup %d late %d far %d exec-dup %d full-window %d depth %zu\n",
+                    accepted, duplicate, late, far, executed_duplicate, full_window,
+                    window.depth());
+        if (!accepted || !duplicate || !late || !far || !executed_duplicate || !full_window ||
             !bounded) {
             std::printf("FAIL: input window does not reject duplicate/late/far commands\n");
             ++failures;

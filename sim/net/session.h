@@ -76,6 +76,16 @@ public:
     int far_commands() const { return m_far_cmds; }
     int overflow_commands() const { return m_overflow_cmds; }
     int max_input_depth() const { return m_max_depth; }
+    int accepted_commands() const { return m_accepted_cmds; }
+    uint32_t last_executed_tick(int link) const {
+        return m_links[static_cast<std::size_t>(link)].inputs.last_executed();
+    }
+    uint32_t last_cmd_tick(int link) const {
+        return m_links[static_cast<std::size_t>(link)].last_cmd_tick;
+    }
+    uint32_t last_seen_tick(int link) const {
+        return m_links[static_cast<std::size_t>(link)].last_seen_tick;
+    }
     const HitboxHistory& hitboxes(int player) const {
         return m_hitboxes[static_cast<std::size_t>(player)];
     }
@@ -90,6 +100,8 @@ private:
         // command proves the client has joined.
         bool pending_full_state = true;
         uint32_t join_id = 0;  // changes on every admission, so repeats can be ignored
+        uint32_t last_cmd_tick = 0;
+        uint32_t last_seen_tick = 0;
         uint16_t last_cmd_seq = 0;
         bool has_command = false;
         MoveInput last_input;
@@ -113,6 +125,7 @@ private:
     int m_far_cmds = 0;
     int m_overflow_cmds = 0;
     int m_max_depth = 0;
+    int m_accepted_cmds = 0;
     uint32_t m_next_join_id = 1;
     std::vector<HitboxHistory> m_hitboxes;
 };
@@ -136,6 +149,10 @@ public:
     int corrections() const { return m_corrections; }
     float max_correction() const { return m_max_correction; }
     bool joined() const { return m_joined; }
+    int player_index() const { return m_player; }
+    uint32_t last_sent_tick() const {
+        return m_pending.empty() ? 0 : m_pending.back().tick;
+    }
     int full_states() const { return m_full_states; }
     uint32_t join_tick() const { return m_join_tick; }
     bool join_failed() const { return m_join_failed; }
