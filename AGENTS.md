@@ -99,11 +99,12 @@ v0.1 定义：**两个人、局域网、1 张 40×40 图、对枪 10 分钟不�
 | 里程碑 | 状态 |
 |---|---|
 | M0–M4 | ✅（M4 跨机比对缺第二台机器） |
-| M5 | 🔶 不可靠通道/delta/预测回滚/时间对齐/输入去重/hitbox/full_state·加入·重连/远端插值/事件通道/真实 UDP/多 peer/两进程/**Godot --host·--connect·LAN 菜单/时钟漂移纠正/**远端朝向 yaw**已通；**A1/A2/A5 协议已通（未接组局）、局内 UI 未做** |
+| M5 | 🔶 不可靠通道/delta/预测回滚/时间对齐/输入去重/hitbox/full_state·加入·重连/远端插值/事件通道/真实 UDP/多 peer/两进程/**Godot --host·--connect·LAN 菜单/时钟漂移纠正/远端朝向 yaw/**掉线清理 5 s/槽位复用**已通；**A1/A2/A5 协议已通（未接组局）、局内 UI 未做** |
 | M6 | 🔶 仅 HP/护甲规则（HP 100；甲 25/25 再生/50） |
 | M7/M8 | ❌ |
 
 - 宿主实际是 **Godot 4.5**（godot-cpp 最高只有 4.5；计划书目标 4.7，记为未结案）。
+- 存档：GitHub 私有（SSH 443）+ 本地 bundle；远端与恢复步骤见 docs/backup.md。
 - 16 项行为闸门 + bench 全绿；Godot demo 可运行（demo.bat）。
 - --test-net：30% 丢包回滚 1428 → **51/2000**；5% 丢包 60 s 修正 0 次；
   中途加入/重连偏差 **0.00000 m**（加入走 FULL_STATE）。
@@ -112,10 +113,10 @@ v0.1 定义：**两个人、局域网、1 张 40×40 图、对枪 10 分钟不�
 
 ## 3. 下一步（严格按计划书顺序，禁止跳步）
 
-1. 局内/断线重连 UI、第三人称动画（yaw 已复制、胶囊已转向）。
-2. v0.4 的 M5 增量：A1/A2/A5 接入组局（信令线程、单 socket 双队列、重连状态机）。
-3. M6：hitscan、后坐力表、三段判定（hitbox 已就绪）、穿透、伤害衰减、hitmarker。
-4. M7/M8。
+1. M5 收尾：A1/A2/A5 接入组局（信令线程、单 socket 双队列、票据/重连状态机）+ 局内 UI。
+2. M6：hitscan、后坐力表、三段判定（hitbox 已就绪）、hp/armor 进快照、死亡/重生、穿透/衰减。
+3. M7/M8：音频、第三人称动画、第一人称视角模型。
+4. 缺口与顺序详见 docs/GAPS.md。
 
 ---
 
@@ -151,8 +152,10 @@ powershell -File tools\run_demo.ps1     # Godot demo
 | docs/网络层深化_v0.4.md | §7 网络专章：A1–A5 / B1–B3 / 冲突裁决 C1–C3 / N1–N8 判据 |
 | docs/8.3候选B_v0.4.md | §8.3 选定方案：可破坏入口、0.5 m 四档、时间预算 |
 | docs/AGENTS.md | 详细约束、判据、未结案、环境、文件地图 |
-| docs/HANDOFF.md | 本会话完整交接（S01–S29、每个坑的根因与证据） |
-| docs/PROGRESS.md | 进度日志（每节：做了什么/结论/下一步） |
+| docs/HANDOFF.md | 本会话完整交接（S01–S31、每个坑的根因与证据） |
+| docs/PROGRESS.md | 进度日志（S 短条目 + 末尾**详细开发日志**） |
+| docs/GAPS.md | v0.1 缺口 + 技术债盘点（只分析） |
+| docs/backup.md | GitHub / bundle / 恢复步骤 |
 | docs/pitfalls/ | 事故案例（3 篇） |
 | docs/decisions/ | ADR（护甲 / 网络时间轴） |
 | docs/keymap.md / docs/demo-format.md | 键位 / demo 格式 |

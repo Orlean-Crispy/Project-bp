@@ -308,3 +308,33 @@ powershell -File tools\run_demo.ps1
 - tools/sim_sources.txt 成为唯一清单；CMake 与 build_bridge.ps1 都读它。
 - tools/check_sources.ps1 校验清单 == git ls-files sim/**/*.cpp（26 个）。
 - 全量构建 + bridge + smoke 仍绿；修掉“桥接漏 .cpp 导致链接失败”的架构债。
+
+## 7. 2026-10-20 收束（S30–S31 + 详细日志）
+
+### 7.1 这一晚补的三件事
+
+1. **掉线清理**：Link 记录 last_rx_tick；连续 320 tick（5 s）无包 → remove_client，槽位失活。
+   判据：`[timeout] joined 1 dropped 1`。
+2. **槽位复用**：add_client(..., -1) 选第一个 inactive 槽位；bridge/net_loop 删除 next_slot。
+   判据：`[timeout] joined 1 dropped 1 reuse 1`。
+3. **源清单单一化 + 闸门化**：tools/sim_sources.txt 是唯一清单；check_sources 接入 smoke 首项。
+
+### 7.2 存档与远端
+
+- GitHub 私有仓库：https://github.com/Orlean-Crispy/unknow
+- 本机 remote：`ssh://git@ssh.github.com:443/Orlean-Crispy/unknow.git`（SSH 443，绕开失效的 HTTP 代理）。
+- 首次合并：远端有 Initial commit（LICENSE + README），用 `--allow-unrelated-histories` 合并，
+  README 保留本项目版本；合并提交 59fa04a。
+- 本地 bundle：`G:\BreakpointBackups\breakpoint-20261019.bundle`；恢复步骤见 docs/backup.md。
+
+### 7.3 当前基线
+
+- 16 项闸门 + bench ALL GREEN；工作树干净。
+- main 以 `git log --oneline -1` 为准（本轮收尾会再提交一次文档）。
+- 详细开发日志：docs/PROGRESS.md 末尾「开发日志（详细）」，2026-10-20 起按六段模板追加。
+
+### 7.4 下一步
+
+1. M5 收尾：A1/A2/A5 接入组局（信令线程、单 socket 双队列、票据/重连状态机）+ 局内 UI。
+2. M6 射击：WeaponDef、开火输入、hitscan、三段伤害、hp/armor 进快照、死亡/重生。
+3. 缺口与顺序：docs/GAPS.md。

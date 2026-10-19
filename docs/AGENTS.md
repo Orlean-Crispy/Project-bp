@@ -31,7 +31,7 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 | M2 基础 pmove | ✅ | 走/跑/跳/蹲、step-up、蹲下空间、Q3 对标数值 |
 | M3 parkour | ✅ 首版 | slide / dash / wallrun / wallclimb / vault，全部有 headless 闸门 |
 | M4 demo 与跨机比对 | ✅ 同机 / ⏸ 跨机 | 录制回放、逐 tick 哈希、dump 比对工具就绪；**跨机需要第二台机器** |
-| M5 网络 | 🔶 部分 | 不可靠通道 + delta + 预测回滚 + 时间对齐 + 去重 + hitbox + 加入/重连 + 远端插值 + 事件通道 + 真实 UDP + B1 分片 + 多 peer 会话 + 两进程 + Godot --host/--connect + 远端渲染 + LAN 菜单 + 时钟纠正 + **远端 yaw**已通；**A1/A2/A5 协议已通（未接组局）、局内 UI 未做** |
+| M5 网络 | 🔶 部分 | 不可靠通道 + delta + 预测回滚 + 时间对齐 + 去重 + hitbox + 加入/重连 + 远端插值 + 事件通道 + 真实 UDP + B1 分片 + 多 peer 会话 + 两进程 + Godot --host/--connect + 远端渲染 + LAN 菜单 + 时钟纠正 + 远端 yaw/掉线清理 5 s/槽位复用已通；**A1/A2/A5 协议已通（未接组局）、局内 UI 未做** |
 | M6 射击 | 🔶 起步 | HP/护甲规则已实现；hitscan、后坐力表、三段判定、穿透未做 |
 | M7 打磨 / M8 视角模型 | ❌ | 未开始 |
 
@@ -156,8 +156,8 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 
 ## 4. 未结案（按优先级，每条必须有 lead）
 
-1. **网络组局收尾** — Godot --host/--connect、远端胶囊、LAN 菜单、时钟纠正、远端 yaw 已通；
-   仍缺局内/断线重连 UI、第三人称动画。lead：现在。
+1. **网络组局收尾** — Godot --host/--connect、远端胶囊、LAN 菜单、时钟纠正、远端 yaw、
+   5 s 掉线清理与槽位复用已通；仍缺局内/断线重连 UI、第三人称动画。lead：现在。
 2. **v0.4 的 M5 增量** — A1/A2/A5 协议均已通且测试，待接入组局
    （信令线程、单 socket 双队列、重连状态机）；B1 分片已完成。lead：现在。
 3. **M6 射击** — hitscan、后坐力表、三段部位判定（hitbox 已就绪）、穿透、伤害衰减、
@@ -327,6 +327,9 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
   尚未与快照共用 socket。
 - A1 信令（sim/net/signaling.*）：TCP 27015、u16 长度前缀、六条消息、connect/accept 超时；
   资产只传清单。判据：真 TCP 环回六条消息逐字段一致。尚未接入 Godot（菜单仍走 UDP HELLO）。
+- 掉线/复用：Link.last_rx_tick 记录最后收包 tick；step() 开头 320 tick（5 s）无包则 remove_client；
+  add_client(..., -1) 复用第一个 inactive 槽位（满员返回 -1），重连回原槽。
+  判据：[timeout] joined 1 dropped 1 reuse 1。
 - 槽位激活：PlayerState.active → 快照 flags bit2；服务器 init 全 false、add_client true、
   remove_client false；桥接层跳过未激活槽位（否则 host 会看到没加入的幽灵）。
 - 远端朝向：PlayerState.yaw 由 pmove 写入；PlayerSnap 的 kFieldYaw 独立字段组；协议版本 2。
@@ -402,11 +405,11 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
 
 ## 11. 下一步（严格按计划书顺序，不要跳）
 
-1. **组局收尾**：局内/断线重连 UI、第三人称动画。
-2. **v0.4 M5 增量**：A1/A2/A5 接入组局（信令线程、单 socket 双队列、重连状态机）。
-3. **M6 射击**：hitscan + 后坐力表 + 三段部位判定（hitbox 已就绪，×5 / ×1 / ×0.7）
-   + 穿透 + 伤害衰减；TTK 用 100 HP / 三甲复算。
-4. **M7 / M8**：动画、视角模型、音频垂直定位（§9.2 的楼层低通）。
+1. **M5 收尾**：A1/A2/A5 接入组局（信令线程、单 socket 双队列、票据/重连状态机）+ 局内 UI。
+2. **M6 射击**：hitscan + 后坐力表 + 三段部位判定（hitbox 已就绪，×5 / ×1 / ×0.7）
+   + hp/armor 进快照 + 死亡/重生 + 穿透/衰减；TTK 用 100 HP / 三甲复算。
+3. **M7 / M8**：动画、视角模型、音频垂直定位（§9.2 的楼层低通）。
+4. 缺口与顺序详见 docs/GAPS.md。
 
 ---
 
@@ -415,5 +418,5 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
 1. `git log --oneline -5` 看最后几个提交。
 2. `git status` 看有没有未提交的半成品。
 3. 跑 smoke；**红的那一项就是当前战场**。
-4. 读 PROGRESS 最后一节（S27 A5 票据 / S28 全量复查）与 HANDOFF.md。
+4. 读 PROGRESS 末尾的**详细开发日志**（2026-10-20 起）与 HANDOFF.md。
 5. 不要从头重做已完成的东西；本文件 §0.2 就是进度表。
