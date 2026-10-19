@@ -1129,3 +1129,16 @@ CMake 只在 WIN32 链接 ws2_32，不污染 sim 的其它目标。
 1. A1/A2/A5 接入组局（信令线程、单 socket 双队列、重连状态机）。
 2. 局内/断线重连 UI、第三人称动画。
 3. M6 射击。
+---
+
+## 2026-10-19 · S30 · 静默客户端超时清理
+
+- NetServer 每条 Link 记录 last_rx_tick；任何可解包都会刷新。
+- step() 开头扫描：ever_seen 且 320 tick（5 s）没收到包 → remove_client（槽位失活）。
+- 验收：[timeout] joined 1 dropped 1；其余网络闸门不变。
+
+### 下一步
+
+1. A1/A2/A5 接入组局。
+2. 局内/断线重连 UI。
+3. M6 射击。

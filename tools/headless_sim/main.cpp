@@ -1663,6 +1663,46 @@ int run_udp_session_check(const std::string& data_path) {
     return failures;
 }
 
+int run_timeout_test() {
+    const std::string map_path = "sim/data/maps/metrics_flat.map";
+    std::string error;
+    sim::NetServer server;
+    if (!server.init(map_path, "sim/data/movement.toml", 1, error)) return 1;
+    sim::LoopbackTransport to_server(sim::NetConditions{}, 41);
+    sim::LoopbackTransport to_client(sim::NetConditions{}, 42);
+    server.add_client(&to_server, &to_client, 0);
+    sim::NetClient client;
+    if (!client.init(&to_server, &to_client, 0, map_path, "sim/data/movement.toml", error)) return 1;
+
+    sim::MoveInput in;
+    in.forward = 1.0f;
+    for (int i = 0; i < 120; ++i) {
+        client.send_input(in);
+        client.step_local();
+        server.receive();
+        server.step();
+        server.send();
+        to_server.advance(0);
+        to_client.advance(0);
+        client.receive();
+    }
+    const bool joined = server.client_count() == 1;
+    for (int i = 0; i < 400; ++i) {
+        server.receive();
+        server.step();
+        server.send();
+        to_client.advance(0);
+    }
+    const bool dropped = server.client_count() == 0 && server.timed_out_clients() == 1 &&
+                         !server.world().players[0].active;
+    std::printf("  [timeout] joined %d dropped %d\n", joined ? 1 : 0, dropped ? 1 : 0);
+    if (!joined || !dropped) {
+        std::printf("FAIL: silent client was not dropped\n");
+        return 1;
+    }
+    return 0;
+}
+
 int run_ticket_test() {
     std::array<uint8_t, 32> key{};
     for (size_t i = 0; i < key.size(); ++i) key[i] = static_cast<uint8_t>(i * 3 + 1);
@@ -1914,6 +1954,7 @@ int run_net_test(const Options& opt) {
     failures += run_signal_test();
     failures += run_reliable_test();
     failures += run_ticket_test();
+    failures += run_timeout_test();
 
     // v0.4 5.2: duplicates, late and far commands never enter the queue twice.
     {

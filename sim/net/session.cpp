@@ -211,6 +211,8 @@ void NetServer::receive() {
             const uint8_t* payload = nullptr;
             size_t size = 0;
             if (!unwrap_packet(packet, header, payload, size)) continue;
+            link.last_rx_tick = m_world.tick;
+            link.ever_seen = true;
             if (header.type != PacketType::Command) continue;
 
             std::vector<InputCmd> cmds;
@@ -267,6 +269,17 @@ void NetServer::receive() {
 }
 
 void NetServer::step() {
+    // A client silent for 5 s is gone; free its slot so nobody keeps rendering
+    // a frozen capsule. A reconnect re-attaches through FULL_STATE.
+    constexpr uint32_t kTimeoutTicks = 320;
+    for (int i = static_cast<int>(m_links.size()) - 1; i >= 0; --i) {
+        const Link& link = m_links[static_cast<std::size_t>(i)];
+        if (link.ever_seen && m_world.tick - link.last_rx_tick > kTimeoutTicks) {
+            ++m_timed_out;
+            remove_client(i);
+        }
+    }
+
     std::vector<MoveInput> inputs(m_world.players.size());
     for (Link& link : m_links) {
         MoveInput in;

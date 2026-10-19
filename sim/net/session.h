@@ -78,6 +78,7 @@ public:
     int max_input_depth() const { return m_max_depth; }
     int accepted_commands() const { return m_accepted_cmds; }
     int client_count() const { return static_cast<int>(m_links.size()); }
+    int timed_out_clients() const { return m_timed_out; }
     uint32_t last_executed_tick(int link) const {
         return m_links[static_cast<std::size_t>(link)].inputs.last_executed();
     }
@@ -103,6 +104,8 @@ private:
         uint32_t join_id = 0;  // changes on every admission, so repeats can be ignored
         uint32_t last_cmd_tick = 0;
         uint32_t last_seen_tick = 0;
+        uint32_t last_rx_tick = 0;
+        bool ever_seen = false;
         uint16_t last_cmd_seq = 0;
         bool has_command = false;
         MoveInput last_input;
@@ -127,6 +130,7 @@ private:
     int m_overflow_cmds = 0;
     int m_max_depth = 0;
     int m_accepted_cmds = 0;
+    int m_timed_out = 0;
     uint32_t m_next_join_id = 1;
     std::vector<HitboxHistory> m_hitboxes;
 };
