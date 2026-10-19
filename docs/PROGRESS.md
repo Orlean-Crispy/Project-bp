@@ -977,3 +977,30 @@ CMake 只在 WIN32 链接 ws2_32，不污染 sim 的其它目标。
 1. 局内/断线重连 UI。
 2. A1 信令 → A2 可靠流 → A5 票据。
 3. M6 射击。
+---
+
+## 2026-10-19 · S25 · A1 信令（TCP 控制面）
+
+### 1. 协议
+
+- sim/net/signaling.h/.cpp：TCP 27015，u16 长度前缀帧 + 二进制消息，不用 JSON。
+- 六条消息：HELLO / HELLO_ACK / ASSET_MANIFEST / ASSET_READY / MATCH_START / FULL_STATE。
+- TcpListener / TcpStream：非阻塞 connect + select 超时、accept 超时、SO_RCVTIMEO、TCP_NODELAY。
+- 资产只传清单（hash / size / name），正文走 HTTP + hash 缓存（尚未接）。
+
+### 2. 验收
+
+- 真 TCP 环回（端口 0 自动分配）：六条消息逐字段往返一致。
+- 输出：[signal] hello 1 ack 1 manifest 1 ready 1 match 1 full 1。
+
+### 3. 边界
+
+- 还未接进 Godot / NetServer：菜单仍走 UDP HELLO；信令线程、MATCH_START → UDP 会话、
+  资产缓存是下一步。
+- TcpStream 是阻塞 + 超时，尚未起线程；接入时必须放信令线程，sim 线程禁止阻塞 IO。
+
+### 4. 下一步
+
+1. 信令接入组局（线程 + 事件队列 + MATCH_START 触发 UDP 加入）。
+2. A2 可靠流 + configstring 512 B 分块 + CRC32。
+3. A5 票据。

@@ -31,6 +31,7 @@ $sources = @(
     'sim/net/udp_transport.cpp',
     'sim/net/udp_hub.cpp',
     'sim/net/handshake.cpp',
+    'sim/net/signaling.cpp',
     'sim/net/interp.cpp',
     'sim/game/hitbox.cpp',
     'sim/net/fragment.cpp',

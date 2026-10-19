@@ -21,6 +21,7 @@
 #include "sim/net/fragment.h"
 #include "sim/net/handshake.h"
 #include "sim/net/session.h"
+#include "sim/net/signaling.h"
 #include "sim/net/transport.h"
 #include "sim/net/udp_hub.h"
 #include "sim/net/udp_transport.h"
@@ -1660,6 +1661,88 @@ int run_udp_session_check(const std::string& data_path) {
     return failures;
 }
 
+int run_signal_test() {
+    std::string error;
+    sim::TcpListener listener;
+    if (!listener.listen(0, error)) {
+        std::printf("FAIL: signal listen: %s\n", error.c_str());
+        return 1;
+    }
+    sim::TcpStream client;
+    if (!client.connect("127.0.0.1", listener.local_port(), 1000, error)) {
+        std::printf("FAIL: signal connect: %s\n", error.c_str());
+        return 1;
+    }
+    std::unique_ptr<sim::TcpStream> peer = listener.accept(1000, error);
+    if (!peer) {
+        std::printf("FAIL: signal accept: %s\n", error.c_str());
+        return 1;
+    }
+
+    bool hello_ok = false, ack_ok = false, manifest_ok = false, ready_ok = false;
+    bool match_ok = false, full_ok = false;
+    sim::SignalMessage in;
+
+    sim::SignalMessage hello;
+    hello.type = sim::SignalType::Hello;
+    hello.protocol = 2;
+    hello.client_id = 0x1122334455667788ull;
+    hello.ticket = 0;
+    hello_ok = client.send_message(hello, error) && peer->recv_message(in, 1000, error) &&
+               in.type == sim::SignalType::Hello && in.protocol == 2 &&
+               in.client_id == 0x1122334455667788ull;
+
+    sim::SignalMessage ack;
+    ack.type = sim::SignalType::HelloAck;
+    ack.accepted = true;
+    ack.reason = 3;
+    ack.server_tick = 120;
+    ack.config_hash = 0xDEADBEEFu;
+    ack_ok = peer->send_message(ack, error) && client.recv_message(in, 1000, error) &&
+             in.type == sim::SignalType::HelloAck && in.accepted && in.reason == 3 &&
+             in.server_tick == 120 && in.config_hash == 0xDEADBEEFu;
+
+    sim::SignalMessage manifest;
+    manifest.type = sim::SignalType::AssetManifest;
+    manifest.assets.push_back({0x10u, 2048u, "playground.map"});
+    manifest.assets.push_back({0x20u, 512u, "materials.toml"});
+    manifest_ok = peer->send_message(manifest, error) &&
+                  client.recv_message(in, 1000, error) &&
+                  in.type == sim::SignalType::AssetManifest && in.assets.size() == 2 &&
+                  in.assets[0].name == "playground.map" && in.assets[0].hash == 0x10u &&
+                  in.assets[1].name == "materials.toml" && in.assets[1].size == 512u;
+
+    sim::SignalMessage ready;
+    ready.type = sim::SignalType::AssetReady;
+    ready.ready = {0x10u, 0x20u};
+    ready_ok = client.send_message(ready, error) && peer->recv_message(in, 1000, error) &&
+               in.type == sim::SignalType::AssetReady && in.ready.size() == 2 &&
+               in.ready[1] == 0x20u;
+
+    sim::SignalMessage match;
+    match.type = sim::SignalType::MatchStart;
+    match.map = "playground";
+    match.seed = 7;
+    match.players = 2;
+    match_ok = peer->send_message(match, error) && client.recv_message(in, 1000, error) &&
+               in.type == sim::SignalType::MatchStart && in.map == "playground" &&
+               in.seed == 7 && in.players == 2;
+
+    sim::SignalMessage full;
+    full.type = sim::SignalType::FullState;
+    full.tick = 4567;
+    full_ok = peer->send_message(full, error) && client.recv_message(in, 1000, error) &&
+              in.type == sim::SignalType::FullState && in.tick == 4567;
+
+    std::printf("  [signal] hello %d ack %d manifest %d ready %d match %d full %d\n",
+                hello_ok, ack_ok, manifest_ok, ready_ok, match_ok, full_ok);
+    if (!hello_ok || !ack_ok || !manifest_ok || !ready_ok || !match_ok || !full_ok) {
+        std::printf("FAIL: A1 signal roundtrip failed: %s\n", error.c_str());
+        return 1;
+    }
+    return 0;
+}
+
 int run_clock_check(const std::string& data_path) {
     const std::string map_path = "sim/data/maps/metrics_flat.map";
     std::string error;
@@ -1737,6 +1820,7 @@ int run_net_test(const Options& opt) {
     failures += run_fragment_check();
     failures += run_udp_session_check(opt.data_path);
     failures += run_clock_check(opt.data_path);
+    failures += run_signal_test();
 
     // v0.4 5.2: duplicates, late and far commands never enter the queue twice.
     {

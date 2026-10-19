@@ -195,6 +195,12 @@ Godot 4.5 宿主 + GDExtension 桥可运行。所有试玩反馈都已落回 sim
 - PlayerState/PlayerSnap 增加 yaw；快照 delta 新增 kFieldYaw 字段组；协议版本 2。
 - 远端胶囊按 yaw 旋转并加前方标记；插值器取前一帧 yaw（64 Hz 足够）。
 - 证据：[yaw] full 1 delta 1；host 看到 remote yaw 0.0→0.9，client 看到 remote 0.9。
+### S25 A1 信令协议（2026-10-19）
+
+- sim/net/signaling：TCP 27015、u16 长度前缀帧、六条消息（HELLO/ACK/MANIFEST/READY/
+  MATCH_START/FULL_STATE）+ TcpListener/TcpStream（connect/accept 超时）。
+- 真 TCP 环回逐字段验证：[signal] hello 1 ack 1 manifest 1 ready 1 match 1 full 1。
+- 尚未接入 Godot/NetServer；下一步是信令线程 + MATCH_START 触发 UDP 会话，再做 A2。
 
 ---
 

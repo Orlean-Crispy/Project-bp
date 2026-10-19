@@ -74,6 +74,16 @@ public:
         return v;
     }
 
+    const uint8_t* bytes(size_t n) {
+        if (m_pos + n > m_size) {
+            m_ok = false;
+            return nullptr;
+        }
+        const uint8_t* p = m_data + m_pos;
+        m_pos += n;
+        return p;
+    }
+
 private:
     const uint8_t* m_data;
     size_t m_size;
