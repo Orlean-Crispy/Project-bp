@@ -209,11 +209,19 @@ int run_wall_test(const Options& opt) {
             if (p.pos.x > contact_x + 0.01f) ++penetrations;
         }
 
-        const bool ok = penetrations == 0;
+        // trace.h promises that no sub-step is longer than min_wall_thickness.
+        // That only holds while ceil(speed*dt/thickness) fits inside the step cap:
+        // the speed ceiling is max_slide_steps * min_wall_thickness * tick_rate
+        // = 4 * 0.15 * 64 = 38.4 m/s. The tiers below stop at 30 m/s, so a
+        // failure here means the sweep regressed, not the test range.
+        const bool contained = penetrations == 0;
+        const bool steps_ok = max_step <= world.params.min_wall_thickness;
+        const bool ok = contained && steps_ok;
         if (!ok) ++failures;
-        std::printf("  %5.2f m/s  penetrations=%3d  worst_x=%7.4f  max_step=%.4f m  %s\n",
+        std::printf("  %5.2f m/s  penetrations=%3d  worst_x=%7.4f  max_step=%.4f m (limit %.3f)  %s\n",
                     static_cast<double>(speed), penetrations, static_cast<double>(worst_x),
-                    static_cast<double>(max_step), ok ? "ok" : "FAIL");
+                    static_cast<double>(max_step),
+                    static_cast<double>(world.params.min_wall_thickness), ok ? "ok" : "FAIL");
     }
 
     // Sliding must survive the contact-epsilon clamp: a player pressed into the
@@ -240,7 +248,7 @@ int run_wall_test(const Options& opt) {
     }
 
     if (failures != 0) {
-        std::printf("FAIL: %d speed tiers penetrated the 0.1 m wall\n", failures);
+        std::printf("FAIL: %d speed tiers penetrated the wall or stepped longer than it\n", failures);
         return 1;
     }
     std::printf("PASS: no penetration at any tested speed, wall sliding preserved\n");
