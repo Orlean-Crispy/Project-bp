@@ -32,7 +32,7 @@ var autoplay := false
 var last_event := "-"
 var host_mode := false
 var connect_ip := ""
-var net_port := 27016
+var net_port := 27115  # A1 signalling; the game port is this + 1
 var joined_printed := false
 var last_peer_count := -1
 var remote_nodes := {}
@@ -180,7 +180,7 @@ func _show_net_menu() -> void:
 	title.add_theme_font_size_override("font_size", 20)
 	box.add_child(title)
 	var hint := Label.new()
-	hint.text = "Host on this machine, or join the host's IP."
+	hint.text = "Signal port (UDP is port+1). Host here, or join the host IP."
 	box.add_child(hint)
 
 	var ip := LineEdit.new()

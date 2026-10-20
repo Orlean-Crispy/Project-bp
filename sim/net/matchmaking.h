@@ -62,7 +62,9 @@ public:
     MatchHost& operator=(const MatchHost&) = delete;
 
     // port 0 = ephemeral (the gate uses it so parallel runs cannot collide).
-    bool start(uint16_t port, uint8_t players, std::string map, uint32_t seed, std::string& error);
+    // reserved = slots the host itself already owns (a listen server holds slot 0).
+    bool start(uint16_t port, uint8_t players, std::string map, uint32_t seed, uint8_t reserved,
+               std::string& error);
     void stop();
     std::vector<MatchEvent> drain();
     uint16_t port() const { return m_port; }
@@ -87,6 +89,7 @@ private:
     std::atomic<uint32_t> m_server_tick{0};
     std::atomic<int> m_handshakes{0};
     uint8_t m_players = 2;
+    uint8_t m_reserved = 0;
     uint32_t m_seed = 0;
     std::string m_map;
     uint16_t m_port = 0;

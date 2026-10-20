@@ -1809,7 +1809,7 @@ int run_reliable_test() {
 int run_match_test() {
     sim::MatchHost host;
     std::string error;
-    if (!host.start(0, 2, "playground", 7, error)) {
+    if (!host.start(0, 2, "playground", 7, 0, error)) {
         std::printf("FAIL: match host start: %s\n", error.c_str());
         return 1;
     }

@@ -13,6 +13,7 @@
 #include <godot_cpp/variant/packed_vector3_array.hpp>
 #include <godot_cpp/variant/vector3.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <memory>
@@ -24,6 +25,7 @@
 #include "sim/core/world.h"
 #include "sim/input/bindings.h"
 #include "sim/net/handshake.h"
+#include "sim/net/matchmaking.h"
 #include "sim/net/session.h"
 #include "sim/net/udp_hub.h"
 #include "sim/net/udp_transport.h"
@@ -142,8 +144,17 @@ public:
             ERR_PRINT(String("breakpoint host: ") + String(error.c_str()));
             return false;
         }
+        // A1: the TCP control plane owns admission; the game port is signal + 1.
+        m_match = std::make_unique<sim::MatchHost>();
+        // The listen server owns slot 0 itself, so clients start at slot 1.
+        if (!m_match->start(static_cast<uint16_t>(port), static_cast<uint8_t>(players), m_map_path,
+                            7u, 1, error)) {
+            ERR_PRINT(String("breakpoint host: ") + String(error.c_str()));
+            return false;
+        }
         m_hub = std::make_unique<sim::UdpPeerHub>();
-        if (!m_hub->open(static_cast<uint16_t>(port), error)) {
+        const uint16_t game_port = m_match->port() + 1;
+        if (!m_hub->open(game_port, error) || m_hub->local_port() != game_port) {
             ERR_PRINT(String("breakpoint host: ") + String(error.c_str()));
             return false;
         }
@@ -179,18 +190,32 @@ public:
         if (m_net_client) return false;
         std::string error;
         m_client_id = make_client_id();
+        // A1/A5: ask the host for a slot and a ticket before touching UDP.
+        sim::MatchReply reply;
+        if (!sim::match_request(host.utf8().get_data(), static_cast<uint16_t>(port), m_client_id,
+                                nullptr, reply) ||
+            !reply.ok || reply.status != sim::MatchStatus::Accepted) {
+            std::printf("breakpoint: join signal failed error='%s' status=%d\n",
+                        reply.error.c_str(), static_cast<int>(reply.status));
+            std::fflush(stdout);
+            ERR_PRINT(String("breakpoint join: signalling failed"));
+            return false;
+        }
         m_udp = std::make_unique<sim::UdpTransport>();
         if (!m_udp->open(0, error) ||
-            !m_udp->connect_peer(host.utf8().get_data(), static_cast<uint16_t>(port), error)) {
+            !m_udp->connect_peer(host.utf8().get_data(), reply.game_port, error)) {
             ERR_PRINT(String("breakpoint join: ") + String(error.c_str()));
             return false;
         }
         m_net_client = std::make_unique<sim::NetClient>();
-        if (!m_net_client->init(m_udp.get(), m_udp.get(), 0, m_map_path, m_data_path, error)) {
+        if (!m_net_client->init(m_udp.get(), m_udp.get(), reply.slot, m_map_path, m_data_path,
+                                error)) {
             ERR_PRINT(String("breakpoint join: ") + String(error.c_str()));
             m_net_client.reset();
             return false;
         }
+        std::printf("breakpoint: signal slot %d game port %u\n", static_cast<int>(reply.slot),
+                    static_cast<unsigned>(reply.game_port));
         m_udp->send(sim::make_hello(m_client_id));
         m_last_hello = std::chrono::steady_clock::now();
         return true;
@@ -200,15 +225,29 @@ public:
         if (!m_net_client) return;
         const auto now = std::chrono::steady_clock::now();
         if (m_hosting) {
+            m_match->set_server_tick(m_server->tick());
+            for (const sim::MatchEvent& ev : m_match->drain()) {
+                if (ev.status != sim::MatchStatus::Accepted) continue;
+                std::printf("breakpoint: signal slot %u resumed %d\n", ev.slot, ev.resumed ? 1 : 0);
+                std::fflush(stdout);
+                m_approved.push_back(ev);
+            }
             m_hub->poll();
             std::string peer_host;
             uint16_t peer_port = 0;
             std::vector<uint8_t> packet;
             while (m_hub->next_unknown(peer_host, peer_port, packet)) {
-                if (!sim::is_hello(packet)) continue;
+                sim::ClientId who{};
+                if (!sim::hello_id(packet, who)) continue;
+                const auto it = std::find_if(m_approved.begin(), m_approved.end(),
+                                             [&](const sim::MatchEvent& e) {
+                                                 return e.client_id == who;
+                                             });
+                if (it == m_approved.end()) continue;  // never vetted over TCP
+                const int slot = it->slot;
+                m_approved.erase(it);
                 sim::PeerTransport* peer = m_hub->add_peer(peer_host, peer_port);
-                const int slot = m_server->add_client(peer, peer, -1);
-                if (slot < 0) continue;  // all slots taken
+                if (m_server->add_client(peer, peer, slot) < 0) continue;  // all slots taken
                 std::printf("breakpoint: peer joined slot %d\n", slot);
                 std::fflush(stdout);
             }
@@ -400,6 +439,8 @@ private:
     std::string m_map_path;
     std::string m_data_path;
     std::unique_ptr<sim::NetServer> m_server;
+    std::unique_ptr<sim::MatchHost> m_match;
+    std::vector<sim::MatchEvent> m_approved;
     std::unique_ptr<sim::NetClient> m_net_client;
     std::unique_ptr<sim::UdpPeerHub> m_hub;
     std::unique_ptr<sim::UdpTransport> m_udp;

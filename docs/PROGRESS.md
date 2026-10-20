@@ -1193,6 +1193,21 @@ CMake 只在 WIN32 链接 ws2_32，不污染 sim 的其它目标。
 
 ---
 
+## 2026-10-20 · S35 · Godot 菜单改走信令；端口劫持坑
+
+- bridge：`host()` 起 MatchHost（信令端口），UDP 自动 = 信令端口 + 1；listen server 自己占 slot 0
+  （MatchHost 新增 `reserved` 参数），客人从 slot 1 起；`join()` 先 `match_request` 拿槽位再连 UDP。
+- Godot 菜单端口语义改为**信令端口**，默认 `27115`（UDP 27116）。
+- 踩坑：27015/tcp 被 `AppleMobileDeviceService` 占用；Windows 的 `SO_REUSEADDR` 允许第二个 socket
+  绑上已被 listen 的端口，于是 `bind` 假成功、客户端被别人的服务接走，报 `receive failed`。
+  修法：`SO_EXCLUSIVEADDRUSE`（绑不上就报错）+ 默认端口换 27115。案例 docs/pitfalls/port-hijack.md。
+- 判据（两个 headless Godot 进程）：
+  host  → `signal slot 1 resumed 0` / `peer joined slot 1` / `peers 2` / `remote slot 1 visible`；
+  client → `joined slot 1` / `remote slot 0 visible`。
+- `net_selftest.ps1`：joins=2 accepted=417 far=0 moved=46.69；16 项闸门 + bench 全绿。
+
+---
+
 # 开发日志（详细）
 
 > 从 2026-10-20 起，在 PROGRESS 末尾追加详细日志；上面的 S 编号短条目保留，作为索引。

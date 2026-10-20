@@ -1,5 +1,5 @@
 # run_net_demo.ps1 - launch a local two-instance LAN demo.
-# Host starts on port 27016; the client connects to 127.0.0.1.
+# Host signals on 27115 (UDP 27116); the client connects to 127.0.0.1.
 # ASCII only. Close both windows when done.
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
@@ -14,7 +14,7 @@ if (-not (Test-Path (Join-Path $project '.godot'))) {
     & $godot --headless --editor --path $project --quit
 }
 
-$port = 27016
+$port = 27115
 $host = Start-Process -FilePath $godot -ArgumentList @(
     '--path', $project, '--', '--host', "--port=$port"
 ) -PassThru

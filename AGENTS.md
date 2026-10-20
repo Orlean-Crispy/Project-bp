@@ -102,7 +102,7 @@ v0.1 定义：**两个人、局域网、1 张 40×40 图、对枪 10 分钟不�
 | 里程碑 | 状态 |
 |---|---|
 | M0–M4 | ✅（M4 跨机比对缺第二台机器） |
-| M5 | 🔶 不可靠通道/delta/预测回滚/时间对齐/输入去重/hitbox/full_state·加入·重连/远端插值/事件通道/真实 UDP/多 peer/两进程/**Godot --host·--connect·LAN 菜单/时钟漂移纠正/远端朝向 yaw/**掉线清理 5 s/槽位复用**已通；**A1/A2/A5 协议已通（未接组局）、局内 UI 未做** |
+| M5 | 🔶 不可靠通道/delta/预测回滚/时间对齐/输入去重/hitbox/full_state·加入·重连/远端插值/事件通道/真实 UDP/多 peer/两进程/**Godot --host·--connect·LAN 菜单/时钟漂移纠正/远端朝向 yaw/**掉线清理 5 s/槽位复用**已通；**A1 组局已接（信令 27115，host 占 slot 0，HELLO v3 带 client_id）、A5 票据进信令已通；A2 共 socket 与局内 UI 未做** |
 | M6 | 🔶 仅 HP/护甲规则（HP 100；甲 25/25 再生/50） |
 | M7/M8 | ❌ |
 
@@ -162,6 +162,6 @@ powershell -File tools\run_demo.ps1     # Godot demo
 | docs/PROGRESS.md | 进度日志（S 短条目 + 末尾**详细开发日志**） |
 | docs/GAPS.md | v0.1 缺口 + 技术债盘点（只分析） |
 | docs/backup.md | GitHub / bundle / 恢复步骤 |
-| docs/pitfalls/ | 事故案例（3 篇） |
+| docs/pitfalls/ | 事故案例（4 篇） |
 | docs/decisions/ | ADR（护甲 / 网络时间轴） |
 | docs/keymap.md / docs/demo-format.md | 键位 / demo 格式 |

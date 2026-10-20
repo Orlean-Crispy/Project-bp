@@ -54,7 +54,7 @@ int run_server(const Options& opt) {
     }
     // A1: the TCP control plane owns admission; UDP only carries the session.
     sim::MatchHost matcher;
-    if (!matcher.start(opt.port, static_cast<uint8_t>(opt.players), opt.map, 7u, error)) {
+    if (!matcher.start(opt.port, static_cast<uint8_t>(opt.players), opt.map, 7u, 0, error)) {
         std::fprintf(stderr, "signal listen: %s\n", error.c_str());
         return 1;
     }

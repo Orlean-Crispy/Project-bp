@@ -27,8 +27,9 @@ MatchHost::MatchHost() = default;
 MatchHost::~MatchHost() { stop(); }
 
 bool MatchHost::start(uint16_t port, uint8_t players, std::string map, uint32_t seed,
-                      std::string& error) {
+                      uint8_t reserved, std::string& error) {
     m_players = players == 0 ? 1 : players;
+    m_reserved = reserved > m_players ? m_players : reserved;
     m_map = std::move(map);
     m_seed = seed;
     m_slots.assign(m_players, ClientId{});
@@ -70,7 +71,7 @@ int MatchHost::slot_of(const ClientId& id) const {
 int MatchHost::reserve_slot_locked(const ClientId& id) {
     const int existing = slot_of_locked(id);
     if (existing >= 0) return existing;
-    for (std::size_t i = 0; i < m_slots.size(); ++i) {
+    for (std::size_t i = m_reserved; i < m_slots.size(); ++i) {
         if (m_slots[i] == ClientId{}) {
             m_slots[i] = id;
             return static_cast<int>(i);

@@ -404,7 +404,15 @@ bool TcpListener::listen(uint16_t port, std::string& error) {
         return false;
     }
     int one = 1;
-    setsockopt(s, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&one), sizeof(one));
+#ifdef _WIN32
+    // Windows SO_REUSEADDR lets a second socket claim a port that is already
+    // listening (it does not mean "reuse TIME_WAIT" like POSIX). A silent
+    // hijack is worse than a failed bind, so require exclusive ownership.
+    setsockopt(s, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, reinterpret_cast<const char*>(&one),
+               sizeof(one));
+#else
+    setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
+#endif
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
     addr.sin_addr.s_addr = htonl(INADDR_ANY);

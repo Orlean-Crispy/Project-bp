@@ -157,7 +157,7 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 
 ## 4. 未结案（按优先级，每条必须有 lead）
 
-1. **网络组局收尾** — Godot --host/--connect、远端胶囊、LAN 菜单、时钟纠正、远端 yaw、
+1. **网络组局收尾** — Godot 菜单已走信令（27115/TCP → 27116/UDP），host 占 slot 0、客人从 1 起，
    5 s 掉线清理与槽位复用已通；仍缺局内/断线重连 UI、第三人称动画。lead：现在。
 2. **v0.4 的 M5 增量** — A1/A2/A5 协议均已通且测试，待接入组局
    （信令线程、单 socket 双队列、重连状态机）；B1 分片已完成。lead：现在。
@@ -188,6 +188,7 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 | 8 | 玩家从 tick 开始就实心 = 冻结（相机能动、人不动）。必须：拒绝实心落点 + 出生时脱离。案例：PROGRESS S08 |
 | 9 | 跳跃必须是按下沿触发；按住 = 连跳。案例：PROGRESS S09 |
 | 10 | 客户端必须跑在服务器的 tick 轴上并提前 **4 tick** 盖戳；迟到输入只能丢弃，绝不能当新输入重放。案例：PROGRESS S11 |
+| 11 | Windows 上 `bind` 成功不代表端口是你的（SO_REUSEADDR 允许抢已被 listen 的端口）。用 SO_EXCLUSIVEADDRUSE，端口冲突要让它报错。案例：pitfalls/port-hijack.md |
 
 ---
 
@@ -317,9 +318,11 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
   没走过 TCP 的 id 一律忽略（陌生人包进不了房间）。
 - 判据：真 UDP 环回 2 客户端 joined 1/1、148/148 快照、偏差 0.00000 m；
   两进程 net_loop（信令组局）：joins=2、accepted=416、far=0、moved=46.87 m。
-- Godot 桥：host = NetServer + 本机 NetClient(loopback)；join = NetClient(UDP)；
-  本地状态统一取 predicted()，远端取 SnapshotInterpolator，GDScript 画胶囊。
-  判据：host joined slot 0 / peers 2 / remote slot 1 visible；client 反之。
+- Godot 桥：host = MatchHost(TCP 27115) + NetServer + 本机 NetClient(loopback，占 slot 0)；
+  join = match_request → 拿槽位/票据 → NetClient(UDP 27116)；本地状态取 predicted()，
+  远端取 SnapshotInterpolator，GDScript 画胶囊。菜单端口语义 = **信令端口**。
+  判据：host 打 signal slot 1 resumed 0 / peer joined slot 1 / peers 2 / remote slot 1 visible，
+  client 打 joined slot 1 / remote slot 0 visible（两个 headless Godot 进程实测）。
 - Godot 启动菜单：无参数且非 headless 时显示 Host/Join/Single player；--menu 可在 headless
   下构建用于脚本检查；菜单打开时暂停 tick。
 - 时钟纠正（§7.0）：客户端按快照 ahead 的最小值检测漂移；超过 min+3 且冷却结束时跳过
@@ -330,7 +333,9 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
   RFC 6298 RTO（250 ms，100–1000）、5 次重传上限；configstring 512 B 分块 + CRC32。
   判据：5000 B / 10 块 / 30% 丢包 → retrans 6、complete 1、same 1、corrupt 1。
   尚未与快照共用 socket。
-- A1 信令（sim/net/signaling.*）：TCP 27015、u16 长度前缀、六条消息、connect/accept 超时；
+- A1 信令（sim/net/signaling.*）：TCP **27115**（v0.4 写的 27015 已被 AppleMobileDeviceService 占用；
+  Windows 上用 SO_EXCLUSIVEADDRUSE 独占，端口被占时 bind 必须失败而不是静默共享）、
+  u16 长度前缀、六条消息、connect/accept 超时；
   资产只传清单。判据：真 TCP 环回六条消息逐字段一致。
   协议 v2：client_id 改为 16 B（与票据的 HMAC 输入一致），HELLO/HELLO_ACK 带 32 B 票据，
   MATCH_START 带 game_port（约定 UDP = 信令端口 + 1）。
