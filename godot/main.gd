@@ -57,6 +57,7 @@ var hud_check := false
 var silent_printed := false
 var reconnect_check := false
 var reconnect_done := false
+var reconnect_locked := false
 var force_paused := false
 var menu_accumulator := 0.0
 
@@ -93,6 +94,9 @@ func _ready() -> void:
 		push_warning("cannot load keybinds, using defaults")
 	_build_actions(sim.get_bindings())
 	_build_world_mesh()
+	# AUD-13: the bridge is compiled with the same build id as headless_sim, so a
+	# log line says which commit the loaded DLL really is (and which protocol).
+	print("breakpoint: build %s protocol %d" % [sim.get_build_id(), sim.get_protocol_version()])
 
 	if host_mode:
 		if sim.host(net_port, 2):
@@ -132,9 +136,10 @@ func _ready() -> void:
 	add_child(status_label)
 	_update_hud()
 	if hud_check:
-		print("hud hp=%d armor=%d impulse=%d/%d role=%s vertices=%d" % [
+		print("hud hp=%d armor=%d impulse=%d/%d role=%s vertices=%d build=%s protocol=%d" % [
 			sim.get_hp(), sim.get_armor(), sim.get_impulses(), sim.get_max_impulses(),
-			sim.get_role(), sim.get_vertices().size()
+			sim.get_role(), sim.get_vertices().size(),
+			sim.get_build_id(), sim.get_protocol_version()
 		])
 		get_tree().quit()
 	if force_paused:
@@ -226,6 +231,7 @@ func _input(event: InputEvent) -> void:
 func _toggle_game_menu() -> void:
 	game_menu_open = not game_menu_open
 	if game_menu_open:
+		reconnect_locked = false  # a fresh menu is a fresh reconnect attempt
 		mouse_captured = false
 		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 		game_menu = CanvasLayer.new()
@@ -247,10 +253,11 @@ func _toggle_game_menu() -> void:
 		if sim != null and sim.is_networked() and sim.get_role() != "host":
 			var again := Button.new()
 			again.text = "Reconnect"
+			# AUD-17: the button is only freed at the end of the frame, so a double
+			# click used to run two joins back to back; _do_reconnect locks it.
 			again.pressed.connect(func() -> void:
-				var ok: bool = sim.reconnect()
-				print("breakpoint: reconnect %s" % ("ok" if ok else "failed"))
-				_toggle_game_menu()
+				if _do_reconnect():
+					_toggle_game_menu()
 			)
 			box.add_child(again)
 		var leave := Button.new()
@@ -264,6 +271,23 @@ func _toggle_game_menu() -> void:
 		if not menu_open:
 			mouse_captured = true
 			Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+
+func _do_reconnect() -> bool:
+	# AUD-17: exactly one reconnect per menu. A successful call retires the
+	# ticket and replaces the link, so a second call in the same frame would
+	# stack another join on top of it. A failed call is safe to retry.
+	if reconnect_locked or sim == null or not sim.is_networked() or sim.get_role() == "host":
+		return false
+	reconnect_locked = true
+	# A reconnect is a new join, so the one-shot log lines have to fire again.
+	joined_printed = false
+	silent_printed = false
+	last_peer_count = -1
+	var ok: bool = sim.reconnect()
+	print("breakpoint: reconnect %s" % ("ok" if ok else "failed"))
+	if not ok:
+		reconnect_locked = false
+	return ok
 
 func _update_net_state() -> void:
 	if not sim.is_networked():
@@ -405,8 +429,10 @@ func _process(delta: float) -> void:
 	if reconnect_check and not reconnect_done and sim.is_networked() and sim.get_joined():
 		if int(sim.get_tick()) > 64:
 			reconnect_done = true
-			var ok: bool = sim.reconnect()
-			print("breakpoint: reconnect %s" % ("ok" if ok else "failed"))
+			_do_reconnect()
+			# AUD-17 gate: the second call must be refused, or a double click on
+			# Reconnect would stack a second join on top of the first one.
+			print("breakpoint: reconnect double=%d" % (1 if _do_reconnect() else 0))
 	if menu_open or game_menu_open:
 		# AUD-02: a menu must not stop the network pump. The server drops a link
 		# after 320 ticks (5 s) without a packet, and a paused host would stop
