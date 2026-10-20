@@ -4,7 +4,6 @@ extends Node3D
 
 const TICK := 1.0 / 64.0
 const SENSITIVITY := 0.0022
-const EYE_FALLBACK := 1.55
 
 # SimEvent::type -> display name (plan 3.4). M6 adds muzzle/impact/etc.
 const EVENT_NAMES := { 1: "jump", 2: "land" }
@@ -43,9 +42,6 @@ var status_label: Label
 var game_menu: CanvasLayer
 var game_menu_open := false
 var hud_check := false
-var last_seen_tick := 0
-var stall_seconds := 0.0
-var link_lost := false
 var silent_printed := false
 var reconnect_check := false
 var reconnect_done := false
@@ -131,14 +127,6 @@ func _ready() -> void:
 func _update_hud() -> void:
 	if hud == null:
 		return
-	var used := int(sim.get_impulses())
-	var cap := int(sim.get_max_impulses())
-	var pips := ""
-	for i in cap:
-		pips += "J" if i < used else "."
-	hud.text = "HP %d   ARMOR %d   IMP %s  %d/%d" % [
-		sim.get_hp(), sim.get_armor(), pips, used, cap
-	]
 	var parts: Array[String] = []
 	parts.append(str(sim.get_role()))
 	if sim.is_networked():
@@ -157,8 +145,6 @@ func _update_hud() -> void:
 					print("breakpoint: server silent age=%d" % age)
 			else:
 				silent_printed = false
-	if link_lost:
-		parts.append("LINK LOST")
 	status_label.text = "  ".join(parts)
 
 func _build_actions(bindings: Dictionary) -> void:
@@ -204,7 +190,10 @@ func _input(event: InputEvent) -> void:
 		yaw -= event.relative.x * SENSITIVITY
 		pitch = clampf(pitch - event.relative.y * SENSITIVITY, -1.5533, 1.5533)
 	elif event is InputEventKey and event.pressed and event.physical_keycode == KEY_ESCAPE:
-		_toggle_game_menu()
+		if menu_open:
+			_close_net_menu()
+		else:
+			_toggle_game_menu()
 
 func _toggle_game_menu() -> void:
 	game_menu_open = not game_menu_open
@@ -244,8 +233,9 @@ func _toggle_game_menu() -> void:
 		if game_menu != null:
 			game_menu.queue_free()
 			game_menu = null
-		mouse_captured = true
-		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+		if not menu_open:
+			mouse_captured = true
+			Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 
 func _pressed(action: String) -> bool:
 	return Input.is_action_pressed("bp_" + action)
@@ -255,8 +245,9 @@ func _close_net_menu() -> void:
 	if net_menu != null:
 		net_menu.queue_free()
 		net_menu = null
-	mouse_captured = true
-	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+	if not game_menu_open:
+		mouse_captured = true
+		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 
 func _show_net_menu() -> void:
 	menu_open = true
@@ -388,18 +379,6 @@ func _process(delta: float) -> void:
 	# change what the demo does (and headless runs at a different rate).
 	var tick := int(sim.get_tick())
 	_update_hud()
-	if sim.is_networked() and sim.get_joined():
-		# A frozen world is the one failure the HUD can prove on its own: the tick
-		# stops moving while we are supposed to be in a live match.
-		if tick != last_seen_tick:
-			last_seen_tick = tick
-			stall_seconds = 0.0
-			link_lost = false
-		else:
-			stall_seconds += delta
-			if stall_seconds > 1.5 and not link_lost:
-				link_lost = true
-				print("breakpoint: link lost")
 	var jump := _pressed("Jump")
 	if autoplay:
 		yaw = 0.9  # make remote orientation observable in the headless check
@@ -463,7 +442,13 @@ func _process(delta: float) -> void:
 			sim.get_role(), sim.get_player_slot(), sim.get_peer_count(),
 			"" if sim.get_joined() else " (connecting)"
 		]
-	hud.text = "speed %5.2f m/s   %s   impulses %d\npos %.1f %.1f %.1f\nlast event %s%s" % [
-		speed, states[sim.get_state()], sim.get_impulses(),
+	var used := int(sim.get_impulses())
+	var cap := int(sim.get_max_impulses())
+	var pips := ""
+	for i in cap:
+		pips += "J" if i < used else "."
+	hud.text = "HP %d   ARMOR %d   IMP %s %d/%d   speed %5.2f m/s   %s\npos %.1f %.1f %.1f\nlast event %s%s" % [
+		sim.get_hp(), sim.get_armor(), pips, used, cap,
+		speed, states[sim.get_state()],
 		position.x, position.y, position.z, last_event, net_line
 	]

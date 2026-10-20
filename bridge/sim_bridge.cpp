@@ -32,7 +32,6 @@ using namespace godot;
 namespace {
 
 // Shared with the mesh builder; see bridge/mesh_common.h.
-using bridge::material_color;
 using bridge::to_godot;
 
 }  // namespace
