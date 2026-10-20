@@ -352,6 +352,14 @@ public:
         return p == nullptr ? 0 : p->impulses;
     }
 
+    // HUD reads the parameter, never a literal: the cap is still undecided
+    // (plan 5.2 is "TBD", ADR 0005 open item 1).
+    int get_max_impulses() const { return m_world.params.max_impulses; }
+
+    // Placeholder until hp/armor are networked (M6).
+    int get_hp() const { return 100; }
+    int get_armor() const { return 0; }
+
     float get_eye_height() const { return 1.55f; }
 
     PackedVector3Array get_vertices() const { return m_vertices; }
@@ -383,6 +391,9 @@ protected:
         ClassDB::bind_method(D_METHOD("get_velocity"), &SimWorld::get_velocity);
         ClassDB::bind_method(D_METHOD("get_state"), &SimWorld::get_state);
         ClassDB::bind_method(D_METHOD("get_impulses"), &SimWorld::get_impulses);
+        ClassDB::bind_method(D_METHOD("get_max_impulses"), &SimWorld::get_max_impulses);
+        ClassDB::bind_method(D_METHOD("get_hp"), &SimWorld::get_hp);
+        ClassDB::bind_method(D_METHOD("get_armor"), &SimWorld::get_armor);
         ClassDB::bind_method(D_METHOD("get_eye_height"), &SimWorld::get_eye_height);
         ClassDB::bind_method(D_METHOD("get_vertices"), &SimWorld::get_vertices);
         ClassDB::bind_method(D_METHOD("get_normals"), &SimWorld::get_normals);

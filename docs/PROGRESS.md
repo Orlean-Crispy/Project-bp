@@ -1270,6 +1270,20 @@ wrapper，两个时钟不同步；`uint32` 减法回绕成几十亿，于是每�
 
 ---
 
+## 2026-10-20 · S39 · 局内 HUD + 暂停菜单
+
+- 桥新增 `get_max_impulses()/get_hp()/get_armor()`；HUD 的格数从参数读，
+  再没人能在 UI 里写死 6 格（ADR 0005 未决 1）。
+- `godot/main.gd`：HP/护甲 + impulse 条（`J` 实心 / `.` 空）+ 状态行（role/slot/peers/waiting）
+  + Esc 暂停菜单（Resume / Leave）。暂停时 tick 停走（和 LAN 菜单同一处理）。
+- 判据：`--hud-check` 打 `hud hp=100 armor=0 impulse=4/4 role=solo`；
+  两个 headless Godot 进程联机时无脚本错误、无假 LINK LOST。
+- 已知局限：断线检测只看「世界 tick 是否 1.5 s 不动」，这是**世界冻结**检测，
+  不是「服务器失联」检测；真检测要快照年龄（客户端最后一次收到快照的 tick），未做。
+- 16 项闸门 + bench 全绿。
+
+---
+
 # 开发日志（详细）
 
 > 从 2026-10-20 起，在 PROGRESS 末尾追加详细日志；上面的 S 编号短条目保留，作为索引。

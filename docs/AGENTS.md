@@ -158,7 +158,8 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 ## 4. 未结案（按优先级，每条必须有 lead）
 
 1. **网络组局收尾** — Godot 菜单已走信令（27115/TCP → 27116/UDP），host 占 slot 0、客人从 1 起，
-   5 s 掉线清理与槽位复用已通；仍缺局内/断线重连 UI、第三人称动画。lead：现在。
+   5 s 掉线清理、槽位复用、重连顶替已通；局内 HUD/Esc 菜单已做。仍缺
+   **真实断线检测（快照年龄）+ 重连按钮**、第三人称动画。lead：现在。
 2. **v0.4 的 M5 增量** — A1/A2/A5 协议均已通且测试，待接入组局
    （信令线程、单 socket 双队列、重连状态机）；B1 分片已完成。lead：现在。
 3. **M6 射击** — hitscan、后坐力表、三段部位判定（hitbox 已就绪）、穿透、伤害衰减、
@@ -323,6 +324,10 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
   远端取 SnapshotInterpolator，GDScript 画胶囊。菜单端口语义 = **信令端口**。
   判据：host 打 signal slot 1 resumed 0 / peer joined slot 1 / peers 2 / remote slot 1 visible，
   client 打 joined slot 1 / remote slot 0 visible（两个 headless Godot 进程实测）。
+- 局内 HUD（godot/main.gd）：HP/护甲（桥里是占位 100/0，等 M6 联网）、impulse 条
+  用 `get_max_impulses()` 画格（**不写死**），状态行显示 role/slot/peers/waiting；
+  Esc 开合暂停菜单（Resume / Leave）。判据：`--hud-check` 打 `hud hp=100 armor=0 impulse=4/4 role=solo`。
+  已知局限：断线检测只看「世界 tick 是否 1.5 s 不动」，真实的「服务器失联」需要快照年龄，未做。
 - Godot 启动菜单：无参数且非 headless 时显示 Host/Join/Single player；--menu 可在 headless
   下构建用于脚本检查；菜单打开时暂停 tick。
 - 时钟纠正（§7.0）：客户端按快照 ahead 的最小值检测漂移；超过 min+3 且冷却结束时跳过

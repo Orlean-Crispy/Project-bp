@@ -39,6 +39,13 @@ var remote_nodes := {}
 var net_menu: CanvasLayer
 var menu_open := false
 var force_menu := false
+var status_label: Label
+var game_menu: CanvasLayer
+var game_menu_open := false
+var hud_check := false
+var last_seen_tick := 0
+var stall_seconds := 0.0
+var link_lost := false
 
 func _ready() -> void:
 	RenderingServer.set_default_clear_color(Color(0.07, 0.08, 0.1))
@@ -57,6 +64,8 @@ func _ready() -> void:
 			net_port = int(arg.substr(7))
 		elif arg == "--menu":
 			force_menu = true
+		elif arg == "--hud-check":
+			hud_check = true
 
 	sim = SimWorld.new()
 	var base := ProjectSettings.globalize_path("res://")
@@ -101,6 +110,41 @@ func _ready() -> void:
 	hud.add_theme_color_override("font_color", Color(0.9, 0.92, 0.95))
 	add_child(hud)
 
+	status_label = Label.new()
+	status_label.position = Vector2(16, 36)
+	status_label.add_theme_font_size_override("font_size", 14)
+	status_label.add_theme_color_override("font_color", Color(0.55, 0.72, 0.9))
+	add_child(status_label)
+	_update_hud()
+	if hud_check:
+		print("hud hp=%d armor=%d impulse=%d/%d role=%s" % [
+			sim.get_hp(), sim.get_armor(), sim.get_impulses(), sim.get_max_impulses(),
+			sim.get_role()
+		])
+		get_tree().quit()
+
+func _update_hud() -> void:
+	if hud == null:
+		return
+	var used := int(sim.get_impulses())
+	var cap := int(sim.get_max_impulses())
+	var pips := ""
+	for i in cap:
+		pips += "J" if i < used else "."
+	hud.text = "HP %d   ARMOR %d   IMP %s  %d/%d" % [
+		sim.get_hp(), sim.get_armor(), pips, used, cap
+	]
+	var parts: Array[String] = []
+	parts.append(str(sim.get_role()))
+	if sim.is_networked():
+		parts.append("slot %d" % sim.get_player_slot())
+		parts.append("peers %d" % sim.get_peer_count())
+		if not sim.get_joined():
+			parts.append("waiting for server")
+	if link_lost:
+		parts.append("LINK LOST")
+	status_label.text = "  ".join(parts)
+
 func _build_actions(bindings: Dictionary) -> void:
 	for action_name in bindings.keys():
 		var godot_action := "bp_" + String(action_name)
@@ -144,10 +188,39 @@ func _input(event: InputEvent) -> void:
 		yaw -= event.relative.x * SENSITIVITY
 		pitch = clampf(pitch - event.relative.y * SENSITIVITY, -1.5533, 1.5533)
 	elif event is InputEventKey and event.pressed and event.physical_keycode == KEY_ESCAPE:
-		mouse_captured = not mouse_captured
-		Input.set_mouse_mode(
-			Input.MOUSE_MODE_CAPTURED if mouse_captured else Input.MOUSE_MODE_VISIBLE
-		)
+		_toggle_game_menu()
+
+func _toggle_game_menu() -> void:
+	game_menu_open = not game_menu_open
+	if game_menu_open:
+		mouse_captured = false
+		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+		game_menu = CanvasLayer.new()
+		add_child(game_menu)
+		var panel := PanelContainer.new()
+		panel.position = Vector2(40, 60)
+		panel.custom_minimum_size = Vector2(280, 0)
+		game_menu.add_child(panel)
+		var box := VBoxContainer.new()
+		panel.add_child(box)
+		var title := Label.new()
+		title.text = "PAUSED"
+		title.add_theme_font_size_override("font_size", 18)
+		box.add_child(title)
+		var resume := Button.new()
+		resume.text = "Resume"
+		resume.pressed.connect(_toggle_game_menu)
+		box.add_child(resume)
+		var leave := Button.new()
+		leave.text = "Leave"
+		leave.pressed.connect(func() -> void: get_tree().quit())
+		box.add_child(leave)
+	else:
+		if game_menu != null:
+			game_menu.queue_free()
+			game_menu = null
+		mouse_captured = true
+		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 
 func _pressed(action: String) -> bool:
 	return Input.is_action_pressed("bp_" + action)
@@ -272,7 +345,7 @@ func _update_remote_players(players: Array) -> void:
 func _process(delta: float) -> void:
 	if sim == null or camera == null:
 		return
-	if menu_open:
+	if menu_open or game_menu_open:
 		accumulator = 0.0
 		return
 
@@ -284,6 +357,19 @@ func _process(delta: float) -> void:
 	# Drive autoplay from simulation ticks, not frames: the frame rate must not
 	# change what the demo does (and headless runs at a different rate).
 	var tick := int(sim.get_tick())
+	_update_hud()
+	if sim.is_networked() and sim.get_joined():
+		# A frozen world is the one failure the HUD can prove on its own: the tick
+		# stops moving while we are supposed to be in a live match.
+		if tick != last_seen_tick:
+			last_seen_tick = tick
+			stall_seconds = 0.0
+			link_lost = false
+		else:
+			stall_seconds += delta
+			if stall_seconds > 1.5 and not link_lost:
+				link_lost = true
+				print("breakpoint: link lost")
 	var jump := _pressed("Jump")
 	if autoplay:
 		yaw = 0.9  # make remote orientation observable in the headless check
