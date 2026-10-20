@@ -1329,6 +1329,17 @@ wrapper，两个时钟不同步；`uint32` 减法回绕成几十亿，于是每�
 
 ---
 
+## 2026-10-20 · S43 · 体检清理：A3（Winsock 一份）
+
+- 新增 `sim/net/winsock.h`：header-only 的 `ensure_winsock(std::string&)`（POSIX 恒真），
+  `WSAStartup` 只在这里出现一次。
+- `signaling.cpp` 与 `udp_socket.cpp` 各删掉一份本地实现，改为 include 这个头。
+- 判据：全量构建 -Werror 无警告；16 项闸门 + bench 全绿（`[signal]` 走 TCP、` [udp]` 走 UDP，
+  两条路径都覆盖到同一处初始化）。
+- 行为零变化：只是把「两份可能分叉的代码」变成「一份」。
+
+---
+
 # 开发日志（详细）
 
 > 从 2026-10-20 起，在 PROGRESS 末尾追加详细日志；上面的 S 编号短条目保留，作为索引。

@@ -17,7 +17,7 @@
 |---|---|---|---|
 | A1 | ✅ 已删 | sim/net/session.* | `InputWindow::Overflow` 不可达，`m_overflow_cmds` 永远是 0 |
 | A2 | ✅ 已删 | sim/net/netchan.* | `AckTracker` 全仓无调用（约 30 行死代码） |
-| A3 | P1 | sim/net/signaling.cpp + udp_socket.cpp | Winsock 初始化写了两份，改一处漏一处 |
+| A3 | ✅ 已抽 | sim/net/winsock.h | Winsock 初始化曾写两份，现在只剩一处 inline 实现 |
 | A4 | P2 | tools/headless_sim/main.cpp | 2916 行 / 34 个 `run_*`，一个文件装全部闸门 |
 | A5 | P1 | bridge/sim_bridge.cpp | 519 行里塞了网络、渲染、输入、HUD 数据 |
 | A6 | P1 | sim/net/* + bridge | configstring 只验了传输，内容是任意 blob（语义未接） |
@@ -98,7 +98,7 @@ P0（可能算出错结果）：**本轮没有发现**。
 ## 4. 建议顺序
 
 1. ~~A1 + A2（纯删除，一个 commit）~~ —— 已完成（S42）
-2. A3（抽 winsock.h，一个 commit）
+2. ~~A3（抽 winsock.h）~~ —— 已完成（S43）
 3. A6（configstring 语义，带新闸门）
 4. A7（admission 抽取，两进程都验）
 5. A4（拆闸门文件，一次一组）

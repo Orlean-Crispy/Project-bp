@@ -2,6 +2,8 @@
 
 #include <cstring>
 
+#include "sim/net/winsock.h"
+
 #ifdef _WIN32
 #include <winsock2.h>
 #include <ws2tcpip.h>
@@ -21,24 +23,11 @@ namespace {
 using Socket = SOCKET;
 constexpr Socket kInvalidSocket = INVALID_SOCKET;
 
-bool ensure_winsock(std::string& error) {
-    static const bool ready = [] {
-        WSADATA data;
-        return WSAStartup(MAKEWORD(2, 2), &data) == 0;
-    }();
-    if (!ready) {
-        error = "WSAStartup failed";
-        return false;
-    }
-    return true;
-}
-
 void close_socket(Socket socket) { closesocket(socket); }
 #else
 using Socket = int;
 constexpr Socket kInvalidSocket = -1;
 
-bool ensure_winsock(std::string&) { return true; }
 void close_socket(Socket socket) { ::close(socket); }
 #endif
 

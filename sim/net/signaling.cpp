@@ -4,6 +4,7 @@
 #include <cstring>
 
 #include "sim/net/bytes.h"
+#include "sim/net/winsock.h"
 
 #ifdef _WIN32
 #include <winsock2.h>
@@ -27,18 +28,6 @@ constexpr uint16_t kMaxFrame = 65535;
 #ifdef _WIN32
 using Socket = SOCKET;
 constexpr Socket kBadSocket = INVALID_SOCKET;
-
-bool ensure_winsock(std::string& error) {
-    static const bool ready = [] {
-        WSADATA data;
-        return WSAStartup(MAKEWORD(2, 2), &data) == 0;
-    }();
-    if (!ready) {
-        error = "WSAStartup failed";
-        return false;
-    }
-    return true;
-}
 
 void close_socket(Socket s) { closesocket(s); }
 int last_error() { return WSAGetLastError(); }
@@ -69,7 +58,6 @@ bool start_connect(Socket s, const sockaddr_in& addr) {
 using Socket = int;
 constexpr Socket kBadSocket = -1;
 
-bool ensure_winsock(std::string&) { return true; }
 void close_socket(Socket s) { ::close(s); }
 int last_error() { return errno; }
 bool would_block(int e) { return e == EINPROGRESS || e == EAGAIN; }
