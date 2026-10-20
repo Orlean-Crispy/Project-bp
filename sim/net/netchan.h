@@ -29,16 +29,4 @@ std::vector<uint8_t> wrap_packet(const PacketHeader& header, const std::vector<u
 bool unwrap_packet(const std::vector<uint8_t>& packet, PacketHeader& header,
                    const uint8_t*& payload, size_t& payload_size);
 
-// Tracks which of our packets the peer has acknowledged. Unused slots are false.
-class AckTracker {
-public:
-    void on_receive(uint16_t seq, uint32_t ack_bits);
-    bool is_acked(uint16_t seq) const;
-
-private:
-    uint16_t m_latest = 0;
-    uint32_t m_bits = 0;
-    bool m_has_latest = false;
-};
-
 }  // namespace sim

@@ -1066,7 +1066,6 @@ struct NetRunStats {
     int late = 0;
     int duplicate = 0;
     int far = 0;
-    int overflow = 0;
     int max_depth = 0;
     int corrections = 0;
     float max_correction = 0.0f;
@@ -1136,7 +1135,6 @@ NetRunStats run_net_scenario(const std::string& data_path, float loss, float jit
     stats.late = server.late_commands();
     stats.duplicate = server.duplicate_commands();
     stats.far = server.far_commands();
-    stats.overflow = server.overflow_commands();
     stats.max_depth = server.max_input_depth();
     stats.server_tick = server.tick();
     stats.hitbox_size = server.hitboxes(0).size();
@@ -2308,9 +2306,8 @@ int run_net_test(const Options& opt) {
     if (!lossy.ok) return 1;
     std::printf("  [30%% loss] rollbacks %d   snapshots %d   full %d   delta %d   depth %d\n",
                 lossy.rollbacks, lossy.snapshots, lossy.full, lossy.delta, lossy.max_depth);
-    std::printf("              late %d   dup %d   far %d   overflow %d   dev %.5f m\n",
-                lossy.late, lossy.duplicate, lossy.far, lossy.overflow,
-                static_cast<double>(lossy.deviation));
+    std::printf("              late %d   dup %d   far %d   dev %.5f m\n", lossy.late,
+                lossy.duplicate, lossy.far, static_cast<double>(lossy.deviation));
     std::printf("              hitbox %d frames, newest %u (server tick %u)\n",
                 lossy.hitbox_size, lossy.hitbox_newest, lossy.server_tick);
     std::printf("              remote buffer %d frames, newest %u (last snapshot %u)\n",

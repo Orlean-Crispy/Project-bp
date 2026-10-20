@@ -121,14 +121,11 @@ InputWindow::Result InputWindow::push(uint32_t tick, const MoveInput& input) {
     const uint16_t bit = static_cast<uint16_t>(1u << offset);
     if ((m_seen & bit) != 0) return Result::Duplicate;
 
-    bool overflow = false;
-    if (m_queue.size() >= kWindowDepth) {  // pathological earliness only
-        m_queue.erase(m_queue.begin());
-        overflow = true;
-    }
+    // Window == depth and duplicates are filtered above, so the queue can never
+    // overflow here; kWindowDepth is a static_assert-style guard, not a branch.
     m_queue.emplace(tick, input);
     m_seen = static_cast<uint16_t>(m_seen | bit);
-    return overflow ? Result::Overflow : Result::Accepted;
+    return Result::Accepted;
 }
 
 bool InputWindow::take(uint32_t tick, MoveInput& out) {
@@ -270,10 +267,6 @@ void NetServer::receive() {
                         link.pending_full_state = false;
                         link.last_cmd_tick = cmd.tick;
                         ++m_accepted_cmds;
-                        break;
-                    case InputWindow::Result::Overflow:
-                        ++m_overflow_cmds;  // pathological jitter
-                        link.pending_full_state = false;
                         break;
                     case InputWindow::Result::Duplicate:
                         ++m_dup_cmds;  // normal under redundancy, do not log

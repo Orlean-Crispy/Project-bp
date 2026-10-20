@@ -45,7 +45,9 @@ private:
 // v0.4 5.2: a duplicated, stale or far-future command must never be executed.
 // The bitmap covers ticks last_executed+1 .. last_executed+8 (the 5.2 window).
 struct InputWindow {
-    enum class Result { Accepted, Duplicate, Late, TooFar, Overflow };
+    // The earliness window equals the queue depth (16), and duplicates are
+    // filtered by the bitmap, so an entry can never be evicted: no Overflow state.
+    enum class Result { Accepted, Duplicate, Late, TooFar };
     Result push(uint32_t tick, const MoveInput& input);
     bool take(uint32_t tick, MoveInput& out);
     std::size_t depth() const { return m_queue.size(); }
@@ -81,7 +83,6 @@ public:
     int duplicate_commands() const { return m_dup_cmds; }
     int late_commands() const { return m_late_cmds; }
     int far_commands() const { return m_far_cmds; }
-    int overflow_commands() const { return m_overflow_cmds; }
     int max_input_depth() const { return m_max_depth; }
     int accepted_commands() const { return m_accepted_cmds; }
     int client_count() const { return static_cast<int>(m_links.size()); }
@@ -137,7 +138,6 @@ private:
     int m_dup_cmds = 0;
     int m_late_cmds = 0;
     int m_far_cmds = 0;
-    int m_overflow_cmds = 0;
     int m_max_depth = 0;
     int m_accepted_cmds = 0;
     int m_timed_out = 0;
