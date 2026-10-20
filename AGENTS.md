@@ -162,6 +162,7 @@ powershell -File tools\run_demo.ps1     # Godot demo
 | docs/HANDOFF.md | 本会话完整交接（S01–S31、每个坑的根因与证据） |
 | docs/PROGRESS.md | 进度日志（S 短条目 + 末尾**详细开发日志**） |
 | docs/GAPS.md | v0.1 缺口 + 技术债盘点（只分析） |
+| docs/AUDIT.md | **代码体检清单**（P0–P3、证据、建议动作、处理顺序） |
 | docs/backup.md | GitHub / bundle / 恢复步骤 |
 | docs/pitfalls/ | 事故案例（4 篇） |
 | docs/decisions/ | ADR（护甲 / 网络时间轴） |
