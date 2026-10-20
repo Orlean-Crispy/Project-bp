@@ -148,6 +148,67 @@ NetRunStats run_net_scenario(const std::string& data_path, float loss, float jit
 }
 
 
+// AUD-01: the event channel must work over the network, not only in solo play.
+// A scripted jump has to reach the client's drainable EventQueue.
+int run_net_events_check(const std::string& data_path) {
+    const std::string map_path = "sim/data/maps/metrics_flat.map";
+    std::string error;
+    sim::NetServer server;
+    if (!server.init(map_path, data_path, 1, error)) {
+        std::printf("FAIL: netevents server init: %s\n", error.c_str());
+        return 1;
+    }
+    sim::NetConditions conditions;
+    sim::LoopbackTransport to_server(conditions, 4321);
+    sim::LoopbackTransport to_client(conditions, 8765);
+    server.add_client(&to_server, &to_client, 0);
+
+    sim::NetClient client;
+    if (!client.init(&to_server, &to_client, 0, map_path, data_path, error)) {
+        std::printf("FAIL: netevents client init: %s\n", error.c_str());
+        return 1;
+    }
+
+    sim::EventQueue events;
+    auto tick_once = [&](const sim::MoveInput& in) {
+        client.send_input(in);
+        client.step_local(&events);
+        server.receive();
+        server.step();
+        server.send();
+        to_server.advance(0);
+        to_client.advance(0);
+        client.receive();
+    };
+
+    int jumps = 0;
+    int lands = 0;
+    int total = 0;
+    for (int i = 0; i < 120; ++i) {
+        sim::MoveInput in;
+        in.forward = 1.0f;
+        // One pressed edge on the ground: jump, then fall and land.
+        in.jump = i == 40;
+        tick_once(in);
+        sim::SimEvent ev;
+        while (events.pop(ev)) {
+            ++total;
+            if (ev.type == sim::EventType::Jump) ++jumps;
+            if (ev.type == sim::EventType::Land) ++lands;
+        }
+    }
+
+    const bool ok = total > 0 && jumps > 0;
+    std::printf("  [netevents] %d\n", ok ? 1 : 0);
+    if (!ok) {
+        std::printf("FAIL: a networked jump produced no client events (total %d, jumps %d, "
+                    "lands %d)\n",
+                    total, jumps, lands);
+        return 1;
+    }
+    return 0;
+}
+
 int run_join_phase(const std::string& data_path) {
     const std::string map_path = "sim/data/maps/metrics_flat.map";
     int failures = 0;
@@ -1493,6 +1554,9 @@ int run_net_test(const Options& opt) {
         std::printf("FAIL: light-loss link did not converge\n");
         ++failures;
     }
+
+    // AUD-01: jump/land events survive the local prediction in network play.
+    failures += run_net_events_check(opt.data_path);
 
     // R1: the rolled-back tick itself must be repaired, not only the replay.
     failures += run_rollback_repair_check(opt.data_path);

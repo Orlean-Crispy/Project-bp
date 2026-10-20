@@ -6,6 +6,7 @@
 struct Options;
 
 int run_join_phase(const std::string& data_path);
+int run_net_events_check(const std::string& data_path);
 int run_udp_check();
 int run_fragment_check();
 int run_udp_session_check(const std::string& data_path);

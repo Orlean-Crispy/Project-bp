@@ -137,7 +137,7 @@ bool NetGateway::join_impl(const std::string& host, int port, const sim::Ticket*
     return true;
 }
 
-void NetGateway::pump(const sim::MoveInput& input) {
+void NetGateway::pump(const sim::MoveInput& input, sim::EventQueue* events) {
     if (!m_net_client) return;
     const auto now = std::chrono::steady_clock::now();
     if (m_hosting) {
@@ -163,7 +163,7 @@ void NetGateway::pump(const sim::MoveInput& input) {
             std::fflush(stdout);
         }
         m_net_client->send_input(input);
-        m_net_client->step_local();
+        m_net_client->step_local(events);
         m_server->receive();
         m_server->step();
         m_server->send();
@@ -177,7 +177,7 @@ void NetGateway::pump(const sim::MoveInput& input) {
             m_last_hello = now;
         }
         m_net_client->send_input(input);
-        m_net_client->step_local();
+        m_net_client->step_local(events);
         m_net_client->receive();
     }
 }

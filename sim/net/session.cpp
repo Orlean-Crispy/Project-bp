@@ -516,7 +516,8 @@ void NetClient::send_input(const MoveInput& input) {
     m_tx->send(wrap_packet(header, encode_commands(m_pending)));
 }
 
-void NetClient::step_local() {
+void NetClient::step_local(EventQueue* events) {
+    m_events = events;
     if (!m_joined) return;
     if (m_skip_next) {
         // Plan 7.0: when the client has drifted ahead, skip one loop. The world
@@ -528,7 +529,7 @@ void NetClient::step_local() {
     if (m_skip_cooldown > 0) --m_skip_cooldown;
     // Prediction uses exactly the input that was just sent, on the server's tick
     // axis; the clock advances with the world so the two never drift apart.
-    m_local.step_single(m_last_input, kDt);
+    m_local.step_single(m_last_input, kDt, m_events);
     m_clock.advance();
     HistoryEntry entry;
     entry.tick = m_local.tick;
@@ -685,7 +686,7 @@ void NetClient::apply_snapshot(const Snapshot& snap) {
     m_hitbox.record(m_local.players[0], m_local.params, snap.tick);
 
     for (size_t i = index + 1; i < m_history.size(); ++i) {
-        m_local.step_single(m_history[i].input, kDt);
+        m_local.step_single(m_history[i].input, kDt, m_events);
         m_history[i].state = m_local.players[0];
         m_hitbox.record(m_local.players[0], m_local.params, m_local.tick);
     }

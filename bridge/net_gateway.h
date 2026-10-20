@@ -26,7 +26,9 @@ public:
     bool join(const std::string& host, int port, const std::string& map, const std::string& data,
               std::string& error);
     bool reconnect();
-    void pump(const sim::MoveInput& input);
+    // AUD-01: the client's predicted world emits jump/land events; pump forwards
+    // the bridge's queue so LAN play fills it exactly like solo play does.
+    void pump(const sim::MoveInput& input, sim::EventQueue* events);
 
     bool active() const { return m_net_client != nullptr; }
     bool hosting() const { return m_hosting; }

@@ -136,7 +136,7 @@ public:
 
     bool reconnect() { return m_net.reconnect(); }
 
-    void step_network() { m_net.pump(m_input); }
+    void step_network() { m_net.pump(m_input, &m_events); }
 
     bool is_networked() const { return m_net.active(); }
     bool get_joined() const { return m_net.joined(); }

@@ -228,7 +228,9 @@ public:
               ReliableTransport* reliable = nullptr);
 
     void send_input(const MoveInput& input);
-    void step_local();
+    // AUD-01: the predicted world emits jump/land events too, so the caller that
+    // owns an EventQueue passes it in. nullptr (gates, headless loops) stays free.
+    void step_local(EventQueue* events = nullptr);
     void receive();
 
     const PlayerState& predicted() const;
@@ -329,6 +331,9 @@ private:
     Transport* m_tx = nullptr;
     Transport* m_rx = nullptr;
     int m_player = 0;
+    // AUD-01: kept so a rollback replay of already-predicted ticks feeds the same
+    // channel; the event tick lets the presentation layer drop repeats.
+    EventQueue* m_events = nullptr;
     World m_local;
     std::vector<HistoryEntry> m_history;
     MoveInput m_last_input;
