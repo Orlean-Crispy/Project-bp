@@ -302,9 +302,9 @@ void pmove(PlayerState& player, const MoveInput& input, const CollisionWorld& wo
     }
 
     // ---- ability starts -------------------------------------------------
-    const bool busy = player.state == ParkourState::WallRun ||
-                      player.state == ParkourState::WallClimb ||
-                      player.state == ParkourState::Vault;
+    bool busy = player.state == ParkourState::WallRun ||
+                player.state == ParkourState::WallClimb ||
+                player.state == ParkourState::Vault;
 
     if (!busy && player.on_ground && player.state != ParkourState::Slide && input.vault &&
         !player.vault_was_down && player.impulses > 0) {
@@ -328,6 +328,13 @@ void pmove(PlayerState& player, const MoveInput& input, const CollisionWorld& wo
             player.state_ticks = 0;
         }
     }
+
+    // A vault that started this tick is busy too (audit R2). This value was
+    // computed before the block above, so the wall climb/wall run checks used to
+    // see the pre-vault state and overwrite state=Vault, spending a second
+    // impulse in the same tick.
+    busy = player.state == ParkourState::WallRun || player.state == ParkourState::WallClimb ||
+           player.state == ParkourState::Vault;
 
     // Wall climb works from the ground too (Apex style), wall run does not.
     if (!busy && input.wallclimb && player.impulses > 0) {

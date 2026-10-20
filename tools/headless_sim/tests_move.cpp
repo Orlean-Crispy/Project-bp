@@ -506,6 +506,34 @@ int run_parkour_test(const Options& opt) {
                     ok ? "ok" : "FAIL");
     }
 
+    // R2: vault and wall climb must not both fire in one tick. Starting a
+    // vault next to a climbable 1 m block while holding wallclimb used to spend
+    // two impulses and end the tick in WallClimb, because busy was computed
+    // before the vault start.
+    {
+        PlayerState p;
+        p.pos = sim::Vec3(16.55f, 10.0f, 0.01f);
+        p.impulses = world.params.max_impulses;
+        world.players.assign(1, p);
+        world.tick = 0;
+        MoveInput in;
+        in.forward = 1.0f;
+        in.vault = true;
+        in.wallclimb = true;
+        world.step({in}, kDt);
+        const PlayerState& q = world.players[0];
+        const bool single = q.state == sim::ParkourState::Vault &&
+                            q.impulses == world.params.max_impulses - 1;
+        if (!single) {
+            ++failures;
+            std::printf("  vault_climb detail: state %d impulses %d/%d pos (%.2f %.2f %.2f)\n",
+                        static_cast<int>(q.state), q.impulses, world.params.max_impulses,
+                        static_cast<double>(q.pos.x), static_cast<double>(q.pos.y),
+                        static_cast<double>(q.pos.z));
+        }
+        std::printf("  [parkour] vault_climb_single %d\n", single ? 1 : 0);
+    }
+
     if (failures != 0) {
         std::printf("FAIL: %d parkour checks failed\n", failures);
         return 1;
