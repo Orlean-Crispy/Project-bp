@@ -1480,6 +1480,32 @@ wrapper，两个时钟不同步；`uint32` 减法回绕成几十亿，于是每�
 
 ---
 
+## 2026-10-20 · S54 · 体检前两批（R3–R9）收口
+
+七条 P1 全部修复，一条一 commit、每条自带闸门：
+
+| 项 | 改法 | 闸门 |
+|---|---|---|
+| R3 | `Link::sent` 改按发送序 deque，seq 回绕不再打乱 ack | `[seqwrap] ok 1 delta +300 full +0` |
+| R5 | UDP 端口加 `SO_EXCLUSIVEADDRUSE` | `[udp] exclusive 1` |
+| R4 | `MatchHost::release()`，握手失败/超时/stop 都归还槽位 | `[match] ... release 1` |
+| R2 | vault 起手后重算 busy，爬墙不能同 tick 覆盖 | `[parkour] vault_climb_single 1` |
+| R9 | state_hash/same_state 补齐 state/timer/yaw/边沿/墙面/翻越量，快照协议 v3→v4 | `state_fields 8/8`、`yaw_hash 1` |
+| R7 | 删两个假参数、读 `wallrun_normal_dot`、`+`实现受伤减速 −15%/1.5 s、读 `headshot_mult` | `slowed 6.91 restored 8.13 m/s` |
+| R8 | combat 哈希并入 params_hash，ConfigBlob 升 v2 | `[config] ... refused 1 combat 1` |
+
+- 验证（我自己重跑）：全量构建无警告；`smoke.ps1` ALL GREEN；
+  `--test-net` 上述判据齐；`--selftest` `state_fields 8/8`；
+  `--test-parkour`、`--test-demo` PASS；`net_selftest.ps1` joins=2 accepted=415。
+- 副作用：快照线格式变化 → `BP_PROTOCOL_VERSION` 3→4（AGENTS 已同步）。
+
+### 剩余
+
+- P1：R1（回滚未改写该 tick 的 history/hitbox，M6 才用到）、R6（网络热路径每 tick 分配）。
+- P2：R10–R19（死分支、无效判据、重复代码、硬编码 64 Hz、未用字段/API、未校验索引、u8path、map 遍历）。
+
+---
+
 # 开发日志（详细）
 
 > 从 2026-10-20 起，在 PROGRESS 末尾追加详细日志；上面的 S 编号短条目保留，作为索引。

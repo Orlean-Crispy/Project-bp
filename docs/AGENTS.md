@@ -314,7 +314,7 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
   5 B 头（marker/id/index/total）的片；接收端按 id 重组，半包绝不交付，新 id 丢弃旧包。
 - 多 peer：UdpSocket 共享 + UdpPeerHub 按源地址 demux；PeerTransport 每 peer 一个收件队列；
   未知来源进有界队列（64），HELLO（22 B，magic “BPH0” + 协议版本 + 16 B client_id）通过才 add_peer。
-  协议 v3：HELLO 必须带**信令已签发**的 client_id，槽位由 matchmaking 事件给出，不按到达顺序猜；
+  协议 v4：HELLO 必须带**信令已签发**的 client_id，槽位由 matchmaking 事件给出，不按到达顺序猜；
   没走过 TCP 的 id 一律忽略（陌生人包进不了房间）。
 - 判据：真 UDP 环回 2 客户端 joined 1/1、148/148 快照、偏差 0.00000 m；
   两进程 net_loop（信令组局）：joins=2、accepted=416、far=0、moved=46.87 m。
@@ -378,7 +378,7 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
   判据：[timeout] joined 1 dropped 1 reuse 1；[reconnect] first 0 links 1 active 1。
 - 槽位激活：PlayerState.active → 快照 flags bit2；服务器 init 全 false、add_client true、
   remove_client false；桥接层跳过未激活槽位（否则 host 会看到没加入的幽灵）。
-- 远端朝向：PlayerState.yaw 由 pmove 写入；PlayerSnap 的 kFieldYaw 独立字段组；协议版本 3。
+- 远端朝向：PlayerState.yaw 由 pmove 写入；PlayerSnap 的 kFieldYaw 独立字段组；协议版本 4（R9 起快照带 wall_normal/vault_dir/vault_rise/slow_ticks）。
   GDScript 用 rotation.y = atan2(-cos(yaw), sin(yaw))，插值器取前一帧 yaw。
   判据：[yaw] full 1 delta 1；host 看到 remote yaw 0.0→0.9。
 - 判据：30% 丢包 2000 tick 回滚 51（曾 1428）；5% 丢包 60 s 位置修正 0 次；
