@@ -38,17 +38,6 @@ const SnapshotInterpolator::Entry* SnapshotInterpolator::find(uint32_t tick) con
     return e.valid && e.tick == tick ? &e : nullptr;
 }
 
-uint32_t SnapshotInterpolator::oldest_tick() const {
-    uint32_t oldest = 0;
-    bool first = true;
-    for (const Entry& e : m_entries) {
-        if (!e.valid) continue;
-        if (first || e.tick < oldest) oldest = e.tick;
-        first = false;
-    }
-    return oldest;
-}
-
 const Snapshot& SnapshotInterpolator::nearest(uint32_t tick) const {
     const Entry* best = nullptr;
     for (const Entry& e : m_entries) {

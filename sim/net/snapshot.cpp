@@ -68,12 +68,6 @@ void from_snap(const PlayerSnap& s, PlayerState& p) {
     p.vault_rise = s.vault_rise;
 }
 
-Snapshot make_full_baseline(const Snapshot& snap) {
-    Snapshot copy = snap;
-    copy.baseline_tick = 0;
-    return copy;
-}
-
 std::vector<uint8_t> encode_snapshot(const Snapshot& current, const Snapshot* baseline) {
     const bool use_delta = baseline != nullptr && baseline->players.size() == current.players.size();
 

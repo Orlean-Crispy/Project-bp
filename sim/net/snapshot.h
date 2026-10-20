@@ -49,6 +49,4 @@ bool decode_snapshot(const uint8_t* data, size_t size, const Snapshot* baseline,
 // decode against (the server's baseline lags behind the client's newest one).
 uint32_t peek_baseline_tick(const uint8_t* data, size_t size);
 
-Snapshot make_full_baseline(const Snapshot& snap);
-
 }  // namespace sim

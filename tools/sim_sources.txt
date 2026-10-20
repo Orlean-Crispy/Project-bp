@@ -2,7 +2,6 @@ sim/collision/brush.cpp
 sim/collision/map_parse.cpp
 sim/collision/trace.cpp
 sim/core/event.cpp
-sim/core/tick.cpp
 sim/core/world.cpp
 sim/data/config.cpp
 sim/demo/demo.cpp

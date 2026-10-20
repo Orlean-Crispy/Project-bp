@@ -20,7 +20,6 @@ public:
     void on_ack(uint16_t ack, uint32_t bitmap, uint32_t now_ms);
 
     bool dead() const { return m_dead; }
-    uint16_t next_seq() const { return m_next_seq; }
     int retransmits() const { return m_retransmits; }
     int in_flight() const;
 
@@ -48,7 +47,6 @@ public:
     void on_packet(const uint8_t* data, size_t size,
                    std::vector<std::vector<uint8_t>>& delivered);
     void make_ack(std::vector<uint8_t>& out) const;
-    uint16_t next_expected() const { return m_next; }
 
 private:
     uint16_t m_window;

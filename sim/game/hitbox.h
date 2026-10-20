@@ -40,7 +40,6 @@ public:
     void record(const PlayerState& player, const MovementParams& params, uint32_t tick);
     void reset();
 
-    bool has(uint32_t tick) const;
     HitboxSample at(uint32_t tick) const;
     HitboxSample sample(uint32_t tick, float frac) const;
 

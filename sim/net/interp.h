@@ -18,10 +18,8 @@ public:
     void push(const Snapshot& snap);
     void reset();
 
-    bool empty() const { return m_count == 0; }
     int size() const { return m_count; }
     uint32_t newest_tick() const { return m_count == 0 ? 0 : m_newest; }
-    uint32_t oldest_tick() const;
 
     // tick + frac, frac in [0,1]. Outside the buffered range the nearest frame
     // is returned unchanged (no extrapolation).

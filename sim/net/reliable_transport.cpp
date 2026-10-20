@@ -37,7 +37,6 @@ bool ReliableTransport::recv(std::vector<uint8_t>& out) {
             m_receiver.on_packet(pkt.data(), pkt.size(), got);
             for (std::vector<uint8_t>& piece : got) {
                 m_inbox.push_back(std::move(piece));
-                ++m_in;
             }
             m_ack_pending = true;
             continue;
@@ -68,7 +67,6 @@ void ReliableTransport::flush(uint32_t now_ms) {
     for (std::vector<uint8_t>& pkt : due) {
         pkt[0] = kDataTag;
         m_tx->send(pkt);
-        ++m_sent;
     }
     if (m_ack_pending) {
         std::vector<uint8_t> ack;

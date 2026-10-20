@@ -29,7 +29,6 @@ public:
     }
 
     std::size_t pending() const { return m_pending.size(); }
-    void clear() { m_pending.clear(); }
 
 private:
     std::deque<std::pair<ClientId, uint8_t>> m_pending;

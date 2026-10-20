@@ -90,8 +90,6 @@ const HitboxHistory::Entry* HitboxHistory::find(uint32_t tick) const {
     return e.valid && e.tick == tick ? &e : nullptr;
 }
 
-bool HitboxHistory::has(uint32_t tick) const { return find(tick) != nullptr; }
-
 HitboxSample HitboxHistory::nearest(uint32_t tick) const {
     const Entry* best = nullptr;
     for (const Entry& e : m_entries) {

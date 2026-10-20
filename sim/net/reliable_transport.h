@@ -29,11 +29,8 @@ public:
     // Reliable ordered stream.
     bool send_reliable(const std::vector<uint8_t>& payload);
     bool recv_reliable(std::vector<uint8_t>& out);
-    int reload_pending() const { return m_sender.in_flight(); }
     int retransmits() const { return m_sender.retransmits(); }
     bool dead() const { return m_sender.dead(); }
-    int reliable_sent() const { return m_sent; }
-    int reliable_delivered() const { return m_in; }
 
 private:
     void flush(uint32_t now_ms);
@@ -45,8 +42,6 @@ private:
     std::deque<std::vector<uint8_t>> m_inbox;
     uint32_t m_now_ms = 0;
     bool m_ack_pending = false;
-    int m_sent = 0;
-    int m_in = 0;
 };
 
 }  // namespace sim

@@ -22,29 +22,6 @@ constexpr uint32_t ticks_to_millis(uint32_t ticks, uint32_t hz = kDefaultTickRat
     return static_cast<uint32_t>((static_cast<uint64_t>(ticks) * 1000ull) / hz);
 }
 
-// Fixed-step accumulator. The simulation never sees frame time: it only ever
-// advances in whole ticks, so results do not depend on the renderer's frame rate.
-class TickClock {
-public:
-    explicit TickClock(uint32_t hz = kDefaultTickRate);
-
-    uint32_t hz() const { return m_hz; }
-    double dt() const { return 1.0 / static_cast<double>(m_hz); }
-    uint32_t tick() const { return m_tick; }
-
-    // Feeds one frame of wall time; returns how many whole ticks to simulate.
-    // Excess time beyond max_catchup ticks is dropped rather than accumulated,
-    // which prevents a single long stall from triggering a death spiral.
-    int advance(double frame_seconds, int max_catchup = 5);
-
-    void reset(uint32_t tick = 0);
-
-private:
-    uint32_t m_hz;
-    uint32_t m_tick;
-    double m_accumulator;
-};
-
 // Wall-clock helper. std::chrono::steady_clock starts at boot, so subtracting a
 // larger value from a smaller one underflows on a freshly booted machine.
 // Always go through these two functions.
