@@ -21,7 +21,9 @@
 #include "sim/net/fragment.h"
 #include "sim/net/handshake.h"
 #include "sim/net/matchmaking.h"
+#include "sim/net/netchan.h"
 #include "sim/net/reliable.h"
+#include "sim/net/reliable_transport.h"
 #include "sim/net/session.h"
 #include "sim/net/signaling.h"
 #include "sim/net/ticket.h"
@@ -1876,6 +1878,72 @@ int run_match_test() {
     return 0;
 }
 
+int run_dual_channel_test() {
+    sim::NetConditions cond;
+    cond.loss = 0.2f;
+    cond.latency_ms = 20.0f;
+    sim::LoopbackTransport s2c(cond, 11);
+    sim::LoopbackTransport c2s(cond, 22);
+    sim::ReliableTransport server(&s2c, &c2s);
+    sim::ReliableTransport client(&c2s, &s2c);
+
+    // A2 ships the configstring as 512 B chunks; use the real chunk format.
+    std::vector<uint8_t> blob(4096);
+    for (std::size_t i = 0; i < blob.size(); ++i) {
+        blob[i] = static_cast<uint8_t>((i * 37u) & 0xFFu);
+    }
+    const std::vector<std::vector<uint8_t>> chunks = sim::chunk_config(blob, 512);
+
+    sim::ConfigAssembler assembler;
+    std::string error;
+    std::size_t next_chunk = 0;
+    int snapshots_out = 0;
+    int snapshots_in = 0;
+    for (int tick = 0; tick < 400; ++tick) {
+        while (next_chunk < chunks.size() && server.send_reliable(chunks[next_chunk])) ++next_chunk;
+
+        std::vector<uint8_t> snap(8, 0);
+        snap[0] = static_cast<uint8_t>(sim::PacketType::Snapshot);
+        snap[7] = static_cast<uint8_t>(tick & 0xFF);
+        server.send(snap);
+        ++snapshots_out;
+
+        server.advance(static_cast<uint32_t>(tick));
+        s2c.advance(static_cast<uint32_t>(tick));
+        client.advance(static_cast<uint32_t>(tick));
+        c2s.advance(static_cast<uint32_t>(tick));
+
+        std::vector<uint8_t> pkt;
+        while (client.recv(pkt)) ++snapshots_in;
+        std::vector<uint8_t> piece;
+        while (client.recv_reliable(piece)) {
+            if (!assembler.add(piece.data(), piece.size(), error)) {
+                std::printf("FAIL: dual chunk rejected: %s\n", error.c_str());
+                return 1;
+            }
+        }
+        std::vector<uint8_t> ack_in;
+        while (server.recv(ack_in)) {
+        }
+    }
+
+    const bool complete = assembler.complete();
+    const bool same = complete && assembler.assemble() == blob;
+    const bool retransmitted = server.retransmits() > 0;
+    const bool snapshots_ok = snapshots_in > snapshots_out * 3 / 4;
+    const bool alive = !server.dead() && !client.dead();
+
+    std::printf("  [dual] chunks %u/%u same %d retrans %d snapshot %d/%d dead %d\n",
+                static_cast<unsigned>(assembler.total()),
+                static_cast<unsigned>(chunks.size()), same ? 1 : 0, server.retransmits(),
+                snapshots_in, snapshots_out, alive ? 0 : 1);
+    if (!complete || !same || !retransmitted || !snapshots_ok || !alive) {
+        std::printf("FAIL: A2 shared socket test failed (%s)\n", error.c_str());
+        return 1;
+    }
+    return 0;
+}
+
 int run_signal_test() {
     std::string error;
     sim::TcpListener listener;
@@ -2049,6 +2117,7 @@ int run_net_test(const Options& opt) {
     failures += run_clock_check(opt.data_path);
     failures += run_signal_test();
     failures += run_match_test();
+    failures += run_dual_channel_test();
     failures += run_reliable_test();
     failures += run_ticket_test();
     failures += run_timeout_test();

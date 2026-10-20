@@ -332,7 +332,11 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
 - A2 可靠流（sim/net/reliable.*）：独立 rel_seq（1 起）、窗口 32、累积 ACK + 32 位位图、
   RFC 6298 RTO（250 ms，100–1000）、5 次重传上限；configstring 512 B 分块 + CRC32。
   判据：5000 B / 10 块 / 30% 丢包 → retrans 6、complete 1、same 1、corrupt 1。
-  尚未与快照共用 socket。
+- A2 共 socket（sim/net/reliable_transport.*）：`ReliableTransport(tx, rx)` 包住任意传输；
+  快照/输入原样透传，可靠包用 `PacketType::ReliableData(4)` / `ReliableAck(5)` 打标，
+  接收端先 demux 再交付，两条流互不阻塞；wrapper **不**推进底层管道（调用方每 tick 推进一次）。
+  判据：[dual] chunks 8/8 same 1 retrans 1 snapshot 326/400 dead 0（20% 丢包 + 20 ms）。
+  尚未接进 NetServer/NetClient（configstring 还没走这条流）。
 - A1 信令（sim/net/signaling.*）：TCP **27115**（v0.4 写的 27015 已被 AppleMobileDeviceService 占用；
   Windows 上用 SO_EXCLUSIVEADDRUSE 独占，端口被占时 bind 必须失败而不是静默共享）、
   u16 长度前缀、六条消息、connect/accept 超时；

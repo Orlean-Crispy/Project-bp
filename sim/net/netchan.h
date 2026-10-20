@@ -9,6 +9,9 @@ enum class PacketType : uint8_t {
     Snapshot = 1,
     Command = 2,
     FullState = 3,
+    // A2: the reliable stream shares the socket but keeps its own sequence.
+    ReliableData = 4,
+    ReliableAck = 5,
 };
 
 // Unreliable channel header (plan section 7.1): every packet carries its own

@@ -1208,6 +1208,18 @@ CMake 只在 WIN32 链接 ws2_32，不污染 sim 的其它目标。
 
 ---
 
+## 2026-10-20 · S36 · A2 可靠流与快照共用 socket
+
+- 新增 sim/net/reliable_transport.*：`ReliableTransport(tx, rx)` 包住任意 Transport；
+  快照/输入原样透传，可靠包用 `PacketType::ReliableData(4)` / `ReliableAck(5)` 打标。
+- 接收端先 demux（数据包交给 ReliableReceiver，ACK 交给 ReliableSender），两条流互不阻塞；
+  wrapper 不推进底层管道——调用方每 tick 推进一次，避免双倍时钟。
+- 判据（并入 --test-net）：`[dual] chunks 8/8 same 1 retrans 1 snapshot 326/400 dead 0`，
+  20% 丢包 + 20 ms 延迟下 4 KB configstring 分 8 块全部按序到达且内容一致，38% 快照仍照常流过。
+- 尚未接进 NetServer/NetClient：configstring 还没走这条流，下一步做重连状态机时一起接。
+
+---
+
 # 开发日志（详细）
 
 > 从 2026-10-20 起，在 PROGRESS 末尾追加详细日志；上面的 S 编号短条目保留，作为索引。

@@ -17,6 +17,7 @@ sim/net/interp.cpp
 sim/net/matchmaking.cpp
 sim/net/netchan.cpp
 sim/net/reliable.cpp
+sim/net/reliable_transport.cpp
 sim/net/session.cpp
 sim/net/signaling.cpp
 sim/net/snapshot.cpp
