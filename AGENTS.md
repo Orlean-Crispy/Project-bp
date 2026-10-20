@@ -29,6 +29,9 @@
 核心主张：**移动自由度按 Apex，命中判定按 CS**。
 差异化（v0.2 更正后）：**同一件事做得更硬——64 tick、无宽容判定、局域网零延迟。**
 
+对外名 **IMPULSE**（缩写 **IMP**），内部代号 **Project Breakpoint / Project Bp / bp**；
+三层名字各管各的读者，见 docs/IMPULSE_命名方案.md 与 decisions/0005。
+
 ### 1.2 已定的技术决策（§2.1）
 
 | 类别 | 决策 |
@@ -130,6 +133,7 @@ v0.1 定义：**两个人、局域网、1 张 40×40 图、对枪 10 分钟不�
 - **MTU**：1200 B；快照分片丢一片整包丢弃，等下一 tick；可靠流用 512 B 分块。
 - **键位**：只在 sim/input 与 keybinds.toml；sim 只认 MoveInput。
 - **路径**：工具链在 C:\bp-toolchain（ASCII）；ld 输出必须相对路径；文件用 u8path。
+- **命名**：对外 IMPULSE / IMP，对内 Project Bp / `bp` 前缀；代码里只有一个东西叫 impulse（移动资源），破坏叫 breach。
 
 ---
 
@@ -149,6 +153,7 @@ powershell -File tools\run_demo.ps1     # Godot demo
 | 文件 | 作用 |
 |---|---|
 | docs/计划书_v0.3.md | **设计原文（必读）** |
+| docs/IMPULSE_命名方案.md | 命名体系（IMPULSE / IMP / bp）、术语分层、符号；决议见 decisions/0005 |
 | docs/网络层深化_v0.4.md | §7 网络专章：A1–A5 / B1–B3 / 冲突裁决 C1–C3 / N1–N8 判据 |
 | docs/8.3候选B_v0.4.md | §8.3 选定方案：可破坏入口、0.5 m 四档、时间预算 |
 | docs/AGENTS.md | 详细约束、判据、未结案、环境、文件地图 |

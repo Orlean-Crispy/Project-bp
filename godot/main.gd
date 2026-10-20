@@ -176,7 +176,7 @@ func _show_net_menu() -> void:
 	panel.add_child(box)
 
 	var title := Label.new()
-	title.text = "Project Breakpoint - LAN"
+	title.text = "IMPULSE - LAN"
 	title.add_theme_font_size_override("font_size", 20)
 	box.add_child(title)
 	var hint := Label.new()

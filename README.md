@@ -1,9 +1,11 @@
-# Project Breakpoint
+# IMPULSE
+
+> 对外名 **IMPULSE** · 缩写 **IMP** · 内部代号 **Project Breakpoint**（`Project Bp` / `bp`）· 符号 **J / Δp**
 
 5v5、有爆破目标的 Apex 式自由移动 FPS。**移动按 Apex，判定按 CS。**
 Godot 4.7 宿主 + 自研 C++17 模拟层（零 Godot 依赖），64 tick，目标局域网。
 
-> 设计文档：`docs/计划书_v0.3.md`
+> 设计文档：`docs/计划书_v0.3.md`　命名：[docs/IMPULSE_命名方案.md](docs/IMPULSE_命名方案.md)
 > 约束：`docs/AGENTS.md`　进度：`docs/PROGRESS.md`　事故：`docs/pitfalls/`
 
 > 缺口盘点：[docs/GAPS.md](docs/GAPS.md)　网络设计：[docs/网络层深化_v0.4.md](docs/网络层深化_v0.4.md)

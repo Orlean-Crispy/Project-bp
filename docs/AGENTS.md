@@ -121,6 +121,7 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 | 编译器 | MinGW-w64 GCC 16.2，固定装在 C:\bp-toolchain（见 §6） |
 | 警告 | -Wall -Wextra -Werror；只有**全量构建**算数 |
 | 命名 | 类型 PascalCase，函数 snake_case，成员 m_ 前缀，常量 kPascalCase |
+| 命名（项目） | 对外 IMPULSE / IMP，对内 Project Bp / bp 前缀；项目级宏 BP_*；模块命名空间保持 sim::（ADR 0005） |
 | 头文件 | #pragma once；sim 头文件不得 include 任何 Godot 头 |
 | 浮点 | float 为模拟主类型；禁止隐式 double |
 | 路径 | 工程内引用用相对路径；**链接器输出必须是相对路径**；文件打开必须 std::filesystem::u8path |
@@ -168,6 +169,8 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 6. **游戏内改键 UI** — 键位系统已数据驱动，UI 未做。lead：M5 之后。
 7. **穿透两套模型** — .map 的 _penetrable 与武器 penetration_count 谁优先未定。lead：M6。
 8. **movement.toml 热重载** — 铁律 I 只做了哈希，没有 reload 路径。lead：M6 前。
+9. **impulse 上限** — 计划书 §5.2 仍标「待定」，sim 现值 4（movement.toml 的 max_impulses），
+   命名方案画 6 格；HUD 必须读参数、不许写死。lead：M3 手感验收。
 
 ---
 
@@ -245,7 +248,7 @@ sim/data/        movement.toml、combat.toml、keybinds.toml、maps/*.map
 bridge/          GDExtension 桥（唯一跨边界层）
 godot/           project.godot / main.tscn / main.gd / breakpoint.gdextension
 tools/           headless_sim（所有闸门）、move_metrics、net_loop（两进程联机）、run_net_demo（双实例）、build/smoke/build_bridge/run_demo/setup 脚本
-docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/、decisions/、keymap.md、demo-format.md、计划书_v0.3.md
+docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/、decisions/、keymap.md、demo-format.md、计划书_v0.3.md、IMPULSE_命名方案.md
 ```
 
 ### 7.1 地图
