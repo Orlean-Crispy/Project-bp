@@ -134,6 +134,7 @@ v0.1 定义：**两个人、局域网、1 张 40×40 图、对枪 10 分钟不�
 - **键位**：只在 sim/input 与 keybinds.toml；sim 只认 MoveInput。
 - **路径**：工具链在 C:\bp-toolchain（ASCII）；ld 输出必须相对路径；文件用 u8path。
 - **命名**：对外 IMPULSE / IMP，对内 Project Bp / `bp` 前缀；代码里只有一个东西叫 impulse（移动资源），破坏叫 breach。
+  **不做全局重命名（已结案）**：一直用内部代号开发，名字不影响正确性，只保证没有 bug。
 
 ---
 

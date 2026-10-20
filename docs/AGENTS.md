@@ -121,7 +121,7 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 | 编译器 | MinGW-w64 GCC 16.2，固定装在 C:\bp-toolchain（见 §6） |
 | 警告 | -Wall -Wextra -Werror；只有**全量构建**算数 |
 | 命名 | 类型 PascalCase，函数 snake_case，成员 m_ 前缀，常量 kPascalCase |
-| 命名（项目） | 对外 IMPULSE / IMP，对内 Project Bp / bp 前缀；项目级宏 BP_*；模块命名空间保持 sim::（ADR 0005） |
+| 命名（项目） | 对外 IMPULSE / IMP，对内 Project Bp / bp 前缀；项目级宏 BP_*；模块命名空间保持 sim::。**不做全局重命名（已结案）**（ADR 0005） |
 | 头文件 | #pragma once；sim 头文件不得 include 任何 Godot 头 |
 | 浮点 | float 为模拟主类型；禁止隐式 double |
 | 路径 | 工程内引用用相对路径；**链接器输出必须是相对路径**；文件打开必须 std::filesystem::u8path |
