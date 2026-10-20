@@ -15,9 +15,21 @@ const KEYCODES := {
 	"M": KEY_M, "N": KEY_N, "O": KEY_O, "P": KEY_P, "Q": KEY_Q, "R": KEY_R,
 	"S": KEY_S, "T": KEY_T, "U": KEY_U, "V": KEY_V, "W": KEY_W, "X": KEY_X,
 	"Y": KEY_Y, "Z": KEY_Z,
+	# Number row, not the numpad: sim::Key::Num0 is what key_name() prints.
+	"NUM0": KEY_0, "NUM1": KEY_1, "NUM2": KEY_2, "NUM3": KEY_3, "NUM4": KEY_4,
+	"NUM5": KEY_5, "NUM6": KEY_6, "NUM7": KEY_7, "NUM8": KEY_8, "NUM9": KEY_9,
 	"SPACE": KEY_SPACE, "LEFT_CTRL": KEY_CTRL, "LEFT_SHIFT": KEY_SHIFT,
 	"RIGHT_CTRL": KEY_CTRL, "RIGHT_SHIFT": KEY_SHIFT, "TAB": KEY_TAB,
-	"ESCAPE": KEY_ESCAPE, "MOUSE_LEFT": KEY_NONE,
+	"ESCAPE": KEY_ESCAPE, "ENTER": KEY_ENTER, "BACKSPACE": KEY_BACKSPACE,
+	"LEFT_ALT": KEY_ALT, "RIGHT_ALT": KEY_ALT,
+	"UP": KEY_UP, "DOWN": KEY_DOWN, "LEFT": KEY_LEFT, "RIGHT": KEY_RIGHT,
+}
+
+# key_name() also emits mouse buttons (sim/input/keycodes.cpp).
+const MOUSECODES := {
+	"MOUSE_LEFT": MOUSE_BUTTON_LEFT,
+	"MOUSE_RIGHT": MOUSE_BUTTON_RIGHT,
+	"MOUSE_MIDDLE": MOUSE_BUTTON_MIDDLE,
 }
 
 var sim
@@ -159,14 +171,24 @@ func _build_actions(bindings: Dictionary) -> void:
 		if not InputMap.has_action(godot_action):
 			InputMap.add_action(godot_action)
 		var key_name := String(bindings[action_name])
-		if not KEYCODES.has(key_name):
-			continue
-		var code: Key = KEYCODES[key_name]
-		if code == KEY_NONE:
-			continue
-		var event := InputEventKey.new()
-		event.physical_keycode = code
-		InputMap.action_add_event(godot_action, event)
+		if key_name == "NONE":
+			continue  # deliberately unbound
+		# AUD-10: every name key_name() can print must map here, or a keybind edit
+		# silently loses the action. Unknown names are loud now.
+		if MOUSECODES.has(key_name):
+			var button: MouseButton = MOUSECODES[key_name]
+			var mouse_event := InputEventMouseButton.new()
+			mouse_event.button_index = button
+			InputMap.action_add_event(godot_action, mouse_event)
+		elif KEYCODES.has(key_name):
+			var code: Key = KEYCODES[key_name]
+			var event := InputEventKey.new()
+			event.physical_keycode = code
+			InputMap.action_add_event(godot_action, event)
+		else:
+			push_warning("unknown key '%s' for action %s; the action is unbound" % [
+				key_name, action_name
+			])
 
 func _build_world_mesh() -> void:
 	var arrays := []
