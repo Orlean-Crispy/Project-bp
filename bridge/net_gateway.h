@@ -30,7 +30,9 @@ public:
     // the bridge's queue so LAN play fills it exactly like solo play does.
     void pump(const sim::MoveInput& input, sim::EventQueue* events);
 
-    bool active() const { return m_net_client != nullptr; }
+    // AUD-06: a join that got past signalling but could not open UDP is still a
+    // network session ("disconnected"), not a reason to drop back to solo play.
+    bool active() const { return m_net_client != nullptr || m_disconnected; }
     bool hosting() const { return m_hosting; }
     bool joined() const { return m_net_client != nullptr && m_net_client->joined(); }
     int slot() const { return m_net_client ? m_net_client->player_index() : 0; }
@@ -53,6 +55,7 @@ private:
     std::unique_ptr<sim::LoopbackTransport> m_local_to_server;
     std::unique_ptr<sim::LoopbackTransport> m_local_to_client;
     bool m_hosting = false;
+    bool m_disconnected = false;
     sim::ClientId m_client_id{};
     sim::Ticket m_ticket{};
     bool m_has_ticket = false;

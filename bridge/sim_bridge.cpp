@@ -117,6 +117,9 @@ public:
     }
 
     void step() {
+        // AUD-06: a network session never falls back to the local map world, even
+        // when it is disconnected; only step() from solo play may advance it.
+        if (m_net.active()) return;
         if (m_world.players.empty()) return;
         m_world.step({m_input}, 1.0f / 64.0f, &m_events);
     }

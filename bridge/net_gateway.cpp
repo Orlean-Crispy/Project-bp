@@ -58,6 +58,7 @@ bool NetGateway::start_host(const std::string& map, const std::string& data, int
         return fail("breakpoint host: ", error);
     }
     m_hosting = true;
+    m_disconnected = false;
     return true;
 }
 
@@ -78,6 +79,10 @@ sim::ClientId NetGateway::make_client_id() {
 bool NetGateway::join(const std::string& host, int port, const std::string& map,
                       const std::string& data, std::string& error) {
     if (m_net_client) return false;
+    // Stay in the network state from here on: even if admission or the socket
+    // fails, the bridge must not silently resume stepping the solo map world
+    // (camera snap + stale remote capsules).
+    m_disconnected = true;
     m_client_id = make_client_id();
     m_join_host = host;
     m_join_port = port;
@@ -90,7 +95,7 @@ bool NetGateway::join(const std::string& host, int port, const std::string& map,
 // A5: a resume keeps the same client id and presents the ticket the host
 // issued, so it comes back to its old slot instead of queueing for a new one.
 bool NetGateway::reconnect() {
-    if (!m_net_client || m_hosting || !m_has_ticket) return false;
+    if (m_hosting || !m_has_ticket) return false;
     std::string error;
     if (join_impl(m_join_host, m_join_port, &m_ticket, error)) return true;
     // reconnect() has no error out-parameter, so it reports in place like the
@@ -134,6 +139,7 @@ bool NetGateway::join_impl(const std::string& host, int port, const sim::Ticket*
                 static_cast<unsigned>(reply.game_port));
     m_udp->send(sim::make_hello(m_client_id));
     m_last_hello = std::chrono::steady_clock::now();
+    m_disconnected = false;
     return true;
 }
 
