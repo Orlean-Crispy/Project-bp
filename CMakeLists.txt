@@ -41,10 +41,10 @@ if(GIT_FOUND)
     string(STRIP "${BP_GIT_HASH}" BP_BUILD_ID)
   endif()
 endif()
-target_compile_definitions(sim PUBLIC
-  BP_BUILD_ID="${BP_BUILD_ID}"
-  BP_SIM_VERSION=1
-  BP_PROTOCOL_VERSION=4)
+# Only the build id is injected: it changes per commit. Sim and protocol versions
+# live in sim/core/version.h alone, so bumping one is a one-line change there instead
+# of "the header says 5, the build script still says 4".
+target_compile_definitions(sim PUBLIC BP_BUILD_ID="${BP_BUILD_ID}")
 
 add_executable(headless_sim tools/headless_sim/main.cpp tools/headless_sim/tests_net.cpp tools/headless_sim/tests_demo.cpp tools/headless_sim/test_util.cpp tools/headless_sim/tests_move.cpp)
 target_link_libraries(headless_sim PRIVATE sim)

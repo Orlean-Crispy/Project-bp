@@ -25,6 +25,7 @@
 #include "remote_sampling.h"
 #include "sim/collision/map_parse.h"
 #include "sim/core/event.h"
+#include "sim/core/version.h"
 #include "sim/core/world.h"
 #include "sim/input/bindings.h"
 #include "sim/net/session.h"
@@ -259,6 +260,12 @@ public:
     float get_stand_height() const { return m_world.params.stand_height; }
     float get_crouch_height() const { return m_world.params.crouch_height; }
 
+    // AUD-13: the DLL carries the same build id CMake bakes into headless_sim,
+    // so a log line says which commit actually loaded. The protocol version has
+    // to match the other machine or HELLO is refused, so show it too.
+    String get_build_id() const { return String(sim::kBuildId); }
+    int get_protocol_version() const { return static_cast<int>(sim::kProtocolVersion); }
+
     PackedVector3Array get_vertices() const { return m_vertices; }
     PackedVector3Array get_normals() const { return m_normals; }
     PackedColorArray get_colors() const { return m_colors; }
@@ -297,6 +304,8 @@ protected:
         ClassDB::bind_method(D_METHOD("get_player_radius"), &SimWorld::get_player_radius);
         ClassDB::bind_method(D_METHOD("get_stand_height"), &SimWorld::get_stand_height);
         ClassDB::bind_method(D_METHOD("get_crouch_height"), &SimWorld::get_crouch_height);
+        ClassDB::bind_method(D_METHOD("get_build_id"), &SimWorld::get_build_id);
+        ClassDB::bind_method(D_METHOD("get_protocol_version"), &SimWorld::get_protocol_version);
         ClassDB::bind_method(D_METHOD("get_vertices"), &SimWorld::get_vertices);
         ClassDB::bind_method(D_METHOD("get_normals"), &SimWorld::get_normals);
         ClassDB::bind_method(D_METHOD("get_colors"), &SimWorld::get_colors);
