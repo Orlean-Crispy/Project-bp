@@ -20,9 +20,10 @@ bool load_world_from(const std::string& map_path, const std::string& data_path, 
     std::vector<std::string> warnings;
     if (!sim::load_movement_params(data_path, world.params, warnings, error)) return false;
     for (const std::string& w : warnings) std::fprintf(stderr, "warning: %s\n", w.c_str());
+    if (!sim::load_combat_beside(data_path, world.combat, error)) return false;
 
     world.collision.build(map);
-    world.params_hash = world.params.hash();
+    world.params_hash = sim::combined_params_hash(world.params, world.combat);
     return true;
 }
 

@@ -926,34 +926,52 @@ int run_config_test() {
 
     const bool retransmitted = srv.retransmits() > 0;
 
-    // Same pipeline, one hash bit flipped: the client must refuse the match.
-    sim::NetServer other;
-    other.init("sim/data/maps/test_box.map", "sim/data/movement.toml", 1, error);
+    // Same pipeline, a blob the client must refuse.
+    auto refuses = [&](const sim::ConfigBlob& candidate) {
+        sim::NetServer s;
+        if (!s.init("sim/data/maps/test_box.map", "sim/data/movement.toml", 1, error)) {
+            return false;
+        }
+        s.set_configstring(sim::encode_config(candidate));
+        sim::LoopbackTransport s3c(cond, 71);
+        sim::LoopbackTransport c3s(cond, 81);
+        sim::ReliableTransport rs(&s3c, &c3s);
+        sim::ReliableTransport rc(&c3s, &s3c);
+        s.add_client(&rs, &rs, 0, &rs);
+        sim::NetClient c;
+        if (!c.init(&rc, &rc, 0, "sim/data/maps/test_box.map", "sim/data/movement.toml", error,
+                    &rc)) {
+            return false;
+        }
+        for (int t = 0; t < 200 && !c.config_ready(); ++t) {
+            s.receive();
+            s.step();
+            s.send();
+            s3c.advance(static_cast<uint32_t>(t));
+            c3s.advance(static_cast<uint32_t>(t));
+            c.receive();
+        }
+        return c.config_ready() && c.config_mismatch();
+    };
+
     sim::ConfigBlob wrong = config;
     wrong.params_hash ^= 1u;
-    other.set_configstring(sim::encode_config(wrong));
-    sim::LoopbackTransport s2c2(cond, 51);
-    sim::LoopbackTransport c2s2(cond, 61);
-    sim::ReliableTransport srv2(&s2c2, &c2s2);
-    sim::ReliableTransport cli2(&c2s2, &s2c2);
-    other.add_client(&srv2, &srv2, 0, &srv2);
-    sim::NetClient client2;
-    client2.init(&cli2, &cli2, 0, "sim/data/maps/test_box.map", "sim/data/movement.toml",
-                 error, &cli2);
-    for (int t = 0; t < 200 && !client2.config_ready(); ++t) {
-        other.receive();
-        other.step();
-        other.send();
-        s2c2.advance(static_cast<uint32_t>(t));
-        c2s2.advance(static_cast<uint32_t>(t));
-        client2.receive();
-    }
-    const bool refused = client2.config_ready() && client2.config_mismatch();
+    const bool refused = refuses(wrong);
 
-    std::printf("  [config] chunks %u same %d matched %d refused %d full_state %d ticks %d retrans %d\n",
+    // R8: the combat half is part of the join hash. A different combat.toml must
+    // be refused exactly like a different movement.toml.
+    sim::CombatParams other_combat = server.world().combat;
+    other_combat.max_health += 1;
+    sim::ConfigBlob combat_wrong = config;
+    combat_wrong.params_hash = sim::combined_params_hash(server.world().params, other_combat);
+    const bool combat_refused = refuses(combat_wrong);
+
+    std::printf("  [config] chunks %u same %d matched %d refused %d combat %d full_state %d ticks %d retrans %d\n",
                 static_cast<unsigned>(client.config_chunks()), same ? 1 : 0, matched ? 1 : 0,
-                refused ? 1 : 0, joined ? 1 : 0, ticks, srv.retransmits());
-    if (!ready || !same || !matched || !refused || !joined || !retransmitted) {
+                refused ? 1 : 0, combat_refused ? 1 : 0, joined ? 1 : 0, ticks,
+                srv.retransmits());
+    if (!ready || !same || !matched || !refused || !combat_refused || !joined ||
+        !retransmitted) {
         std::printf("FAIL: A2 configstring over the reliable stream failed\n");
         return 1;
     }

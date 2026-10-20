@@ -9,6 +9,7 @@
 #include <unordered_set>
 
 #include "sim/core/hash.h"
+#include "sim/game/combat.h"
 
 namespace sim {
 namespace {
@@ -122,6 +123,14 @@ bool load_toml_file(const std::string& path, TomlTable& out, std::string& error)
     return parse_toml(buffer.str(), out, error);
 }
 
+uint64_t combined_params_hash(const MovementParams& movement, const CombatParams& combat) {
+    // Fold the two rule sets instead of XOR-ing them: a change in either half
+    // must move the result, and a collision needs both halves to drift together.
+    Hasher h;
+    h.u64(movement.hash()).u64(combat.hash());
+    return h.value();
+}
+
 uint64_t MovementParams::hash() const {
     Hasher h;
     h.f32(base_speed).f32(accel).f32(air_accel).f32(friction).f32(stop_speed)
@@ -186,6 +195,19 @@ struct Binder {
 };
 
 }  // namespace
+
+bool load_combat_beside(const std::string& movement_path, CombatParams& out,
+                        std::string& error) {
+    namespace fs = std::filesystem;
+    const fs::path sibling = fs::u8path(movement_path).parent_path() / "combat.toml";
+    std::error_code ec;
+    if (!fs::exists(sibling, ec)) {
+        out = CombatParams{};  // no file: the compiled defaults are the rules
+        return true;
+    }
+    std::vector<std::string> warnings;
+    return load_combat_params(sibling.u8string(), out, warnings, error);
+}
 
 bool load_movement_params(const std::string& path, MovementParams& out,
                           std::vector<std::string>& warnings, std::string& error) {

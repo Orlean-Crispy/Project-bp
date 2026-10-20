@@ -162,8 +162,11 @@ bool NetServer::init(const std::string& map_path, const std::string& params_path
     if (!parse_map_file(map_path, map, error)) return false;
     std::vector<std::string> warnings;
     if (!load_movement_params(params_path, m_world.params, warnings, error)) return false;
+    if (!load_combat_beside(params_path, m_world.combat, error)) return false;
     m_world.collision.build(map);
-    m_world.params_hash = m_world.params.hash();
+    // R8: the join hash covers movement *and* combat, so a host and a client
+    // on different combat rules refuse to play instead of silently diverging.
+    m_world.params_hash = combined_params_hash(m_world.params, m_world.combat);
 
     m_world.players.clear();
     for (int i = 0; i < player_count; ++i) {
@@ -407,8 +410,9 @@ bool NetClient::init(Transport* outgoing, Transport* incoming, int player_index,
     if (!parse_map_file(map_path, map, error)) return false;
     std::vector<std::string> warnings;
     if (!load_movement_params(params_path, m_local.params, warnings, error)) return false;
+    if (!load_combat_beside(params_path, m_local.combat, error)) return false;
     m_local.collision.build(map);
-    m_local.params_hash = m_local.params.hash();
+    m_local.params_hash = combined_params_hash(m_local.params, m_local.combat);
 
     m_local.players.clear();
     PlayerState p;

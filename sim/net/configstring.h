@@ -9,13 +9,15 @@ namespace sim {
 // The join configstring (v0.4 3.5). For v0.1 it carries the two hashes that
 // decide "same rules, same map"; the payload grows when assets exist. A client
 // that receives a different pair refuses to play instead of silently diverging.
+// Version 2: params_hash now folds in combat.toml (R8), so the same 18 bytes mean
+// "movement + combat + geometry".
+constexpr uint16_t kConfigVersion = 2;
+
 struct ConfigBlob {
-    uint16_t version = 1;
+    uint16_t version = kConfigVersion;
     uint64_t params_hash = 0;
     uint64_t geometry_hash = 0;
 };
-
-constexpr uint16_t kConfigVersion = 1;
 constexpr std::size_t kConfigBytes = 2 + 8 + 8;
 
 inline std::vector<uint8_t> encode_config(const ConfigBlob& blob) {

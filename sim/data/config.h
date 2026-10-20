@@ -85,6 +85,17 @@ struct TomlTable {
 bool parse_toml(const std::string& text, TomlTable& out, std::string& error);
 bool load_toml_file(const std::string& path, TomlTable& out, std::string& error);
 
+// R8: movement is not the only rule set. The combat rules (HP/armour) and the
+// headshot multiplier also change what a client predicts, so the one params hash
+// that the join handshake and the configstring carry folds both in.
+struct CombatParams;
+uint64_t combined_params_hash(const MovementParams& movement, const CombatParams& combat);
+
+// Combat rules live next to movement.toml (same data directory). A missing file
+// means "compiled defaults", so a bare movement.toml stays usable.
+bool load_combat_beside(const std::string& movement_path, CombatParams& out,
+                        std::string& error);
+
 // Applies a parsed table on top of defaults. Unknown keys are collected into
 // warnings instead of being silently ignored.
 bool load_movement_params(const std::string& path, MovementParams& out,
