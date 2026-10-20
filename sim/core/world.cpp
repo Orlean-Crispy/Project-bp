@@ -40,10 +40,24 @@ uint64_t World::state_hash() const {
     h.u64(collision.geometry_hash());
     h.u32(static_cast<uint32_t>(players.size()));
     for (const PlayerState& p : players) {
-        h.vec3(p.pos).vec3(p.vel);
-        h.u32(p.on_ground ? 1u : 0u).u32(p.crouched ? 1u : 0u);
+        // Every field pmove carries into the next tick (audit R9). A field that
+        // is left out makes two genuinely different states hash alike, so the
+        // determinism and rollback gates stop seeing a divergence.
+        h.vec3(p.pos).vec3(p.vel).f32(p.yaw);
+        h.u32(p.on_ground ? 1u : 0u).u32(p.crouched ? 1u : 0u).u32(p.active ? 1u : 0u);
         h.u32(static_cast<uint32_t>(p.impulses));
+        h.u32(static_cast<uint32_t>(p.state))
+            .u32(static_cast<uint32_t>(p.state_ticks))
+            .u32(static_cast<uint32_t>(p.dash_cooldown));
+        h.u32(p.jump_was_down ? 1u : 0u)
+            .u32(p.slide_was_down ? 1u : 0u)
+            .u32(p.dash_was_down ? 1u : 0u)
+            .u32(p.wallrun_was_down ? 1u : 0u)
+            .u32(p.wallclimb_was_down ? 1u : 0u)
+            .u32(p.vault_was_down ? 1u : 0u);
+        h.vec3(p.wall_normal).vec3(p.vault_dir).f32(p.vault_rise);
         h.f32(p.speed_coefficient).f32(p.slow_factor);
+        h.u32(p.tick);
     }
     return h.value();
 }

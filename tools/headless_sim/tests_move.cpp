@@ -123,8 +123,43 @@ int run_selftest(const Options& opt) {
     std::printf("final_pos    (%.4f, %.4f, %.4f)\n", a.players[0].pos.x, a.players[0].pos.y,
                 a.players[0].pos.z);
 
-    if (mismatch != 0) {
-        std::printf("FAIL: %zu of %d ticks differ\n", mismatch, opt.ticks);
+    // R9: the hash must cover every field that feeds the next tick. Mutating
+    // exactly one field of an otherwise identical world must change the hash;
+    // yaw alone was invisible before the fix.
+    int fields_hashed = 0;
+    bool yaw_hashed = false;
+    {
+        World probe;
+        if (!load_world(opt, probe, error)) {
+            std::fprintf(stderr, "error: %s\n", error.c_str());
+            return 1;
+        }
+        const uint64_t base = probe.state_hash();
+        const auto differs = [&](auto mutate) {
+            const PlayerState saved = probe.players[0];
+            mutate(probe.players[0]);
+            const bool changed = probe.state_hash() != base;
+            probe.players[0] = saved;
+            return changed;
+        };
+        yaw_hashed = differs([](PlayerState& p) { p.yaw += 0.5f; });
+        fields_hashed += yaw_hashed ? 1 : 0;
+        fields_hashed += differs([](PlayerState& p) { p.state = sim::ParkourState::WallRun; }) ? 1 : 0;
+        fields_hashed += differs([](PlayerState& p) { p.state_ticks = 7; }) ? 1 : 0;
+        fields_hashed += differs([](PlayerState& p) { p.dash_cooldown = 5; }) ? 1 : 0;
+        fields_hashed += differs([](PlayerState& p) { p.jump_was_down = true; }) ? 1 : 0;
+        fields_hashed +=
+            differs([](PlayerState& p) { p.wall_normal = Vec3(0.0f, 0.0f, -1.0f); }) ? 1 : 0;
+        fields_hashed +=
+            differs([](PlayerState& p) { p.vault_dir = Vec3(0.0f, 1.0f, 0.0f); }) ? 1 : 0;
+        fields_hashed += differs([](PlayerState& p) { p.vault_rise = 0.9f; }) ? 1 : 0;
+    }
+    std::printf("state_fields  %d/8\n", fields_hashed);
+    std::printf("yaw_hash      %d\n", yaw_hashed ? 1 : 0);
+
+    if (mismatch != 0 || fields_hashed != 8) {
+        std::printf("FAIL: %zu of %d ticks differ, %d/8 state fields hashed\n", mismatch,
+                    opt.ticks, fields_hashed);
         return 1;
     }
     std::printf("PASS: %d ticks identical on both runs\n", opt.ticks);

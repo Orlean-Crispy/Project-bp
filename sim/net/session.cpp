@@ -86,8 +86,14 @@ bool decode_commands(const uint8_t* data, size_t size, std::vector<InputCmd>& ou
 
 bool same_state(const PlayerSnap& a, const PlayerState& b) {
     const PlayerSnap bs = to_snap(b);
-    return a.pos == bs.pos && a.vel == bs.vel && a.flags == bs.flags &&
-           a.impulses == bs.impulses && a.state == bs.state;
+    // The same field set World::state_hash() covers (audit R9), in the same
+    // order. Comparing only pos/vel/state would call a replayed prediction equal
+    // even when its timers or its wall/vault state differs, so the replay that
+    // would have fixed it never happens. jump_was_down rides in the flags.
+    return a.pos == bs.pos && a.vel == bs.vel && a.yaw == bs.yaw && a.flags == bs.flags &&
+           a.impulses == bs.impulses && a.state == bs.state && a.state_ticks == bs.state_ticks &&
+           a.dash_cooldown == bs.dash_cooldown && a.wall_normal == bs.wall_normal &&
+           a.vault_dir == bs.vault_dir && a.vault_rise == bs.vault_rise;
 }
 
 }  // namespace

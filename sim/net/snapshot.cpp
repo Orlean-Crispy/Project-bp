@@ -11,7 +11,8 @@ enum FieldMask : uint8_t {
     kFieldStatus = 1u << 2,   // flags, impulses, state
     kFieldTimers = 1u << 3,   // state_ticks, dash_cooldown
     kFieldYaw = 1u << 4,      // view yaw (remote orientation)
-    kFieldAll = 0x1F,
+    kFieldExtra = 1u << 5,    // wall_normal, vault_dir, vault_rise (R9)
+    kFieldAll = 0x3F,
 };
 
 bool same_pos(const PlayerSnap& a, const PlayerSnap& b) { return a.pos == b.pos; }
@@ -23,6 +24,10 @@ bool same_timers(const PlayerSnap& a, const PlayerSnap& b) {
     return a.state_ticks == b.state_ticks && a.dash_cooldown == b.dash_cooldown;
 }
 bool same_yaw(const PlayerSnap& a, const PlayerSnap& b) { return a.yaw == b.yaw; }
+bool same_extra(const PlayerSnap& a, const PlayerSnap& b) {
+    return a.wall_normal == b.wall_normal && a.vault_dir == b.vault_dir &&
+           a.vault_rise == b.vault_rise;
+}
 
 }  // namespace
 
@@ -32,11 +37,14 @@ PlayerSnap to_snap(const PlayerState& p) {
     s.vel = p.vel;
     s.yaw = p.yaw;
     s.flags = static_cast<uint8_t>((p.on_ground ? 1 : 0) | (p.crouched ? 2 : 0) |
-                                   (p.active ? 4 : 0));
+                                   (p.active ? 4 : 0) | (p.jump_was_down ? 8 : 0));
     s.impulses = static_cast<uint8_t>(p.impulses);
     s.state = static_cast<uint8_t>(p.state);
     s.state_ticks = static_cast<uint16_t>(p.state_ticks);
     s.dash_cooldown = static_cast<uint16_t>(p.dash_cooldown);
+    s.wall_normal = p.wall_normal;
+    s.vault_dir = p.vault_dir;
+    s.vault_rise = p.vault_rise;
     return s;
 }
 
@@ -51,6 +59,10 @@ void from_snap(const PlayerSnap& s, PlayerState& p) {
     p.state = static_cast<ParkourState>(s.state);
     p.state_ticks = s.state_ticks;
     p.dash_cooldown = s.dash_cooldown;
+    p.jump_was_down = (s.flags & 8) != 0;
+    p.wall_normal = s.wall_normal;
+    p.vault_dir = s.vault_dir;
+    p.vault_rise = s.vault_rise;
 }
 
 Snapshot make_full_baseline(const Snapshot& snap) {
@@ -79,6 +91,7 @@ std::vector<uint8_t> encode_snapshot(const Snapshot& current, const Snapshot* ba
             if (!same_status(now, before)) mask |= kFieldStatus;
             if (!same_timers(now, before)) mask |= kFieldTimers;
             if (!same_yaw(now, before)) mask |= kFieldYaw;
+            if (!same_extra(now, before)) mask |= kFieldExtra;
         }
         w.u8(mask);
         if (mask & kFieldPos) w.vec3(now.pos);
@@ -93,6 +106,11 @@ std::vector<uint8_t> encode_snapshot(const Snapshot& current, const Snapshot* ba
             w.u16(now.dash_cooldown);
         }
         if (mask & kFieldYaw) w.f32(now.yaw);
+        if (mask & kFieldExtra) {
+            w.vec3(now.wall_normal);
+            w.vec3(now.vault_dir);
+            w.f32(now.vault_rise);
+        }
     }
     return w.data();
 }
@@ -139,6 +157,11 @@ bool decode_snapshot(const uint8_t* data, size_t size, const Snapshot* baseline,
             p.dash_cooldown = r.u16();
         }
         if (mask & kFieldYaw) p.yaw = r.f32();
+        if (mask & kFieldExtra) {
+            p.wall_normal = r.vec3();
+            p.vault_dir = r.vec3();
+            p.vault_rise = r.f32();
+        }
         if (!r.ok()) return false;
     }
 

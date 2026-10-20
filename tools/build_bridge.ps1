@@ -25,7 +25,7 @@ Push-Location $root
 try {
     $opt = @(
         '-shared', '-std=c++17', '-O2', '-ffp-contract=off', '-DWINDOWS_ENABLED', '-DTEMPLATE_ENABLED',
-        '-DBP_PROTOCOL_VERSION=3', '-DBP_SIM_VERSION=1',
+        '-DBP_PROTOCOL_VERSION=4', '-DBP_SIM_VERSION=1',
         '-I.', "-I$cpp\include", "-I$cpp\gen\include", "-I$cpp\gdextension"
     ) + $sources + @(
         '-Wl,--whole-archive', $lib, '-Wl,--no-whole-archive',

@@ -14,11 +14,19 @@ struct PlayerSnap {
     Vec3 pos;
     Vec3 vel;
     float yaw = 0.0f;
-    uint8_t flags = 0;  // bit0 on_ground, bit1 crouched
+    // bit0 on_ground, bit1 crouched, bit2 active, bit3 jump_was_down.
+    // jump_was_down rides in the flags because it is a one-bit input edge.
+    uint8_t flags = 0;
     uint8_t impulses = 0;
     uint8_t state = 0;
     uint16_t state_ticks = 0;
     uint16_t dash_cooldown = 0;
+    // R9: these survive a tick and steer the next one (wall run direction,
+    // scripted vault), so a reconciliation that cannot see them would accept a
+    // divergent prediction. Sent as their own delta field group.
+    Vec3 wall_normal;
+    Vec3 vault_dir;
+    float vault_rise = 0.0f;
 };
 
 struct Snapshot {
