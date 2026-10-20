@@ -3,7 +3,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
-#include <map>
 #include <string>
 #include <vector>
 
@@ -160,16 +159,55 @@ private:
         // Acks carry the u16 snapshot seq, but the queue is ordered by send time,
         // never by seq: after 65536 sends the seq wraps and a seq-keyed map would
         // sort fresh entries below stale ones, evicting them and losing the ack.
+        // R6: a fixed-capacity ring instead of a deque, so a steady tick reuses
+        // the same 64 slots (and their player vectors) instead of allocating a
+        // node and copying the whole snapshot into it.
         struct SentSnapshot {
             uint16_t seq = 0;
             Snapshot snapshot;
         };
-        std::deque<SentSnapshot> sent;
+        struct SentRing {
+            static constexpr std::size_t kCapacity = 64;
+
+            std::vector<SentSnapshot> slots;
+            std::size_t head = 0;  // index of the oldest entry
+            std::size_t count = 0;
+
+            void init() {
+                slots.resize(kCapacity);
+                head = 0;
+                count = 0;
+            }
+            const SentSnapshot* find_seq(uint16_t seq) const {
+                // Newest to oldest, like the old deque reverse scan.
+                for (std::size_t k = 0; k < count; ++k) {
+                    const SentSnapshot* entry = &slots[(head + count - 1 - k) % kCapacity];
+                    if (entry->seq == seq) return entry;
+                }
+                return nullptr;
+            }
+            void push(uint16_t seq, const Snapshot& snapshot) {
+                SentSnapshot* slot = nullptr;
+                if (count < kCapacity) {
+                    slot = &slots[(head + count) % kCapacity];
+                    ++count;
+                } else {
+                    slot = &slots[head];
+                    head = (head + 1) % kCapacity;
+                }
+                slot->seq = seq;
+                slot->snapshot = snapshot;
+            }
+        };
+        SentRing sent;
         uint32_t last_acked_snapshot = 0;
     };
 
     World m_world;
     std::vector<Link> m_links;
+    // R6: per-tick input scratch, cleared with resize()+fill instead of built as
+    // a fresh vector every step.
+    std::vector<MoveInput> m_inputs;
     int m_full = 0;
     int m_delta = 0;
     int m_dup_cmds = 0;
@@ -231,6 +269,60 @@ private:
         MoveInput input;
     };
 
+    // R6: the recent-snapshot map allocated a node and copied the whole snapshot
+    // (players vector included) for every received tick. Delta decoding only ever
+    // needs the last 64 ticks, so a fixed-capacity ring holds them in place.
+    struct RecentEntry {
+        uint32_t tick = 0;
+        Snapshot snapshot;
+    };
+    struct RecentRing {
+        static constexpr std::size_t kCapacity = 64;
+
+        std::vector<RecentEntry> slots;
+        std::size_t head = 0;  // index of the oldest entry
+        std::size_t count = 0;
+
+        void init() {
+            slots.resize(kCapacity);
+            head = 0;
+            count = 0;
+        }
+        void clear() {
+            head = 0;
+            count = 0;
+        }
+        const Snapshot* find(uint32_t tick) const {
+            for (std::size_t k = 0; k < count; ++k) {
+                const RecentEntry& entry = slots[(head + k) % kCapacity];
+                if (entry.tick == tick) return &entry.snapshot;
+            }
+            return nullptr;
+        }
+        void push(uint32_t tick, const Snapshot& snapshot) {
+            // Ticks arrive non-decreasing (older ones are rejected as stale), so a
+            // repeated tick can only be the newest one: overwrite it in place,
+            // exactly like the map's operator[] did.
+            if (count > 0) {
+                RecentEntry& newest = slots[(head + count - 1) % kCapacity];
+                if (newest.tick == tick) {
+                    newest.snapshot = snapshot;
+                    return;
+                }
+            }
+            RecentEntry* slot = nullptr;
+            if (count < kCapacity) {
+                slot = &slots[(head + count) % kCapacity];
+                ++count;
+            } else {
+                slot = &slots[head];
+                head = (head + 1) % kCapacity;
+            }
+            slot->tick = tick;
+            slot->snapshot = snapshot;
+        }
+    };
+
     void apply_snapshot(const Snapshot& snap);
     void apply_full_state(const Snapshot& snap);
 
@@ -246,7 +338,7 @@ private:
     uint32_t m_ack_bits = 0;
     // Recent snapshots by tick, so a delta can be decoded against the exact
     // baseline the server used (which lags our newest snapshot by an ack).
-    std::map<uint32_t, Snapshot> m_recent;
+    RecentRing m_recent;
     uint32_t m_last_snapshot_tick = 0;
     int m_rollbacks = 0;
     int m_snapshots = 0;

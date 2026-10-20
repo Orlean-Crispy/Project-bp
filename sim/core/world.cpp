@@ -3,32 +3,49 @@
 #include "sim/core/hash.h"
 
 namespace sim {
+namespace {
+
+// One player's tick, shared by step() and step_single() so the two can never
+// drift apart. entity_id is the player's dense index.
+void step_player(PlayerState& player, const MoveInput& input, const CollisionWorld& collision,
+                 const MovementParams& params, float dt, uint32_t tick, size_t entity,
+                 EventQueue* events) {
+    const bool was_ground = player.on_ground;
+    const float fall_speed = player.vel.z;
+    pmove(player, input, collision, params, dt);
+    if (events == nullptr) return;
+
+    if (!was_ground && player.on_ground && fall_speed < -1.0f) {
+        // Landing after a real fall; spawning on the floor is not an event.
+        SimEvent event;
+        event.tick = tick;
+        event.type = EventType::Land;
+        event.entity_id = static_cast<uint16_t>(entity);
+        event.a = player.pos;
+        events->push(event);
+    } else if (was_ground && !player.on_ground && player.vel.z > 0.0f) {
+        SimEvent event;
+        event.tick = tick;
+        event.type = EventType::Jump;
+        event.entity_id = static_cast<uint16_t>(entity);
+        event.a = player.pos;
+        events->push(event);
+    }
+}
+
+}  // namespace
 
 void World::step(const std::vector<MoveInput>& inputs, float dt, EventQueue* events) {
     const size_t count = players.size() < inputs.size() ? players.size() : inputs.size();
     for (size_t i = 0; i < count; ++i) {
-        const bool was_ground = players[i].on_ground;
-        const float fall_speed = players[i].vel.z;
-        pmove(players[i], inputs[i], collision, params, dt);
-        if (events == nullptr) continue;
+        step_player(players[i], inputs[i], collision, params, dt, tick, i, events);
+    }
+    ++tick;
+}
 
-        const PlayerState& player = players[i];
-        if (!was_ground && player.on_ground && fall_speed < -1.0f) {
-            // Landing after a real fall; spawning on the floor is not an event.
-            SimEvent event;
-            event.tick = tick;
-            event.type = EventType::Land;
-            event.entity_id = static_cast<uint16_t>(i);
-            event.a = player.pos;
-            events->push(event);
-        } else if (was_ground && !player.on_ground && player.vel.z > 0.0f) {
-            SimEvent event;
-            event.tick = tick;
-            event.type = EventType::Jump;
-            event.entity_id = static_cast<uint16_t>(i);
-            event.a = player.pos;
-            events->push(event);
-        }
+void World::step_single(const MoveInput& input, float dt, EventQueue* events) {
+    if (!players.empty()) {
+        step_player(players[0], input, collision, params, dt, tick, 0, events);
     }
     ++tick;
 }

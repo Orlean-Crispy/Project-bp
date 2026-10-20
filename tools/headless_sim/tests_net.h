@@ -20,4 +20,5 @@ int run_dual_channel_test();
 int run_signal_test();
 int run_clock_check(const std::string& data_path);
 int run_net_test(const Options& opt);
+int run_net_alloc_check(const std::string& data_path);
 

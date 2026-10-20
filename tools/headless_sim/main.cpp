@@ -270,3 +270,73 @@ int main(int argc, char** argv) {
     std::printf("hash       %016llx\n", static_cast<unsigned long long>(world.state_hash()));
     return 0;
 }
+
+// R6 (iron law E): the network tick must not allocate in steady state. This runs
+// the existing loopback scenario and counts the two per-tick simulation calls,
+// where the server used to build an inputs vector and the client a one-element
+// vector. Packet serialisation and the loopback queue are outside the 4 ms sim
+// budget (and outside this audit item), so counting them would measure the test
+// transport instead of the session hot path.
+int run_net_alloc_check(const std::string& data_path) {
+    const std::string map_path = "sim/data/maps/metrics_flat.map";
+    std::string error;
+    sim::NetServer server;
+    if (!server.init(map_path, data_path, 1, error)) {
+        std::printf("FAIL: netalloc server init: %s\n", error.c_str());
+        return 1;
+    }
+    sim::NetConditions conditions;
+    sim::LoopbackTransport to_server(conditions, 1234);
+    sim::LoopbackTransport to_client(conditions, 5678);
+    server.add_client(&to_server, &to_client, 0);
+
+    sim::NetClient client;
+    if (!client.init(&to_server, &to_client, 0, map_path, data_path, error)) {
+        std::printf("FAIL: netalloc client init: %s\n", error.c_str());
+        return 1;
+    }
+
+    auto tick_once = [&](const sim::MoveInput& in) {
+        client.send_input(in);
+        client.step_local();
+        server.receive();
+        server.step();
+        server.send();
+        to_server.advance(0);
+        to_client.advance(0);
+        client.receive();
+    };
+
+    // Warm up past one-time growth: the 128-tick history, the 64-tick snapshot
+    // rings and the loopback queues.
+    sim::MoveInput in;
+    in.forward = 1.0f;
+    for (int i = 0; i < 200; ++i) tick_once(in);
+
+    constexpr int kTicks = 100;
+    unsigned long long allocs = 0;
+    for (int i = 0; i < kTicks; ++i) {
+        client.send_input(in);
+        const unsigned long long before_local = allocation_count();
+        client.step_local();
+        const unsigned long long after_local = allocation_count();
+        server.receive();
+        const unsigned long long before_server = allocation_count();
+        server.step();
+        const unsigned long long after_server = allocation_count();
+        server.send();
+        to_server.advance(0);
+        to_client.advance(0);
+        client.receive();
+        allocs += (after_local - before_local) + (after_server - before_server);
+    }
+
+    const double per_tick = static_cast<double>(allocs) / static_cast<double>(kTicks);
+    std::printf("  [netalloc] per_tick %g\n", per_tick);
+    if (per_tick > 1.0) {
+        std::printf("FAIL: the net tick still allocates %.2f times per tick (iron law E)\n",
+                    per_tick);
+        return 1;
+    }
+    return 0;
+}

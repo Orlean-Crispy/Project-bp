@@ -179,6 +179,8 @@ bool NetServer::init(const std::string& map_path, const std::string& params_path
         m_world.players.push_back(p);
     }
     m_world.tick = 0;
+    // R6: allocate the per-tick input scratch once; step() only clears it.
+    m_inputs.assign(static_cast<std::size_t>(player_count), MoveInput{});
     m_hitboxes.assign(static_cast<std::size_t>(player_count), HitboxHistory{});
     for (int i = 0; i < player_count; ++i) {
         m_hitboxes[static_cast<std::size_t>(i)].record(
@@ -219,6 +221,7 @@ int NetServer::add_client(Transport* incoming, Transport* outgoing, int player_i
     link.tx = outgoing;
     link.player = player_index;
     link.rel = reliable;
+    link.sent.init();
     if (reliable != nullptr) link.config_chunks = m_config_chunks;
     link.join_id = m_next_join_id++;
     if (player_index >= 0 && player_index < static_cast<int>(m_world.players.size())) {
@@ -265,13 +268,11 @@ void NetServer::receive() {
             // sends, so at most one entry can carry this seq (an ack older than
             // 64 snapshots is not queued at all) and the newest match is it.
             if (header.ack != 0) {
-                for (auto it = link.sent.rbegin(); it != link.sent.rend(); ++it) {
-                    if (it->seq != header.ack) continue;
-                    link.baseline = it->snapshot;
+                if (const Link::SentSnapshot* acked = link.sent.find_seq(header.ack)) {
+                    link.baseline = acked->snapshot;
                     link.has_baseline = true;
                     link.unacked = 0;
                     link.last_acked_snapshot = header.ack;
-                    break;
                 }
             }
 
@@ -322,7 +323,8 @@ void NetServer::step() {
         }
     }
 
-    std::vector<MoveInput> inputs(m_world.players.size());
+    m_inputs.resize(m_world.players.size());
+    for (MoveInput& slot : m_inputs) slot = MoveInput{};
     for (Link& link : m_links) {
         MoveInput in;
         if (link.inputs.take(m_world.tick, in)) {
@@ -330,11 +332,12 @@ void NetServer::step() {
             link.has_command = true;
         }
         // If no command arrived for this tick, repeat the last one (Q3 behaviour).
-        if (link.player >= 0 && link.player < static_cast<int>(inputs.size())) {
-            inputs[static_cast<size_t>(link.player)] = link.has_command ? link.last_input : MoveInput{};
+        if (link.player >= 0 && link.player < static_cast<int>(m_inputs.size())) {
+            m_inputs[static_cast<size_t>(link.player)] =
+                link.has_command ? link.last_input : MoveInput{};
         }
     }
-    m_world.step(inputs, kDt);
+    m_world.step(m_inputs, kDt);
     for (std::size_t i = 0; i < m_world.players.size() && i < m_hitboxes.size(); ++i) {
         m_hitboxes[i].record(m_world.players[i], m_world.params, m_world.tick);
     }
@@ -392,8 +395,8 @@ void NetServer::send() {
         header.ack_bits = 0;
         link.tx->send(wrap_packet(header, payload));
 
-        link.sent.push_back(Link::SentSnapshot{header.seq, snap});
-        while (link.sent.size() > 64) link.sent.pop_front();
+        // R6: fixed ring, no node allocation and no full-snapshot copy per tick.
+        link.sent.push(header.seq, snap);
 
         ++link.unacked;
         if (use_delta) ++m_delta; else ++m_full;
@@ -422,6 +425,8 @@ bool NetClient::init(Transport* outgoing, Transport* incoming, int player_index,
     p.impulses = m_local.params.max_impulses;
     m_local.players.push_back(p);
     m_local.tick = 0;
+    m_recent.init();
+    m_history.reserve(128);
 
     // Plan 7.7: wait for FULL_STATE instead of assuming both sides start at
     // tick 0. Cold start, mid-match join and reconnect all use the same path.
@@ -482,7 +487,7 @@ void NetClient::apply_full_state(const Snapshot& snap) {
     m_hitbox.record(m_local.players[0], m_local.params, snap.tick);
     while (m_local.tick < m_clock.command_tick()) {
         const MoveInput none;
-        m_local.step({none}, kDt);
+        m_local.step_single(none, kDt);
         HistoryEntry entry;
         entry.tick = m_local.tick;
         entry.state = m_local.players[0];
@@ -523,7 +528,7 @@ void NetClient::step_local() {
     if (m_skip_cooldown > 0) --m_skip_cooldown;
     // Prediction uses exactly the input that was just sent, on the server's tick
     // axis; the clock advances with the world so the two never drift apart.
-    m_local.step({m_last_input}, kDt);
+    m_local.step_single(m_last_input, kDt);
     m_clock.advance();
     HistoryEntry entry;
     entry.tick = m_local.tick;
@@ -600,12 +605,11 @@ void NetClient::receive() {
         const uint32_t baseline_tick = peek_baseline_tick(payload, size);
         const Snapshot* baseline = nullptr;
         if (baseline_tick != 0) {
-            const auto it = m_recent.find(baseline_tick);
-            if (it == m_recent.end()) {
+            baseline = m_recent.find(baseline_tick);
+            if (baseline == nullptr) {
                 ++m_decode_fail;  // baseline already trimmed; server will go full
                 continue;
             }
-            baseline = &it->second;
         }
         if (!decode_snapshot(payload, size, baseline, snap)) {
             ++m_decode_fail;
@@ -620,8 +624,7 @@ void NetClient::receive() {
         m_ack = header.seq;
         m_ack_bits = 0;
         m_last_snapshot_tick = snap.tick;
-        m_recent[snap.tick] = snap;
-        while (m_recent.size() > 64) m_recent.erase(m_recent.begin());
+        m_recent.push(snap.tick, snap);
         m_remote.push(snap);
 
         if (m_local.tick > snap.tick) {
@@ -682,7 +685,7 @@ void NetClient::apply_snapshot(const Snapshot& snap) {
     m_hitbox.record(m_local.players[0], m_local.params, snap.tick);
 
     for (size_t i = index + 1; i < m_history.size(); ++i) {
-        m_local.step({m_history[i].input}, kDt);
+        m_local.step_single(m_history[i].input, kDt);
         m_history[i].state = m_local.players[0];
         m_hitbox.record(m_local.players[0], m_local.params, m_local.tick);
     }

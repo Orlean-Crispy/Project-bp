@@ -1497,6 +1497,9 @@ int run_net_test(const Options& opt) {
     // R1: the rolled-back tick itself must be repaired, not only the replay.
     failures += run_rollback_repair_check(opt.data_path);
 
+    // R6 (iron law E): a steady network tick allocates nothing.
+    failures += run_net_alloc_check(opt.data_path);
+
     // Gate 8c (plan 7.7): mid-match join and reconnect both go through FULL_STATE.
     failures += run_join_phase(opt.data_path);
 
