@@ -16,7 +16,7 @@ if (-not (Test-Path $lib)) { throw 'godot-cpp static library not found' }
 $listed = Get-Content (Join-Path $PSScriptRoot 'sim_sources.txt') |
     ForEach-Object { $_.Trim() } |
     Where-Object { $_ -ne '' -and -not $_.StartsWith('#') }
-$sources = @('bridge/sim_bridge.cpp', 'bridge/mesh_builder.cpp') + $listed
+$sources = @('bridge/sim_bridge.cpp', 'bridge/mesh_builder.cpp', 'bridge/net_gateway.cpp') + $listed
 
 New-Item -ItemType Directory -Force -Path (Join-Path $root 'godot\bin') | Out-Null
 $out = 'godot/bin/breakpoint_bridge.windows.template_debug.x86_64.dll'
