@@ -338,3 +338,12 @@ powershell -File tools\run_demo.ps1
 1. M5 收尾：A1/A2/A5 接入组局（信令线程、单 socket 双队列、票据/重连状态机）+ 局内 UI。
 2. M6 射击：WeaponDef、开火输入、hitscan、三段伤害、hp/armor 进快照、死亡/重生。
 3. 缺口与顺序：docs/GAPS.md。
+
+### 7.5 命名落地（S32，同日）
+
+- 对外名 **IMPULSE**、缩写 **IMP**、内部代号 **Project Breakpoint / Project Bp / bp**；
+  方案全文 `docs/IMPULSE_命名方案.md`，决议 `docs/decisions/0005-naming-impulse.md`。
+- **没有**做 `sim::` → `bp::` 全局重命名（ADR 0005 写了三条理由）；项目级前缀继续用 bp。
+- 玩家可见：`godot/project.godot` 的 `config/name` 与 LAN 菜单标题已改为 IMPULSE。
+- 未决：impulse 上限 sim 4 / 方案 6 / 计划书 §5.2 待定（lead：M3 手感验收）；
+  GitHub 仓库名仍是 `unknow`，改名需在 GitHub 侧操作。
