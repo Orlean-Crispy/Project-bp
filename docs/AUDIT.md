@@ -139,3 +139,31 @@ P0（可能算出错结果）：**本轮没有发现**。
 - AUD-04：HUD 合并成一条字符串（HP / ARMOR / IMP 点阵 / speed / pos / event），只写一次。
 - AUD-07/AUD-09/AUD-18/AUD-11（部分）：删掉不可达的 `link_lost`、未用常量、未读字典字段、未用 using。
 - 验证：桥编译通过；`--hud-check` 正常；两进程联机 client `joined slot 1 / remote slot 0 visible`，stderr 0 行。
+
+### 第二轮 · sim 侧（R 系列，只读代理）
+
+> 62 个 sim 源文件全读；死分支由常量推出（窗口 16、substep 上限 4、64 Hz 等）；未跑构建，纯静态。
+
+| id | sev | 位置 | 问题 | 状态 |
+|---|---|---|---|---|
+| R1 | P1 | session.cpp 回滚 | 回滚后未改写该 tick 的 history/hitbox，M6 读 hitbox 时会用到旧预测 | 待修 |
+| R2 | P1 | pmove.cpp vault/climb | `busy` 只算一次，vault 起手后 wallclimb 仍可覆盖，白花一次 impulse | 待修 |
+| R3 | P1 | session.h Link::sent | 以 `out_seq`（u16）为键，17 分钟后回绕，ack 永远对不上→永久全量 | 待修 |
+| R4 | P1 | matchmaking.cpp 槽位 | 只 reserve 不 release，N 个不同 id 后房间永久 RoomFull | 待修 |
+| R5 | P1 | udp_socket.cpp | 游戏端口没设 `SO_EXCLUSIVEADDRUSE`，与教训 #11 矛盾 | 待修 |
+| R6 | P1 | session 热路径 | 每 tick 建 vector、`m_local.step({..})`、把快照拷进两个 map | 待修 |
+| R7 | P1 | config.h/config.cpp | 6 个参数被加载/哈希但 sim 从不读取（用字面量代替） | 待修 |
+| R8 | P1 | combat.cpp | `CombatParams::hash()` 无人调用，两套 combat.toml 也能互通 | 待修 |
+| R9 | P1 | world.cpp 哈希 | `state_hash` 漏掉 state/timer/yaw 等参与后续 tick 的字段 | 待修 |
+| R10 | P2 | trace.cpp | 内层 `live_speed < kMinSpeed` 恒假（外层已排除） | 待修 |
+| R11 | P2 | tests_move.cpp | `max_step_length` 只打印不比对；>38.4 m/s 时 substep 超过墙厚 | 待修 |
+| R12 | P2 | tests_move.cpp | 「不外推」判据断言的是入参 tick，恒真；一处三元两边都是 'slide' | 待修 |
+| R13 | P2 | tests_move/tests_demo | TTK 闸门重算一遍伤害公式；录像块重复两处 | 待修 |
+| R14 | P2 | session/reliable | 64 Hz 又硬编码成 kDt、320 tick、`*1000/64` | 待修 |
+| R15 | P2 | pmove.h/brush/trace | 写了从不读的字段（wallrun_was_down、landed_solid、brush_index…） | 待修 |
+| R16 | P2 | 多处 | 零调用 API：TickClock、has/oldest_tick/empty、reload_pending… | 待修 |
+| R17 | P2 | combat/config | armor_type 未校验、absorb>100 会变成治疗；访问器无边界检查 | 待修 |
+| R18 | P2 | demo/bindings | `fopen(path.c_str())` 绕过 u8path（AGENTS 2） | 待修 |
+| R19 | P2 | reliable/session | 每包遍历 std::map 算 ack；InputWindow 用 map 存 tick | 待修 |
+
+**建议顺序**：R3/R4/R5（小、后果重）→ R2 → R9 → R7/R8 → R1/R6 → 其余 P2 分批。
