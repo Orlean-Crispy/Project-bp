@@ -37,7 +37,7 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 
 ### 0.3 现在能跑什么
 
-- `headless_sim` 16 项行为闸门 + bench 全绿（见 §3）
+- `headless_sim` 与 Godot 桥检查合计 **17 项行为闸门** + bench 全绿（第 17 项是桥，见 §3）
 - Godot demo：`demo.bat` 或 `powershell -File tools/run_demo.ps1`，可走跑跳滑铲墙跑爬墙翻越
 - 手感数值可改 sim/data/movement.toml 后重跑，不用改代码
 
@@ -130,7 +130,7 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 
 ---
 
-## 3. 判据清单（tools/smoke.ps1 串起 16 项行为闸门 + bench）
+## 3. 判据清单（tools/smoke.ps1 串起 17 项行为闸门 + bench）
 
 | # | 判据 | 阈值 | 命令 |
 |---|---|---|---|
@@ -150,8 +150,10 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 | 14 | demo | 同构建逐 tick 一致；改动参数必被检出 | --test-demo |
 | 15 | hitbox 历史 | 64 tick 环形、帧间插值、三段 ×5/×1/×0.7、蹲下自动跟随 | --test-hitbox |
 | 16 | 事件通道 | 跳跃/落地事件带 tick、可复现、环形溢出丢最旧 | --test-events |
+| 17 | Godot 桥加载 | 扩展真的加载、HUD 打印 vertices>0 与 ports.h 的默认端口、两进程重连回原槽且第二次调用被拒 | tools/godot_check.ps1 |
 
-当前全部 PASS。`--compare`（跨机 dump 比对）需要第二台机器，尚未执行。
+当前全部 PASS（第 17 项在没装 Godot 或桥 DLL 未构建时打印 SKIP 并返回 3，smoke 视为跳过而不是绿）。
+`--compare`（跨机 dump 比对）需要第二台机器，尚未执行。
 
 ---
 
@@ -189,6 +191,9 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 | 9 | 跳跃必须是按下沿触发；按住 = 连跳。案例：PROGRESS S09 |
 | 10 | 客户端必须跑在服务器的 tick 轴上并提前 **4 tick** 盖戳；迟到输入只能丢弃，绝不能当新输入重放。案例：PROGRESS S11 |
 | 11 | Windows 上 `bind` 成功不代表端口是你的（SO_REUSEADDR 允许抢已被 listen 的端口）。用 SO_EXCLUSIVEADDRUSE，端口冲突要让它报错。案例：pitfalls/port-hijack.md |
+| 12 | 两个编译入口编**同一份源码**时，标志必须逐条一致。不一致不会报错，只会让 DLL 与 exe 的浮点结果悄悄分叉（AUD-13：桥缺 `-ffp-contract=off`）。 |
+| 13 | GDExtension 报「找不到库」时，先查 `.gdextension` 的 **feature key**（editor / debug）与依赖 DLL，别信报错里的 OS/架构——release 编辑器只认 `windows.editor.*`，少了它整份 GDScript 都会「标识符未声明」（2026-10-20）。 |
+| 14 | 「我机器上能跑」不是可恢复性判据：安装脚本不能依赖恰好装着的工具（7z）或文档里手抄的版本号（AUD-19）。判据是干净机器上一条命令。 |
 
 ---
 
@@ -207,10 +212,11 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 ### 6.1 命令
 
 ```powershell
-powershell -File tools\setup_toolchain.ps1   # 仅首次：下载 GCC/CMake/Ninja
+powershell -File tools\setup_toolchain.ps1   # 仅首次：下载 GCC/CMake/Ninja（无 7z 依赖，版本已锁）
 powershell -File tools\build.ps1             # 配置 + 全量构建（headless_sim, move_metrics）
-powershell -File tools\smoke.ps1             # 16 项行为闸门 + bench，必须全绿
-powershell -File tools\build_bridge.ps1      # 重建 GDExtension DLL
+powershell -File tools\smoke.ps1             # 17 项行为闸门 + bench，必须全绿
+powershell -File tools\build_bridge.ps1      # 重建 GDExtension DLL（与 CMake 同一套标志）
+powershell -File tools\godot_check.ps1       # 只跑桥：--hud-check + 两进程重连
 powershell -File tools\run_demo.ps1          # 构建桥 + 启动 Godot demo
 ```
 
@@ -221,11 +227,9 @@ cd C:\bp-toolchain\godot-cpp
 python -m SCons platform=windows use_mingw=yes target=template_debug -j8
 ```
 
-Godot 首次导入（没有 godot/.godot 时）：
-
-```powershell
-C:\bp-toolchain\godot\Godot_v4.5-stable_win64.exe --headless --editor --path godot --quit
-```
+Godot 首次导入（没有 godot/.godot 时）由 tools/godot_env.ps1 自动完成——不要在各个脚本里再抄一遍。
+它也是唯一知道 Godot 可执行文件位置的地方（`$env:BP_GODOT` 优先，否则取 C:\bp-toolchain\godot 里最新的
+`Godot_v*_win64.exe`），所以升版本不需要改脚本。
 
 ### 6.2 三条非 ASCII 规则（血泪）
 
@@ -326,8 +330,9 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
 - 局内 HUD（godot/main.gd）：HP/护甲（桥里是占位 100/0，等 M6 联网）、impulse 条
   用 `get_max_impulses()` 画格（**不写死**），状态行显示 role/slot/peers/waiting；
   Esc 开合暂停菜单（Resume / Reconnect（仅客户端）/ Leave）。
-  判据：`--hud-check` 打 `hud hp=100 armor=0 impulse=4/4 role=solo vertices=360`——
-  vertices > 0 同时证明「抽出去的 mesh_builder 仍在产出几何」。
+  判据：`--hud-check` 打 `hud hp=100 armor=0 impulse=4/4 role=solo vertices=360
+  build=<hash> protocol=4 port=27115`——vertices > 0 证明 mesh_builder 还在产出几何，
+  port 证明默认端口来自 ports.h 而不是脚本。这条检查已并入 tools/godot_check.ps1。
 - 失联检测（`NetClient::snapshot_age()`）：客户端用**最后一次收到快照的 tick 差**判断，
   > 64 tick（1 s）显示 `SERVER SILENT x.xs`。世界仍在本地推进也能看出来——
   「tick 停走」只能发现模拟卡死，发现不了服务器没了。
@@ -365,6 +370,10 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
 - **可靠流的时钟只有一个来源**：wrapper 由会话用**自己的 tick** 推进（服务器 = world.tick，
   客户端 = local.tick），调用方不得再推进同一个 wrapper；`advance()` 内部取 max，
   因为回滚会让客户端 tick 倒退，`now - last_sent` 一旦回绕，所有包都会被判超时。
+- 端口只有一个来源：**sim/net/ports.h**（kDefaultSignalPort、kGateSignalPort、game_port_of）。
+  信令默认 27115、游戏 = 信令 + 1、闸门用 27130（= 默认 + 15，免得和本机在跑的房主撞车）；
+  Godot 侧读桥的 `get_default_signal_port()`，脚本读 net_loop 的默认值，`tools/check_sources.ps1`
+  会在这四个常量出现在别的文件时直接报错。
 - A1 信令（sim/net/signaling.*）：TCP **27115**（v0.4 写的 27015 已被 AppleMobileDeviceService 占用；
   Windows 上用 SO_EXCLUSIVEADDRUSE 独占，端口被占时 bind 必须失败而不是静默共享）、
   u16 长度前缀、六条消息、connect/accept 超时；
@@ -419,6 +428,24 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
 - 消费：bridge `drain_events()` 每帧取空；Godot 侧只更新 HUD/音效，不反向查询。
 - 判据：--test-events（跳跃 tick 5、落地 tick 47、两次运行一致、溢出 76 条丢最旧）。
 
+### 8.9 构建与桥（tools/build*.ps1、bridge/、godot/）
+
+- 两个构建入口共享 **tools/sim_sources.txt**（check_sources.ps1 卡住）：CMake 出 headless_sim，
+  build_bridge.ps1 出 GDExtension。加 sim .cpp 只改这一个清单。
+- **标志必须逐条一致**：`-O2 -DNDEBUG -ffp-contract=off -Wall -Wextra -Werror`。
+  桥用 `-isystem` 引 godot-cpp 头，第三方告警进不了我们的 -Werror；缺 `-ffp-contract=off`
+  会让 DLL 与 exe 的浮点结果悄悄分叉（教训 12）。
+- **版本号唯一来源是 sim/core/version.h**。CMake 只注入 BP_BUILD_ID（git short hash），
+  桥用同一条命令注入同一个值；桥暴露 `get_build_id()/get_protocol_version()`，Godot 启动打
+  `breakpoint: build <id> protocol 4`——两台机器的日志一比就知道是不是同一个构建。
+- **breakpoint.gdextension 必须同时有 `windows.editor.x86_64`**：我们用的是 release 编辑器
+  二进制跑 headless，它只认 editor key；只写 `windows.debug.*` 时扩展根本不加载，
+  报错还会说是「找不到 windows.x86_64 的库」（教训 13）。
+- 工具链目录用无版本名（mingw64/、cmake/、ninja/），只有 setup_toolchain.ps1 知道下载地址与
+  版本；它用 Expand-Archive，不依赖 7z（教训 14）。
+- Godot 可执行文件路径与首跑导入只在 tools/godot_env.ps1；桥的加载检查是第 17 项闸门
+  （tools/godot_check.ps1，退出码 3 = 跳过）。
+
 ---
 
 ## 9. 开场 / 收尾协议
@@ -428,7 +455,7 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
 ```
 1. 读 docs/AGENTS.md（本文件）
 2. 读 docs/PROGRESS.md 最后一节 + docs/HANDOFF.md（若存在）
-3. 跑 tools\build.ps1，再跑 tools\smoke.ps1，确认 16 项行为闸门 + bench 全绿
+3. 跑 tools\build.ps1，再跑 tools\smoke.ps1，确认 17 项行为闸门 + bench 全绿
 4. 只改一个文件集；大文件只做精确 edit
 5. 改完立刻 commit（一个功能一个 commit）
 6. 更新 docs/PROGRESS.md（做了什么/结论/下一步）
@@ -461,7 +488,7 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
 1. **M6 射击**：WeaponDef(toml) → 开火输入 → hitscan + hitbox 回溯 → 三段伤害
    + hp/armor 进快照 + 死亡/重生 + 穿透/衰减；TTK 用 100 HP / 三甲复算。
 2. **M7 / M8**：动画、视角模型、音频垂直定位（§9.2 的楼层低通）。
-3. 代码体检：A1–A7、AUD-01…12、R1–R19 已完成；余 5 条 P2（AUD-13/14/15/17/19）与 AUD-16（M6 后）见 docs/AUDIT.md。
+3. 代码体检：A1–A7、AUD-01…19（AUD-16 除外）、R1–R19 已完成；只剩 AUD-16（hp/armor 还是常量，M6 接快照时一并解决）见 docs/AUDIT.md。
 
 ---
 

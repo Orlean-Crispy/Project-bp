@@ -125,13 +125,13 @@ P0（可能算出错结果）：**本轮没有发现**。
 | AUD-10 | P2 | main.gd 键位表 | `KEYCODES` 缺 NUM/ENTER/方向键等，改键静默跳过 | ✅ 已修 |
 | AUD-11 | P2 | 头文件 | bridge/net_loop 有无用 include，mesh_builder 缺 `<algorithm>` | ✅ 已部分修（using 删除） |
 | AUD-12 | P2 | .gdextension | 声明了 release DLL 路径但从不产出 | ✅ 已修 |
-| AUD-13 | P2 | build_bridge.ps1 | 桥编译不带 `-Werror` 与 `BP_BUILD_ID` | 待修 |
-| AUD-14 | P2 | 端口字面量 | 27115/27016/27130 散落四处 | 待修 |
-| AUD-15 | P2 | tools/*.ps1 | Godot 路径/首跑导入块复制了五份 | 待修 |
+| AUD-13 | P2 | build_bridge.ps1 | 桥编译不带 `-Werror` 与 `BP_BUILD_ID` | ✅ 已修 |
+| AUD-14 | P2 | 端口字面量 | 27115/27016/27130 散落四处 | ✅ 已修（ports.h + lint） |
+| AUD-15 | P2 | tools/*.ps1 | Godot 路径/首跑导入块复制了五份 | ✅ 已修（godot_env + godot_check） |
 | AUD-16 | P2 | bridge | `get_hp/get_armor` 是常量 100/0 | ⏸ 留到 M6 |
-| AUD-17 | P2 | main.gd 重连 | 重连按钮可能双击双触发；`joined_printed` 未复位 | 待修 |
+| AUD-17 | P2 | main.gd 重连 | 重连按钮可能双击双触发；`joined_printed` 未复位 | ✅ 已修 |
 | AUD-18 | P2 | bridge 远端字典 | 每帧构造 `state` 字段但 GDScript 不读 | ✅ 已删 |
-| AUD-19 | P2 | setup_toolchain | 依赖未安装的 `7z`，Ninja 未锁版本 | 待修 |
+| AUD-19 | P2 | setup_toolchain | 依赖未安装的 `7z`，Ninja 未锁版本 | ✅ 已修 |
 
 ### 已修批次（S53）
 
@@ -139,6 +139,56 @@ P0（可能算出错结果）：**本轮没有发现**。
 - AUD-04：HUD 合并成一条字符串（HP / ARMOR / IMP 点阵 / speed / pos / event），只写一次。
 - AUD-07/AUD-09/AUD-18/AUD-11（部分）：删掉不可达的 `link_lost`、未用常量、未读字典字段、未用 using。
 - 验证：桥编译通过；`--hud-check` 正常；两进程联机 client `joined slot 1 / remote slot 0 visible`，stderr 0 行。
+
+### 已修批次（S58，AUD-13/14/15/17/19）
+
+> 2026-10-20，M6 之前最后一次清债。每条都带「怎么证明」；两个顺手挖出来的真问题写在最后。
+
+- **AUD-19 · 换机即炸的安装脚本**：原来调 `7z`（本机没装），ninja 取 `releases/latest`。
+  现在只用 `Expand-Archive`（PowerShell 5.1 自带）、ninja 锁 v1.13.2、另外两个也锁到确切版本；
+  下载后先验 ZIP magic（错误页/半截文件会指名道姓地报错）。安装目录统一成无版本名
+  `mingw64/ cmake/ ninja/`，老机器上的 `cmake-4.4.4-windows-x86_64/` 直接改名复用而不是重下 54 MB；
+  `build.ps1` 只认稳定名，缺哪个工具就报哪个。
+  验证：脚本在本机 adopt 后打印 g++ 16.2.0 / cmake 4.4.4 / ninja 1.13.2；全量构建干净；
+  抽两个函数名从源码里取出、对真实 ninja.zip 跑一遍（成功）和一个假 zip 跑一遍（拒绝）。
+
+- **AUD-13 · 桥的编译标志与 CMake 不一致**：桥编的是同一份 sim 源码，但少了 `-Werror`、
+  `-ffp-contract=off`、`-DNDEBUG` 和 `BP_BUILD_ID`。现在标志逐条对齐，godot-cpp 头用
+  `-isystem` 引入（第三方告警进不了我们的 `-Werror`）；`BP_BUILD_ID` 用与 CMake 相同的
+  `git rev-parse --short HEAD` 注入，桥暴露 `get_build_id()/get_protocol_version()`。
+  顺带把版本号收成单一来源 `sim/core/version.h`（CMake 不再定义 protocol/sim 版本）。
+  验证：桥在 `-Werror` 下零告警；Godot 打 `breakpoint: build <hash> protocol 4` 且 hash == HEAD。
+
+- **AUD-14 · 端口四处写死且已经漂移**：菜单/run_net_demo 27115、net_loop 默认 27016、
+  闸门脚本 27130，游戏端口一处写 `+1`、一处写 27116。现在只在 `sim/net/ports.h` 出现
+  （默认 27115、闸门 = 默认 + 15、`game_port_of()` 派生 +1），Godot 读桥的
+  `get_default_signal_port()`，`check_sources.ps1` 新增端口 lint（写别的文件就红）。
+  验证：lint 在写它自己的注释时就红了一次（证明能失败）；`--hud-check` 打 `port=27115`；
+  net_selftest `ports_ok=True`；两个 Godot 进程**一个 --port 都不带**也能 host/join 并互相渲染。
+
+- **AUD-17 · 重连按钮双击**：按钮到帧末才释放，连点两下会叠两次 join（新票据 + 新 link）。
+  现在 `_do_reconnect()` 成功后上锁（失败解锁可重试，菜单重开时解锁），并复位
+  `joined_printed/silent_printed/last_peer_count`——否则重连后再也不会打 "joined slot"。
+  `--reconnect-check` 故意再调一次，判据是 `reconnect double=0`。
+  验证：两个 headless Godot 进程，client 打 `reconnect ok / double=0 / joined slot 1 / peers 1 /
+  remote slot 0 visible`，host 打 `signal slot 1 resumed 1 / peer joined slot 1`。
+
+- **AUD-15 · Godot 路径与首跑导入复制多份**：现在只有 `tools/godot_env.ps1` 知道 Godot 在哪
+  （`$env:BP_GODOT` 优先，否则取工具链目录里最新的 `Godot_v*_win64.exe`）以及怎么导入工程；
+  `run_demo.ps1`/`run_net_demo.ps1` 变回三行。新增 `tools/godot_check.ps1`：把原来手工敲的
+  `--hud-check` 与两进程重连固化成闸门（没 Godot 或没 DLL 时打印 SKIP 并返回 3），
+  **接进 smoke 成为第 17 项**——headless_sim 的闸门一个都看不到桥，这正是下面第一个真问题潜伏的原因。
+
+#### 顺手挖出来的两个真问题
+
+1. **扩展根本没被加载**：`breakpoint.gdextension` 只有 `windows.debug.x86_64`，而我们是拿
+   release 编辑器二进制跑 headless，它只认 `windows.editor.x86_64`。结果 DLL 明明在、
+   报错却说「找不到 windows.x86_64 的库」，随后 `SimWorld` 未声明、main.gd 解析失败，
+   `--hud-check` 永远不退出（进程挂着）。修法：两个 key 都指向 template_debug DLL。
+   教训 13；`godot_check.ps1` 带 60 s 超时，就是为了把这类「静默挂住」变成可读的失败。
+2. **桥缺 `-ffp-contract=off`**：DLL 与 exe 编同一份 sim，一个允许 FMA 收缩、一个不允许，
+   浮点结果可能不同——demo 哈希回放、回滚一致性都会受影响，而且没有任何闸门会报。
+   这条属于 AUD-13 的「标志一致性」，现在被写进教训 12。
 
 ### 第二轮 · sim 侧（R 系列，只读代理）
 

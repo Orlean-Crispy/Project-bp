@@ -1853,3 +1853,108 @@ Red Eclipse 的参考值。三个数字谁都没被验收过——手感验收�
 WeaponDef(toml) → 开火输入 → hitscan + hitbox 回溯 → 三段伤害 → hp/armor 进快照 → 死亡/重生 → 穿透/衰减。
 
 ---
+
+## 2026-10-20（傍晚）· 清债：AUD-19/13/17/14/15（S58）
+
+### 0. 目标
+
+五条 P2 债，按「炸得最响」排序，一次清完：**换机即炸的安装脚本**（AUD-19）→
+**桥的编译标志不一致**（AUD-13）→ **重连双击**（AUD-17）→ **端口四处写死**（AUD-14）→
+**脚本公共块复制**（AUD-15）。不加新功能。验收标准不是「改了」，而是「换台机器能装、
+桥坏了闸门会红、端口改了只改一处」。
+
+### 1. 做了什么
+
+| 编号 | 症状（改之前） | 改法 | 判据 |
+|---|---|---|---|
+| AUD-19 | setup 调 `7z`（本机没装）；ninja 取 `releases/latest` | `Expand-Archive`；三个工具全锁确切版本；ZIP magic 校验；目录统一 `mingw64/ cmake/ ninja/`；老 `cmake-4.4.4-windows-x86_64/` 改名复用 | 本机 adopt 成功并打印 g++ 16.2.0 / cmake 4.4.4 / ninja 1.13.2；真实 zip 与假 zip 各跑一次 |
+| AUD-13 | 桥缺 `-Werror`/`-ffp-contract=off`/`-DNDEBUG`/BP_BUILD_ID | 标志与 CMake 逐条对齐；godot-cpp 用 `-isystem`；build id 来自 `git rev-parse`；版本号收进 version.h | 桥零告警；Godot 打 `build <hash>` 且 hash == HEAD |
+| AUD-17 | 双击重连叠两次 join；`joined_printed` 不复位 | `_do_reconnect()` + 成功上锁；复位三个一次性日志 | `reconnect double=0`；重连后又打 `joined slot 1` |
+| AUD-14 | 27115/27016/27130/27116 四处，游戏端口一处 `+1` 一处写死 | `sim/net/ports.h` 唯一定义；桥暴露 `get_default_signal_port()`；lint 禁止别处出现 | `--hud-check` 打 `port=27115`；两个 Godot 进程不带 `--port` 也能连上 |
+| AUD-15 | Godot 路径与首跑导入复制多份 | `tools/godot_env.ps1`（唯一知道路径与导入的地方）+ `tools/godot_check.ps1`（第 17 项闸门） | smoke 第 17 项 PASS；没装 Godot 时 SKIP 而不是假绿 |
+
+提交：`adbaf84`（AUD-13）→ `efacb11`（AUD-19）→ `b3a37f5`（AUD-17）→ `13b88e2`（AUD-14）→
+`08334fd`（AUD-15）。一次一条债，互相不缠绕。
+
+### 2. 顺手挖出来的两个真问题（这一段最值钱）
+
+**① 扩展从来就没加载过。** 做 AUD-13 时我加了 `get_build_id()`，第一次跑 `--hud-check`
+准备「看它打印 build id」，结果什么都没有。真实症状链是：
+
+```
+ERROR: No GDExtension library found for current OS and architecture (windows.x86_64)
+  at: parse_gdextension_file (core/extension/gdextension_library_loader.cpp:360)
+ERROR: GDExtension dynamic library not found: 'res://breakpoint.gdextension'
+SCRIPT ERROR: Parse Error: Identifier "SimWorld" not declared in the current scope
+```
+
+DLL 就在 `godot/bin/` 里，导出表里 `breakpoint_library_init` 也在，但
+`breakpoint.gdextension` 只写了 `windows.debug.x86_64`，而我们用的是 **release 编辑器二进制**
+跑 headless——它只认 `windows.editor.x86_64`。报错里的 `(windows.x86_64)` 是 os.arch，
+不是被查找的键，所以第一眼会往「文件不存在」上查，越查越远。修法是两个键都指向 template_debug DLL。
+
+更糟的是它的**失败方式**：main.gd 解析失败 → `--hud-check` 那行永远执行不到 →
+进程不退出 → 我三次尝试留下三个僵尸 Godot，把 DLL 锁住，下一次 `build_bridge.ps1` 报
+`cannot open output file: Permission denied`。所以 `godot_check.ps1` 里所有 headless 调用都带超时
+（单个 60 s、重连 20 s），超时即失败并打印日志路径——「静默挂住」必须变成可读的失败。
+
+**② 桥缺 `-ffp-contract=off`。** DLL 与 `headless_sim` 编的是同一份 sim 源码，一个允许 FMA 收缩、
+一个不允许：浮点结果可能差最后一位，影响 demo 哈希回放、回滚一致性、两端预测。没有任何闸门会报，
+因为闸门只跑 exe。这条被写成教训 12：**两个入口编同一份源码，标志必须逐条一致**。
+
+### 3. 为什么这么做（架构判断）
+
+- **端口的所有者只能是 C++ 头。** 端口要同时被 C++（信令/闸门）、GDScript（菜单）、
+  PowerShell（两进程脚本）读到。跨语言时「抄一份常量」必然漂移（已经漂了：27016 是上古默认）。
+  所以 `sim/net/ports.h` 是唯一所有者，其余人**读**：桥转成方法、脚本解析头文件、
+  net_loop 用常量做默认值。再加一条 lint 把「抄」这件事变成红色。
+- **闸门的边界画错了，比少一条闸门更危险。** 16 项闸门全绿而桥根本没加载——这不是缺测试，
+  是测试只覆盖了 sim 进程。所以第 17 项不是「再检查一遍 HUD」，而是「把桥拉进闸门体系」。
+- **版本号只该出现在下载 URL 那一行。** 目录名带版本（`cmake-4.4.4-…`）会把版本号复制到
+  `build.ps1`、文档、别人的记忆里。改成无版本名 + 安装脚本负责适配，升版本就只改一行 URL。
+- **重连的锁要跟着事实走，不是跟着按钮走。** 按钮 `disabled` 是表现层的延迟，真正的事实是
+  「这张票据已经被用过、这条 link 已经被替换」。锁放在 `_do_reconnect()` 里、成功后保持到菜单重开，
+  才挡得住同一帧的第二次点击。
+- **失败要能失败。** 端口 lint 写完后第一次运行就红在自己的注释上；`--reconnect-check` 故意
+  再调一次 `_do_reconnect()` 并断言 `double=0`。判据的价值在于它曾经红过。
+
+### 4. 证据（最终基线）
+
+- `tools/smoke.ps1`：**17 项行为闸门 + bench ALL GREEN**（p99 0.40 µs，0.00 allocs/tick），
+  其中第 17 项自带两条：`hud hp=100 armor=0 impulse=4/4 role=solo vertices=360
+  build=<hash> protocol=4 port=27115` 与两进程 `reconnect ok / double=0 / signal slot 1 resumed 1`；
+- `tools/net_selftest.ps1`：`joins=2 accepted=420 far=0 moved=46.69 ports_ok=True clients_ok=True`；
+- 两个 Godot 进程**一个 `--port` 都不带**：host 打 `hosting on port 27115`、client 打
+  `connecting to 127.0.0.1:27115`，双方互相 `remote slot N visible`；
+- `tools/check_sources.ps1`：`sources ok: 27` + `ports ok: literals only in sim/net/ports.h`；
+- `build_bridge.ps1`：`-Werror` 下零告警，`built … (build id 08334fd)`。
+
+### 5. 失败与修正
+
+1. **`$Host` 是只读自动变量**：两进程脚本第一版直接崩在 `$host = Start-Process …`
+   （PowerShell 内置 `$Host`）。改名 `$hostProcess`。
+2. **僵尸 Godot 锁住 DLL**：扩展加载失败时 `--hud-check` 不会退出，我先后留下的三个进程让
+   `ld` 报 `cannot open output file … Permission denied`。教训：headless 调用一律带超时，
+   改 DLL 前先确认没有 Godot 在跑。
+3. **`-DBP_BUILD_ID="abc"` 会被 PowerShell 吃掉引号**：宏最后变成裸标识符
+   （`#define BP_BUILD_ID a4cd724`），只有 `-DBP_BUILD_ID=\"abc\"` 才对。用 `g++ -E -dM`
+   两种写法各测一遍才定下来——这种细节不能靠「应该可以」。
+4. **端口 lint 先红了自己**：注释里写了 27115。把规则文件本身排除，注释改写。
+5. **中文路径第四次咬人**：`objdump -p` 对 DLL 报 `No such file or directory`（路径被按 ANSI 解码），
+   只能先复制到 ASCII 目录再查导出表。
+
+### 6. 明确未完成（不许含糊）
+
+- **AUD-16**：`get_hp()/get_armor()` 仍是常量 100/0，M6 把 hp/armor 放进快照时一并解决；
+- **R6 边界**：只做到 session 三步零分配，序列化/回环传输仍约 40 次/tick；
+- **第 17 项在没装 Godot 的机器上是 SKIP**：这是有意的（工具链脚本不下载 Godot），
+  但也意味着「换机后忘装 Godot」不会让 smoke 变红，只有 `godot_check.ps1` 会明确说 SKIP；
+- **跨机 demo 比对**仍缺第二台机器。
+
+### 7. 下一步
+
+债清了，按计划书进 **M6 射击最小闭环**：WeaponDef(toml) → 开火输入 → hitscan（复用 hitbox 历史）
+→ 三段伤害 → hp/armor 进快照 → 死亡/重生。判据先写：固定靶命中/未命中、三段倍率、TTK 0.6–1.2 s。
+
+
+---

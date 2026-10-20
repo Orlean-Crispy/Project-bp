@@ -279,7 +279,7 @@ Godot 4.5 宿主 + GDExtension 桥可运行。所有试玩反馈都已落回 sim
 
 ~~~powershell
 powershell -File tools\build.ps1
-powershell -File tools\smoke.ps1                 # 16 项行为闸门 + bench，必须 ALL GREEN
+powershell -File tools\smoke.ps1                 # 17 项行为闸门 + bench，必须 ALL GREEN
 
 build\headless_sim.exe --test-net                 # 网络收敛/回滚数
 build\headless_sim.exe --test-health              # 护甲规则与 TTK
@@ -329,7 +329,7 @@ powershell -File tools\run_demo.ps1
 
 ### 7.3 当前基线
 
-- 16 项闸门 + bench ALL GREEN；工作树干净。
+- 17 项闸门（第 17 项 = Godot 桥）+ bench ALL GREEN；工作树干净。
 - main 以 `git log --oneline -1` 为准（本轮收尾会再提交一次文档）。
 - 详细开发日志：docs/PROGRESS.md 末尾「开发日志（详细）」，2026-10-20 起按六段模板追加。
 
@@ -401,23 +401,45 @@ tools/headless_sim/      main.cpp（272 行，只分发）+ tests_net/move/demo 
 
 ```powershell
 powershell -File tools\build.ps1
-powershell -File tools\smoke.ps1          # 16 闸门 + bench，必须 ALL GREEN
-powershell -File tools\net_selftest.ps1   # 两进程真实 UDP：joins=2 far=0
-C:\bp-toolchain\godot\Godot_v4.5-stable_win64.exe --headless --path godot -- --hud-check
+powershell -File tools\smoke.ps1          # 17 闸门（含 Godot 桥）+ bench，必须 ALL GREEN
+powershell -File tools\net_selftest.ps1   # 两进程真实 UDP：joins=2 far=0 ports_ok=True
+powershell -File tools\build_bridge.ps1   # 改过 sim/ 或 bridge/ 之后必须重跑
+powershell -File tools\godot_check.ps1    # 只跑桥：--hud-check + 两进程重连（退出码 3 = 跳过）
 ```
 
-Godot 两进程手工验证：host `--host --port=27115`，client `--connect=127.0.0.1 --port=27115`；
+第 17 项已经在 smoke 里，正常不用手敲。想手工看两个窗口：`tools\run_net_demo.ps1`（两边都走
+ports.h 的默认端口，不用填数字），或 host `--host`、client `--connect=127.0.0.1`；
 host 应打 `peer joined slot 1 / remote slot 1 visible`，client 打 `joined slot 1 / remote slot 0 visible`，
-两个 stderr 必须为空。重连验证加 `--reconnect-check`（host 应打 `signal slot 1 resumed 1`）。
+两个 stderr 必须为空。重连验证加 `--reconnect-check`（host 应打 `signal slot 1 resumed 1`，
+client 应打 `reconnect ok` 与 `reconnect double=0`）。
+
+**注意**：`--hud-check` 在扩展加载失败时**不会退出**，会一直挂着。所以别手敲裸命令等它，
+用 `godot_check.ps1`（带 60 s 超时）；改 DLL 前先确认没有 Godot 进程在跑，否则 ld 报 Permission denied。
 
 ### 8.6 明确未完成（交接必读）
 
-- **AUD-19** setup_toolchain 依赖未安装的 7z、Ninja 未锁版本——换机首次安装会炸，第一优先。
-- **AUD-13** 桥编译不带 -Werror/BP_BUILD_ID（godot-cpp 头有告警，需范围隔离）。
-- AUD-14/15 端口常量与脚本公共块重复；AUD-17 重连按钮双击保护；AUD-16 留 M6。
+- **AUD-16**：`get_hp()/get_armor()` 仍是常量 100/0，M6 把 hp/armor 放进快照时一并解决。
 - R6 边界：只有 session 三步零分配；ByteWriter/编解码/回环队列仍约 40 次/tick，需单独立项。
+- 第 17 项在没装 Godot（或没建 DLL）的机器上打印 SKIP 并返回 3——smoke 视为跳过，
+  所以「换机后忘装 Godot」不会变红，只有 `godot_check.ps1` 会直说。
+- 跨机 demo 比对仍缺第二台机器。
+
+AUD-19/13/17/14/15 已清（2026-10-20，S58）：安装脚本不再依赖 7z 且版本全锁、桥与 CMake 同一套标志
+并带 build id、重连单次触发、端口只在 `sim/net/ports.h`、Godot 环境与检查脚本各一份。
+细节见 PROGRESS 最后一节与 AUDIT「已修批次（S58）」。
 
 ### 8.7 下一步
 
-清 AUD-19 → AUD-13 → AUD-17 → 14/15，然后进 M6：WeaponDef(toml) → 开火输入 → hitscan + hitbox 回溯
-→ 三段伤害 → hp/armor 进快照 → 死亡/重生 → 穿透/衰减。每一小步先写闸门。
+债已清，直接进 M6：WeaponDef(toml) → 开火输入 → hitscan + hitbox 回溯
+→ 三段伤害 → hp/armor 进快照（顺带 AUD-16）→ 死亡/重生 → 穿透/衰减。每一小步先写闸门。
+
+### 8.8 本轮新增/改动的脚本（别再造第二份）
+
+| 脚本 | 职责 |
+|---|---|
+| tools/setup_toolchain.ps1 | 唯一知道下载地址与版本；Expand-Archive；无 7z |
+| tools/build.ps1 | 只认无版本目录名，缺工具就报名字 |
+| tools/build_bridge.ps1 | 与 CMake 同一套标志 + BP_BUILD_ID |
+| tools/godot_env.ps1 | 唯一知道 Godot 路径与首跑导入（`$env:BP_GODOT` 优先） |
+| tools/godot_check.ps1 | 第 17 项闸门：--hud-check + 两进程重连，带超时，退出码 3 = SKIP |
+| tools/check_sources.ps1 | sim 源码清单 + 端口字面量 lint |

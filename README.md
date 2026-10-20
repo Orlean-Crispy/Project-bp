@@ -36,7 +36,8 @@ Godot 4.7 宿主 + 自研 C++17 模拟层（零 Godot 依赖），64 tick，目�
 powershell -File tools\setup_toolchain.ps1   # 只需一次，装到 C:\bp-toolchain
 powershell -File tools\run_demo.ps1          # 构建桥 + 启动 Godot demo
 powershell -File tools\build.ps1             # 配置 + 全量构建（-Werror）
-powershell -File tools\smoke.ps1             # 16 项行为闸门 + bench，必须全绿
+powershell -File tools\smoke.ps1             # 17 项行为闸门 + bench，必须全绿
+powershell -File tools\godot_check.ps1       # 只跑桥：--hud-check + 两进程重连
 powershell -File tools\run_net_demo.ps1      # 起 host + client 两个 Godot 窗口
 powershell -File tools\net_selftest.ps1      # 两进程真实 UDP 联机自检
 ```

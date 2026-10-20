@@ -13,7 +13,7 @@
    前者是 §7 的扩张与冲突裁决，后者是 §8.3 的选定方案）。
 3. 完整读 **docs/AGENTS.md**（铁律 / 判据清单 / 未结案 / 环境事实 / 文件地图）。
 4. 读 **docs/PROGRESS.md** 最后一节，再读 **docs/HANDOFF.md**。
-5. 跑 tools\build.ps1，再跑 tools\smoke.ps1，确认 **16 项行为闸门 + bench 全绿**。
+5. 跑 tools\build.ps1，再跑 tools\smoke.ps1，确认 **17 项行为闸门 + bench 全绿**（第 17 项是 Godot 桥）。
 6. 只改一个文件集；改完立刻 commit；更新 PROGRESS。
 
 > 为什么摘要不能替代原文：计划书里**被否决的方案与理由**（§2.2）、参数出处（§5.6/§6.2）、
@@ -108,7 +108,7 @@ v0.1 定义：**两个人、局域网、1 张 40×40 图、对枪 10 分钟不�
 
 - 宿主实际是 **Godot 4.5**（godot-cpp 最高只有 4.5；计划书目标 4.7，记为未结案）。
 - 存档：GitHub 私有（SSH 443）+ 本地 bundle；远端与恢复步骤见 docs/backup.md。
-- 16 项行为闸门 + bench 全绿；Godot demo 可运行（demo.bat）。
+- 17 项行为闸门 + bench 全绿（第 17 项 = Godot 桥加载/HUD/重连）；Godot demo 可运行（demo.bat）。
 - --test-net：30% 丢包回滚 1428 → **51/2000**；5% 丢包 60 s 修正 0 次；
   中途加入/重连偏差 **0.00000 m**（加入走 FULL_STATE）。
 
@@ -119,7 +119,7 @@ v0.1 定义：**两个人、局域网、1 张 40×40 图、对枪 10 分钟不�
 1. M6 射击：WeaponDef、开火输入、hitscan + hitbox 回溯、三段判定、hp/armor 进快照、
    死亡/重生、穿透/衰减。
 2. M7/M8：音频、第三人称动画、第一人称视角模型。
-3. 代码体检已收口（AUDIT A1–A7 完成）；剩余债见 docs/GAPS.md。
+3. 代码体检已收口（AUDIT A1–A7、AUD-01…19；只剩 AUD-16 留到 M6）；剩余债见 docs/GAPS.md。
 
 ---
 
@@ -142,8 +142,9 @@ v0.1 定义：**两个人、局域网、1 张 40×40 图、对枪 10 分钟不�
 
 ~~~powershell
 powershell -File tools\build.ps1        # 全量构建（-Werror）
-powershell -File tools\smoke.ps1        # 16 项行为闸门 + bench，必须 ALL GREEN
-powershell -File tools\build_bridge.ps1 # GDExtension DLL
+powershell -File tools\smoke.ps1        # 17 项行为闸门 + bench，必须 ALL GREEN
+powershell -File tools\build_bridge.ps1 # GDExtension DLL（与 CMake 同一套标志）
+powershell -File tools\godot_check.ps1  # 只跑桥：--hud-check + 两进程重连（3 = SKIP）
 powershell -File tools\run_demo.ps1     # Godot demo
 ~~~
 
