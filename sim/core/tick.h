@@ -7,6 +7,21 @@ namespace sim {
 
 constexpr uint32_t kDefaultTickRate = 64;
 
+// The tick rate is stated once. Anything that needs a duration (seconds per
+// tick, a timeout in ticks, a tick count in milliseconds) derives it here
+// instead of repeating 64 (audit R14).
+constexpr float tick_seconds(uint32_t hz = kDefaultTickRate) {
+    return 1.0f / static_cast<float>(hz);
+}
+
+constexpr uint32_t seconds_to_ticks(float seconds, uint32_t hz = kDefaultTickRate) {
+    return static_cast<uint32_t>(seconds * static_cast<float>(hz) + 0.5f);
+}
+
+constexpr uint32_t ticks_to_millis(uint32_t ticks, uint32_t hz = kDefaultTickRate) {
+    return static_cast<uint32_t>((static_cast<uint64_t>(ticks) * 1000ull) / hz);
+}
+
 // Fixed-step accumulator. The simulation never sees frame time: it only ever
 // advances in whole ticks, so results do not depend on the renderer's frame rate.
 class TickClock {

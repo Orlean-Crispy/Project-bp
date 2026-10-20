@@ -1,5 +1,6 @@
 #include "sim/net/reliable_transport.h"
 
+#include "sim/core/tick.h"
 #include "sim/net/netchan.h"
 
 namespace sim {
@@ -56,7 +57,7 @@ bool ReliableTransport::recv(std::vector<uint8_t>& out) {
 void ReliableTransport::advance(uint32_t tick) {
     // Rollback moves the client clock backwards; RTO math must never see that,
     // or `now - last_sent` wraps and every packet looks overdue.
-    const uint32_t raw = static_cast<uint32_t>((static_cast<uint64_t>(tick) * 1000ull) / 64ull);
+    const uint32_t raw = ticks_to_millis(tick);
     if (raw > m_now_ms) m_now_ms = raw;
     flush(m_now_ms);
 }

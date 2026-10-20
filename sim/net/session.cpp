@@ -1,5 +1,6 @@
 #include "sim/net/session.h"
 
+#include "sim/core/tick.h"
 #include "sim/net/bytes.h"
 #include "sim/net/netchan.h"
 #include "sim/net/reliable_transport.h"
@@ -7,7 +8,7 @@
 namespace sim {
 namespace {
 
-constexpr float kDt = 1.0f / 64.0f;
+constexpr float kDt = tick_seconds();
 
 enum InputFlag : uint16_t {
     kJump = 1u << 0,
@@ -311,7 +312,7 @@ void NetServer::receive() {
 void NetServer::step() {
     // A client silent for 5 s is gone; free its slot so nobody keeps rendering
     // a frozen capsule. A reconnect re-attaches through FULL_STATE.
-    constexpr uint32_t kTimeoutTicks = 320;
+    constexpr uint32_t kTimeoutTicks = seconds_to_ticks(5.0f);
     for (int i = static_cast<int>(m_links.size()) - 1; i >= 0; --i) {
         const Link& link = m_links[static_cast<std::size_t>(i)];
         if (link.ever_seen && m_world.tick - link.last_rx_tick > kTimeoutTicks) {
