@@ -243,7 +243,7 @@ int run_wall_test(const Options& opt) {
         const float slid = p.pos.y - start_y;
         const bool ok = slid > 0.5f && p.pos.x < contact_x + 0.01f;
         if (!ok) ++failures;
-        std::printf("  %5s  slid %.3f m along wall, x=%.3f\n", ok ? "slide" : "slide",
+        std::printf("  %5s  slid %.3f m along wall, x=%.3f\n", ok ? "slide" : "STUCK",
                     static_cast<double>(slid), static_cast<double>(p.pos.x));
     }
 
@@ -923,7 +923,11 @@ int run_hitbox_test(const Options& opt) {
     const sim::HitboxSample mid = history.sample(11, 0.5f);
     check("midpoint interpolation", std::fabs(mid.pos.x - 1.5f) < 1e-5f);
     check("frac 0 returns the earlier frame", history.sample(11, 0.0f).pos.x == 1.0f);
-    check("no extrapolation past the newest frame", history.sample(12, 0.5f).tick == 12);
+    // sample() always copies the tick argument into the result, so asserting the
+    // tick proved nothing. The position is what must not run past the newest
+    // frame: there is no tick 13, so frac 0.5 must stay at x = 2.0, not 2.5.
+    check("no extrapolation past the newest frame",
+          std::fabs(history.sample(12, 0.5f).pos.x - 2.0f) < 1e-6f);
 
     // Plan 6.8: head > 0.82 h, chest > 0.45 h. Standing h = 1.42 m.
     const sim::HitboxSample stand = history.at(11);
