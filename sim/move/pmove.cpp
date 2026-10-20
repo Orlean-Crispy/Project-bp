@@ -64,14 +64,16 @@ Vec3 resolve_penetration(const CollisionWorld& world, const Vec3& pos, const Vec
     return pos;
 }
 
+// out_start_solid is optional: only the first probe of a tick reparses it (the
+// stance-change path reuses the answer), every other caller discards it.
 bool probe_ground(const PlayerState& player, const CollisionWorld& world,
-                  const MovementParams& params, float& out_z, bool& out_start_solid) {
+                  const MovementParams& params, float& out_z, bool* out_start_solid = nullptr) {
     Vec3 mins;
     Vec3 maxs;
     player_hull(player, params, mins, maxs);
     const TraceResult tr = world.trace_box(player.pos, player.pos - Vec3(0.0f, 0.0f, kGroundProbe),
                                            mins, maxs);
-    out_start_solid = tr.start_solid;
+    if (out_start_solid != nullptr) *out_start_solid = tr.start_solid;
     if (tr.start_solid) {
         out_z = player.pos.z;
         return true;
@@ -234,7 +236,7 @@ void pmove(PlayerState& player, const MoveInput& input, const CollisionWorld& wo
     const bool was_crouched = player.crouched;
     bool started_solid = false;
     float ground_z = player.pos.z;
-    player.on_ground = probe_ground(player, world, params, ground_z, started_solid);
+    player.on_ground = probe_ground(player, world, params, ground_z, &started_solid);
     if (player.on_ground) player.pos.z = ground_z;
 
     try_start_slide(player, input, params);
@@ -415,8 +417,7 @@ void pmove(PlayerState& player, const MoveInput& input, const CollisionWorld& wo
     player.pos = moved.moved.pos;
     player.vel = moved.moved.vel;
 
-    bool landed_solid = false;
-    if (probe_ground(player, world, params, ground_z, landed_solid)) {
+    if (probe_ground(player, world, params, ground_z)) {
         player.pos.z = ground_z;
         player.on_ground = true;
         if (player.vel.z < 0.0f) player.vel.z = 0.0f;
@@ -444,8 +445,6 @@ void pmove(PlayerState& player, const MoveInput& input, const CollisionWorld& wo
 
     player.jump_was_down = input.jump;
     player.slide_was_down = input.slide;
-    player.wallrun_was_down = input.wallrun;
-    player.wallclimb_was_down = input.wallclimb;
     player.vault_was_down = input.vault;
     ++player.tick;
 }

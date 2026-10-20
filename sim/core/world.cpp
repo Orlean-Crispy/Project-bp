@@ -53,8 +53,6 @@ uint64_t World::state_hash() const {
         h.u32(p.jump_was_down ? 1u : 0u)
             .u32(p.slide_was_down ? 1u : 0u)
             .u32(p.dash_was_down ? 1u : 0u)
-            .u32(p.wallrun_was_down ? 1u : 0u)
-            .u32(p.wallclimb_was_down ? 1u : 0u)
             .u32(p.vault_was_down ? 1u : 0u);
         h.vec3(p.wall_normal).vec3(p.vault_dir).f32(p.vault_rise);
         h.f32(p.speed_coefficient).f32(p.slow_factor);

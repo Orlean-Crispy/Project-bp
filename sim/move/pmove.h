@@ -46,8 +46,6 @@ struct PlayerState {
     bool jump_was_down = false;
     bool slide_was_down = false;
     bool dash_was_down = false;
-    bool wallrun_was_down = false;
-    bool wallclimb_was_down = false;
     bool vault_was_down = false;
     Vec3 vault_dir;      // horizontal direction of the vault in progress
     float vault_rise = 0.0f;  // metres to climb during the vault

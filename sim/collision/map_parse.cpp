@@ -260,7 +260,6 @@ bool parse_map_text(const std::string& text, MapData& out, std::string& error) {
     bool have_bounds = false;
     for (size_t e = 0; e < map.entities.size(); ++e) {
         for (Brush& brush : map.entities[e].brushes) {
-            brush.entity_index = static_cast<int>(e);
             if (!have_bounds) {
                 map.bounds = brush.bounds;
                 have_bounds = true;

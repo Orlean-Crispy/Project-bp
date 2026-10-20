@@ -15,7 +15,6 @@ struct TraceResult {
     float fraction = 1.0f;
     Vec3 end_pos;
     Vec3 normal;
-    int brush_index = -1;
     const Brush* brush = nullptr;
 };
 

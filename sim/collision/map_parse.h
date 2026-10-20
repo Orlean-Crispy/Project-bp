@@ -17,7 +17,6 @@ struct MapData {
     std::vector<MapEntity> entities;
     std::vector<Brush> brushes;  // flattened, in file order (deterministic)
     Bounds bounds;
-    int rejected_brushes = 0;
     std::string source;
 };
 

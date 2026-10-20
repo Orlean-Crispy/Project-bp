@@ -92,7 +92,6 @@ TraceResult CollisionWorld::trace_box(const Vec3& start, const Vec3& end,
                 best.fraction = 0.0f;
                 best.end_pos = start;
                 best.normal = Vec3();
-                best.brush_index = static_cast<int>(bi);
                 best.brush = &brush;
             }
             continue;
@@ -105,7 +104,6 @@ TraceResult CollisionWorld::trace_box(const Vec3& start, const Vec3& end,
         best.fraction = brush_enter;
         best.end_pos = start + (end - start) * brush_enter;
         best.normal = brush_normal;
-        best.brush_index = static_cast<int>(bi);
         best.brush = &brush;
     }
 

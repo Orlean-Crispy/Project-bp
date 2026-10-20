@@ -30,7 +30,6 @@ struct Brush {
     std::string material;
     bool climbable = false;
     bool wallrunnable = false;
-    int entity_index = -1;
 };
 
 // Intersects every plane triple, keeps the points inside all halfspaces, and
