@@ -159,8 +159,7 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 
 1. **网络组局** — 信令组局、票据 resume 回原槽、HUD（含 SERVER SILENT 1 s）与重连按钮
    全部实测通过；仅剩第三人称动画与 5v5 选边。lead：M7。
-2. **v0.4 的 M5 增量** — A1/A2/A5 全部接入并实测（信令线程、单 socket 双队列、重连状态机、
-   B1 分片）；余 **A2 configstring 语义**（传输已验证，内容是任意 blob）。lead：M6 前。
+2. **v0.4 的 M5 增量** — A1/A2/A5 全部接入并实测；configstring 带真实哈希且失配拒局。**已关闭**。
 3. **M6 射击** — hitscan、后坐力表、三段部位判定（hitbox 已就绪）、穿透、伤害衰减、
    hitmarker 全未做。护甲的**吸收比例 66%** 与**再生 5 s / 10 s** 是提案值，需要确认。
 4. **Godot 版本** — 计划书写 4.7 Mono，但 godot-cpp 最高只有 4.5，现用 4.5。
