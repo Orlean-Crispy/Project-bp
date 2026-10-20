@@ -20,6 +20,7 @@
 #include <string>
 #include <vector>
 
+#include "mesh_common.h"
 #include "sim/collision/map_parse.h"
 #include "sim/core/event.h"
 #include "sim/core/world.h"
@@ -36,21 +37,9 @@ using namespace godot;
 
 namespace {
 
-// Godot is Y-up, the simulation is Z-up (Quake convention).
-Vector3 to_godot(const sim::Vec3& v) { return Vector3(v.x, v.z, -v.y); }
-
-int material_color(const std::string& name) {
-    if (name == "FLOOR") return 0x7e7c76;
-    if (name == "CEILING") return 0x4a4e58;
-    if (name == "WALL") return 0x5c6474;
-    if (name == "THINWALL") return 0xa8885c;
-    if (name == "PLATFORM") return 0x609468;
-    if (name == "STEP") return 0x9c7a52;
-    if (name == "LOWCEIL") return 0x7c5c94;
-    if (name == "METAL") return 0x84888e;
-    if (name == "CONCRETE") return 0x787872;
-    return 0x6e6e72;
-}
+// Shared with the mesh builder; see bridge/mesh_common.h.
+using bridge::material_color;
+using bridge::to_godot;
 
 }  // namespace
 

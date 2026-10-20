@@ -1413,6 +1413,19 @@ wrapper，两个时钟不同步；`uint32` 减法回绕成几十亿，于是每�
 
 ---
 
+## 2026-10-20 · S49 · 体检 A5 第一步：抽出纯展示件
+
+- 新增 `bridge/mesh_common.h`：to_godot（Z-up → Y-up）与 material_color（材质→颜色），
+  都是纯函数，header-only，不碰 socket/world。
+- `sim_bridge.cpp` 删掉自己那两份，改成 `using bridge::...`，8 处调用一字未改。
+- 为什么先做这一步：下一步要把 `build_mesh()` 搬进独立的 mesh_builder 时，
+  builder 只依赖这个头就够，不用把整个桥类拖过去。
+- 判据：桥编译通过；`--hud-check` 打 hud hp=100 armor=0 impulse=4/4 role=solo；
+  两个 headless Godot 进程联机 —— host 见 peer joined slot 1 / remote slot 1 visible，
+  client 见 joined slot 1 / remote slot 0 visible。
+
+---
+
 # 开发日志（详细）
 
 > 从 2026-10-20 起，在 PROGRESS 末尾追加详细日志；上面的 S 编号短条目保留，作为索引。
