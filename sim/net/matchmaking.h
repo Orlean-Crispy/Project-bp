@@ -71,6 +71,10 @@ public:
     void set_server_tick(uint32_t tick) { m_server_tick.store(tick); }
     int handshakes() const { return m_handshakes.load(); }
     int slot_of(const ClientId& id) const;
+    // R4: a reservation is not an admission. A client that abandons the
+    // handshake before MATCH_START must give its slot back, otherwise a few
+    // aborted handshakes make the host answer RoomFull to an empty room.
+    void release(const ClientId& id);
 
 private:
     void run();

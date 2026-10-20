@@ -725,11 +725,61 @@ int run_match_test() {
                           admission.take(b) == 1 && admission.take(c) == -1 &&
                           admission.pending() == 0;
 
-    std::printf("  [match] accepted %d slot 0 ticket %d resume %d tamper %d full %d events %d admit %d\n",
+    // R4: an aborted handshake gives its slot back. Take the reservation
+    // (HELLO_ACK) and close before AssetReady: the same id must be able to
+    // reserve again, and a fresh id must still get the second slot.
+    sim::MatchHost aborted;
+    bool release_ok = false;
+    bool slots_cleared = false;
+    if (!aborted.start(0, 2, "playground", 7, 0, error)) {
+        std::printf("FAIL: aborted-handshake host start: %s\n", error.c_str());
+        return 1;
+    }
+    sim::ClientId d{};
+    d[0] = 0x04;
+    sim::ClientId e{};
+    e[0] = 0x05;
+    bool reserved = false;
+    {
+        sim::TcpStream probe;
+        if (probe.connect("127.0.0.1", aborted.port(), 2000, error)) {
+            sim::SignalMessage hello;
+            hello.type = sim::SignalType::Hello;
+            hello.protocol = sim::kSignalProtocol;
+            hello.client_id = d;
+            sim::SignalMessage ack;
+            reserved = probe.send_message(hello, error) &&
+                       probe.recv_message(ack, 3000, error) &&
+                       ack.type == sim::SignalType::HelloAck && ack.accepted && ack.slot == 0 &&
+                       aborted.slot_of(d) == 0;
+        }
+        // Leaving this scope closes the stream without sending AssetReady.
+    }
+    bool released = false;
+    for (int i = 0; i < 400 && !released; ++i) {
+        if (aborted.slot_of(d) < 0) {
+            released = true;
+        } else {
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+    }
+    sim::MatchReply rd2;
+    const bool reclaim = released && sim::match_request("127.0.0.1", aborted.port(), d, nullptr, rd2) &&
+                         rd2.ok && rd2.status == sim::MatchStatus::Accepted && rd2.slot == 0;
+    sim::MatchReply re2;
+    const bool second_slot =
+        sim::match_request("127.0.0.1", aborted.port(), e, nullptr, re2) && re2.ok &&
+        re2.status == sim::MatchStatus::Accepted && re2.slot == 1;
+    aborted.stop();
+    slots_cleared = aborted.slot_of(d) < 0 && aborted.slot_of(e) < 0;
+    release_ok = reserved && released && reclaim && second_slot;
+
+    std::printf("  [match] accepted %d slot 0 ticket %d resume %d tamper %d full %d events %d admit %d release %d\n",
                 accepted, resume, resume, tamper, full,
-                event_accepted && event_resumed && event_full ? 1 : 0, admit_ok ? 1 : 0);
+                event_accepted && event_resumed && event_full ? 1 : 0, admit_ok ? 1 : 0,
+                release_ok ? 1 : 0);
     if (!accepted || !resume || !tamper || !second || !full || !event_accepted ||
-        !event_resumed || !event_full || !admit_ok) {
+        !event_resumed || !event_full || !admit_ok || !release_ok || !slots_cleared) {
         std::printf("FAIL: A1/A5 matchmaking failed: %s\n", error.c_str());
         return 1;
     }

@@ -44,6 +44,10 @@ void MatchHost::stop() {
     m_stop.store(true);
     if (m_thread.joinable()) m_thread.join();
     m_listener.close();
+    // R4: occupancy belongs to the running host. Once stopped, no slot is
+    // reserved, so a stale question about occupancy cannot answer RoomFull.
+    const std::lock_guard<std::mutex> lock(m_mutex);
+    m_slots.assign(m_slots.size(), ClientId{});
 }
 
 void MatchHost::run() {
@@ -65,6 +69,13 @@ int MatchHost::slot_of_locked(const ClientId& id) const {
 int MatchHost::slot_of(const ClientId& id) const {
     const std::lock_guard<std::mutex> lock(m_mutex);
     return slot_of_locked(id);
+}
+
+void MatchHost::release(const ClientId& id) {
+    const std::lock_guard<std::mutex> lock(m_mutex);
+    const int slot = slot_of_locked(id);
+    if (slot < 0 || slot < static_cast<int>(m_reserved)) return;  // host-owned slots stay
+    m_slots[static_cast<std::size_t>(slot)] = ClientId{};
 }
 
 // A reconnect keeps its old slot; a fresh client takes the first free one.
@@ -119,6 +130,7 @@ void MatchHost::serve(TcpStream& stream) {
     Ticket ticket;
     bool resumed = false;
     int slot = -1;
+    bool reserved_now = false;  // true only for a fresh reservation, not a resume
 
     if (hello.has_ticket) {
         // A5: a resume is admitted only if the MAC holds and the id matches.
@@ -151,8 +163,17 @@ void MatchHost::serve(TcpStream& stream) {
             push(event);
             return;
         }
+        reserved_now = true;
         ticket = m_issuer.issue(hello.client_id, now, kTicketTtlSeconds);
     }
+
+    // R4: a slot is reserved before the handshake completes, so every exit
+    // between here and MATCH_START has to give it back (a client that aborts
+    // before AssetReady would otherwise hold it forever). A resume owns no new
+    // reservation, so a failed resume leaves the live client's slot alone.
+    const auto abandon = [&] {
+        if (reserved_now) release(hello.client_id);
+    };
 
     SignalMessage ack;
     ack.type = SignalType::HelloAck;
@@ -162,14 +183,23 @@ void MatchHost::serve(TcpStream& stream) {
     ack.slot = static_cast<uint8_t>(slot);
     ack.has_ticket = true;
     ack.ticket = ticket;
-    if (!stream.send_message(ack, error)) return;
+    if (!stream.send_message(ack, error)) {
+        abandon();
+        return;
+    }
 
     SignalMessage manifest;
     manifest.type = SignalType::AssetManifest;  // v0.1 ships no assets over TCP
-    if (!stream.send_message(manifest, error)) return;
+    if (!stream.send_message(manifest, error)) {
+        abandon();
+        return;
+    }
 
     SignalMessage ready;
-    if (!stream.recv_message(ready, 2000, error) || ready.type != SignalType::AssetReady) return;
+    if (!stream.recv_message(ready, 2000, error) || ready.type != SignalType::AssetReady) {
+        abandon();
+        return;
+    }
 
     SignalMessage start;
     start.type = SignalType::MatchStart;
@@ -177,7 +207,10 @@ void MatchHost::serve(TcpStream& stream) {
     start.seed = m_seed;
     start.players = m_players;
     start.game_port = event.game_port;
-    if (!stream.send_message(start, error)) return;
+    if (!stream.send_message(start, error)) {
+        abandon();
+        return;
+    }
 
     event.status = MatchStatus::Accepted;
     event.slot = static_cast<uint8_t>(slot);
