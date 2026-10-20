@@ -325,7 +325,8 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
 - 局内 HUD（godot/main.gd）：HP/护甲（桥里是占位 100/0，等 M6 联网）、impulse 条
   用 `get_max_impulses()` 画格（**不写死**），状态行显示 role/slot/peers/waiting；
   Esc 开合暂停菜单（Resume / Reconnect（仅客户端）/ Leave）。
-  判据：`--hud-check` 打 `hud hp=100 armor=0 impulse=4/4 role=solo`。
+  判据：`--hud-check` 打 `hud hp=100 armor=0 impulse=4/4 role=solo vertices=360`——
+  vertices > 0 同时证明「抽出去的 mesh_builder 仍在产出几何」。
 - 失联检测（`NetClient::snapshot_age()`）：客户端用**最后一次收到快照的 tick 差**判断，
   > 64 tick（1 s）显示 `SERVER SILENT x.xs`。世界仍在本地推进也能看出来——
   「tick 停走」只能发现模拟卡死，发现不了服务器没了。

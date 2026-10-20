@@ -122,9 +122,9 @@ func _ready() -> void:
 	add_child(status_label)
 	_update_hud()
 	if hud_check:
-		print("hud hp=%d armor=%d impulse=%d/%d role=%s" % [
+		print("hud hp=%d armor=%d impulse=%d/%d role=%s vertices=%d" % [
 			sim.get_hp(), sim.get_armor(), sim.get_impulses(), sim.get_max_impulses(),
-			sim.get_role()
+			sim.get_role(), sim.get_vertices().size()
 		])
 		get_tree().quit()
 
