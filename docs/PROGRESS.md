@@ -1386,6 +1386,21 @@ wrapper，两个时钟不同步；`uint32` 减法回绕成几十亿，于是每�
 
 ---
 
+## 2026-10-20 · S47 · 体检：A4 第二批（演示闸门搬家）
+
+- 演示组（record/play/compare/demo，含 `PlayOutcome`、play_file、compare_dumps）搬到 `tests_demo.cpp`。
+- 共用件抽到 `test_util.h/.cpp`：load_world_from / load_world / make_input。
+  它们原本在 main 的匿名 namespace 里，跨 TU 用不了——这也说明「搬家」会顺手暴露隐式耦合。
+- 结果：main.cpp 2916 → **1355** 行；tests_net 1257、tests_demo 375、test_util 小文件。
+- 判据：全量构建 -Werror 无警告；16 项闸门 + bench ALL GREEN（demo 回放、分叉检测都在里面）。
+
+### 顺带
+
+- 两次缺少 `using sim::X` 与 `kDt` 的编译错误，说明搬函数的正确姿势是：
+  连同它依赖的 `using` 与常量一起看，而不是只搬函数体。
+
+---
+
 # 开发日志（详细）
 
 > 从 2026-10-20 起，在 PROGRESS 末尾追加详细日志；上面的 S 编号短条目保留，作为索引。

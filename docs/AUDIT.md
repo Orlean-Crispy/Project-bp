@@ -18,7 +18,7 @@
 | A1 | ✅ 已删 | sim/net/session.* | `InputWindow::Overflow` 不可达，`m_overflow_cmds` 永远是 0 |
 | A2 | ✅ 已删 | sim/net/netchan.* | `AckTracker` 全仓无调用（约 30 行死代码） |
 | A3 | ✅ 已抽 | sim/net/winsock.h | Winsock 初始化曾写两份，现在只剩一处 inline 实现 |
-| A4 | 🔶 首批 | tools/headless_sim/ | 2916 → 1722 行；网络 14 个闸门搬到 tests_net.cpp，其余待搬 |
+| A4 | 🔶 两组已搬 | tools/headless_sim/ | 2916 → 1355 行；网络→tests_net.cpp、演示→tests_demo.cpp，余移动/杂项待搬 |
 | A5 | P1 | bridge/sim_bridge.cpp | 519 行里塞了网络、渲染、输入、HUD 数据 |
 | A6 | ✅ 已接 | sim/net/configstring.h | configstring 现在有格式与校验：哈希不符客户端拒局 |
 | A7 | ✅ 已抽 | sim/net/admission.h | 加入逻辑只有一份：approve/take，两个 UDP 宿主共用 |
