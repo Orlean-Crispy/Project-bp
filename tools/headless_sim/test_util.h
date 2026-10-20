@@ -8,6 +8,8 @@
 
 struct Options;
 
+unsigned long long allocation_count();
+
 bool load_world_from(const std::string& map_path, const std::string& data_path,
                      sim::World& world, std::string& error);
 

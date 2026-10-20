@@ -46,7 +46,7 @@ target_compile_definitions(sim PUBLIC
   BP_SIM_VERSION=1
   BP_PROTOCOL_VERSION=3)
 
-add_executable(headless_sim tools/headless_sim/main.cpp tools/headless_sim/tests_net.cpp tools/headless_sim/tests_demo.cpp tools/headless_sim/test_util.cpp)
+add_executable(headless_sim tools/headless_sim/main.cpp tools/headless_sim/tests_net.cpp tools/headless_sim/tests_demo.cpp tools/headless_sim/test_util.cpp tools/headless_sim/tests_move.cpp)
 target_link_libraries(headless_sim PRIVATE sim)
 
 add_executable(move_metrics tools/move_metrics/main.cpp)

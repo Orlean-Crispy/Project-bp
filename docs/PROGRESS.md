@@ -1401,6 +1401,18 @@ wrapper，两个时钟不同步；`uint32` 减法回绕成几十亿，于是每�
 
 ---
 
+## 2026-10-20 · S48 · 体检：A4 收口（main.cpp 2916 → 272）
+
+- 移动/杂项 16 个闸门搬到 `tests_move.cpp`；main.cpp 只剩 includes、分配计数、usage、main。
+- 三处隐式耦合被搬家暴露：匿名 namespace 的 `using` 别名、`kDt` 常量、
+  `g_allocations`（bench 要读）——后者抽成 `allocation_count()`。
+- 还踩到一个：前两次拆分让 `}  // namespace` 的行号漂移，搬第三组时被一起搬走，
+  `main` 就落进了匿名 namespace。**按行号搬代码，必须重新确认结构行在哪**。
+- 判据：全量构建 -Werror 无警告；16 项闸门 + bench ALL GREEN。
+- 现状：main.cpp 272 行、tests_net 1257、tests_move 1132、tests_demo 375、test_util 小文件。
+
+---
+
 # 开发日志（详细）
 
 > 从 2026-10-20 起，在 PROGRESS 末尾追加详细日志；上面的 S 编号短条目保留，作为索引。

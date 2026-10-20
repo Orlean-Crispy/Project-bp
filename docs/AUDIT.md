@@ -18,7 +18,7 @@
 | A1 | ✅ 已删 | sim/net/session.* | `InputWindow::Overflow` 不可达，`m_overflow_cmds` 永远是 0 |
 | A2 | ✅ 已删 | sim/net/netchan.* | `AckTracker` 全仓无调用（约 30 行死代码） |
 | A3 | ✅ 已抽 | sim/net/winsock.h | Winsock 初始化曾写两份，现在只剩一处 inline 实现 |
-| A4 | 🔶 两组已搬 | tools/headless_sim/ | 2916 → 1355 行；网络→tests_net.cpp、演示→tests_demo.cpp，余移动/杂项待搬 |
+| A4 | ✅ 已拆 | tools/headless_sim/ | 2916 → 272 行；网络/演示/移动三组各自成文件，main 只剩参数与分发 |
 | A5 | P1 | bridge/sim_bridge.cpp | 519 行里塞了网络、渲染、输入、HUD 数据 |
 | A6 | ✅ 已接 | sim/net/configstring.h | configstring 现在有格式与校验：哈希不符客户端拒局 |
 | A7 | ✅ 已抽 | sim/net/admission.h | 加入逻辑只有一份：approve/take，两个 UDP 宿主共用 |
@@ -101,7 +101,7 @@ P0（可能算出错结果）：**本轮没有发现**。
 2. ~~A3（抽 winsock.h）~~ —— 已完成（S43）
 3. ~~A6（configstring 语义）~~ —— 已完成（S44）
 4. ~~A7（admission 抽取）~~ —— 已完成（S45）
-5. A4（拆闸门文件）——**第一组（网络）已完成（S46）**；剩下演示/移动两组待搬
+5. ~~A4（拆闸门文件）~~ —— 完成（S46–S48），main.cpp 只剩参数解析与分发
 6. A5（拆桥，最后做）
 
 每一步都必须 `tools/smoke.ps1` 全绿、更新 PROGRESS、单独 commit。
