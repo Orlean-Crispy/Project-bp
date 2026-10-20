@@ -196,6 +196,15 @@ int NetServer::add_client(Transport* incoming, Transport* outgoing, int player_i
         if (player_index < 0) return -1;
     }
     if (player_index >= static_cast<int>(m_world.players.size())) return -1;
+    // A reconnect can arrive before the 5 s timeout retires the old link. The
+    // slot is the identity, so the newcomer replaces the stale link instead of
+    // adding a second writer for the same player.
+    for (std::size_t i = 0; i < m_links.size(); ++i) {
+        if (m_links[i].player == player_index) {
+            m_links.erase(m_links.begin() + static_cast<long>(i));
+            break;
+        }
+    }
     Link link;
     link.rx = incoming;
     link.tx = outgoing;

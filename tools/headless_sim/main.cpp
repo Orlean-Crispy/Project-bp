@@ -1878,6 +1878,38 @@ int run_match_test() {
     return 0;
 }
 
+int run_reconnect_test() {
+    sim::NetServer server;
+    std::string error;
+    if (!server.init("sim/data/maps/test_box.map", "sim/data/movement.toml", 1, error)) {
+        std::printf("FAIL: reconnect server init: %s\n", error.c_str());
+        return 1;
+    }
+    const sim::NetConditions clean;
+    sim::LoopbackTransport s2c(clean, 3);
+    sim::LoopbackTransport c2s(clean, 4);
+
+    const int first = server.add_client(&s2c, &c2s, 0);
+    for (int tick = 0; tick < 10; ++tick) {
+        server.receive();
+        server.step();
+        server.send();
+        s2c.advance(static_cast<uint32_t>(tick));
+        c2s.advance(static_cast<uint32_t>(tick));
+    }
+    // Same slot rejoins before the timeout retires the old link.
+    server.add_client(&s2c, &c2s, 0);
+    const int links = server.client_count();
+    const bool active = server.world().players[0].active;
+
+    std::printf("  [reconnect] first %d links %d active %d\n", first, links, active ? 1 : 0);
+    if (first < 0 || links != 1 || !active) {
+        std::printf("FAIL: reconnect must replace the stale link, not add a second one\n");
+        return 1;
+    }
+    return 0;
+}
+
 int run_config_test() {
     sim::NetConditions cond;
     cond.loss = 0.5f;  // high enough that a chunk is certain to need a retransmit
@@ -2174,6 +2206,7 @@ int run_net_test(const Options& opt) {
     failures += run_match_test();
     failures += run_dual_channel_test();
     failures += run_config_test();
+    failures += run_reconnect_test();
     failures += run_reliable_test();
     failures += run_ticket_test();
     failures += run_timeout_test();

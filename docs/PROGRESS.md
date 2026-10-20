@@ -1252,6 +1252,24 @@ wrapper，两个时钟不同步；`uint32` 减法回绕成几十亿，于是每�
 
 ---
 
+## 2026-10-20 · S38 · 重连早于超时：同槽只能有一个写者
+
+- 问题：掉线清理是 5 s，但玩家（或自动重连）往往 1 s 内就回来了。旧实现直接 `m_links.push_back`，
+  同一个 player 槽位会有**两个 link 同时写**——输出对着两个 transport，输入两份互相覆盖。
+- 修法：`NetServer::add_client` 在显式槽位下先扫一遍 `m_links`，同槽的旧 link 先删掉，
+  再挂新的；玩家状态保持 active，不必等 5 s 超时。
+- 判据（并入 --test-net）：`[reconnect] first 0 links 1 active 1`——重连后链路数仍是 1，
+  槽位仍 active。
+- 16 项闸门 + bench 全绿（p99 0.40 µs，0 分配）。
+
+### 债
+
+- 全链路重连演练还没做：现在验证的是「会话层顶替旧 link」，信令 resume → 回原槽 → FULL_STATE
+  这一段只在 `[match]` 和 `[join/reconnect]` 里分别验过，没串成一次完整演练。
+- configstring 内容仍是任意 blob（传输已验证，语义未接）。
+
+---
+
 # 开发日志（详细）
 
 > 从 2026-10-20 起，在 PROGRESS 末尾追加详细日志；上面的 S 编号短条目保留，作为索引。

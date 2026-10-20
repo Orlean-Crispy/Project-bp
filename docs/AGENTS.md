@@ -358,7 +358,9 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
   尚未接 bridge/Godot（菜单仍走旧路径）。
 - 掉线/复用：Link.last_rx_tick 记录最后收包 tick；step() 开头 320 tick（5 s）无包则 remove_client；
   add_client(..., -1) 复用第一个 inactive 槽位（满员返回 -1），重连回原槽。
-  判据：[timeout] joined 1 dropped 1 reuse 1。
+  **重连早于超时**也安全：add_client 发现同槽已有 link 时用新 link 顶替（同槽不允许两个写者），
+  玩家状态保持 active、不需要等 5 s。
+  判据：[timeout] joined 1 dropped 1 reuse 1；[reconnect] first 0 links 1 active 1。
 - 槽位激活：PlayerState.active → 快照 flags bit2；服务器 init 全 false、add_client true、
   remove_client false；桥接层跳过未激活槽位（否则 host 会看到没加入的幽灵）。
 - 远端朝向：PlayerState.yaw 由 pmove 写入；PlayerSnap 的 kFieldYaw 独立字段组；协议版本 3。
