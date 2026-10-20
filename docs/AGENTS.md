@@ -336,7 +336,13 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
   快照/输入原样透传，可靠包用 `PacketType::ReliableData(4)` / `ReliableAck(5)` 打标，
   接收端先 demux 再交付，两条流互不阻塞；wrapper **不**推进底层管道（调用方每 tick 推进一次）。
   判据：[dual] chunks 8/8 same 1 retrans 1 snapshot 326/400 dead 0（20% 丢包 + 20 ms）。
-  尚未接进 NetServer/NetClient（configstring 还没走这条流）。
+- A2 接入会话：`NetServer::set_configstring(blob)` 切 512 B 块，`add_client(..., rel)` 后每 tick
+  在 `send()` 里补投（窗口满就等下一 tick）；`NetClient::init(..., rel)` 收到即喂 `ConfigAssembler`，
+  `config_ready()/config_chunks()/config_string()` 可查。
+  判据：[config] chunks 8/8 same 1 full_state 1 ticks 50 retrans 17（50% 丢包 + 20 ms）。
+- **可靠流的时钟只有一个来源**：wrapper 由会话用**自己的 tick** 推进（服务器 = world.tick，
+  客户端 = local.tick），调用方不得再推进同一个 wrapper；`advance()` 内部取 max，
+  因为回滚会让客户端 tick 倒退，`now - last_sent` 一旦回绕，所有包都会被判超时。
 - A1 信令（sim/net/signaling.*）：TCP **27115**（v0.4 写的 27015 已被 AppleMobileDeviceService 占用；
   Windows 上用 SO_EXCLUSIVEADDRUSE 独占，端口被占时 bind 必须失败而不是静默共享）、
   u16 长度前缀、六条消息、connect/accept 超时；

@@ -1220,6 +1220,38 @@ CMake 只在 WIN32 链接 ws2_32，不污染 sim 的其它目标。
 
 ---
 
+## 2026-10-20 · S37 · configstring 走可靠流；修掉「两个时钟」
+
+- 会话接入 A2：`NetServer::set_configstring(blob)` 切 512 B 块；`add_client(..., rel)` 后
+  每 tick 在 `send()` 里补投（窗口满就等下一 tick，不阻塞快照）。
+- 客户端：`NetClient::init(..., rel)`，收到的块直接喂 `ConfigAssembler`；
+  暴露 `config_ready()/config_chunks()/config_string()`。
+- 判据（并入 --test-net）：`[config] chunks 8/8 same 1 full_state 1 ticks 50 retrans 17`，
+  50% 丢包 + 20 ms 下 4 KB 配置分 8 块全部按序到达、内容一致，同时 FULL_STATE 照常到达。
+
+### 修掉的 bug：一个 RTO 计时器被两个时钟推进
+
+第一次跑出来 `retrans 8 @ tick 0`：一个包都没丢，却报 8 次重传。加打印才看清：
+
+```
+[sender] retrans seq=1 now=0 last=15 rto=250
+```
+
+`now` 倒退了——`NetServer::send()` 用 `world.tick` 推进 wrapper，`而闸门又用循环 tick 推进同一个
+wrapper，两个时钟不同步；`uint32` 减法回绕成几十亿，于是每个包都被判定超时。
+
+修法两层：
+1. `ReliableTransport::advance()` 内部取 max，时钟永不后退（回滚也会让客户端 tick 倒退）；
+2. **只有会话推进 wrapper**（服务器 = world.tick，客户端 = local.tick），调用方不得重复推进。
+
+教训：RTO 这种「现在 - 上次」的算法，**只允许一个单调时钟**；第二个时钟不会报错，只会让所有包看起来过期。
+
+### 债
+
+- configstring 现在只验证了**传输**，内容还是任意 blob；真实内容（params/几何哈希/键位表）等重连状态机时一起接。
+
+---
+
 # 开发日志（详细）
 
 > 从 2026-10-20 起，在 PROGRESS 末尾追加详细日志；上面的 S 编号短条目保留，作为索引。

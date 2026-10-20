@@ -2,6 +2,7 @@
 
 #include "sim/net/bytes.h"
 #include "sim/net/netchan.h"
+#include "sim/net/reliable_transport.h"
 
 namespace sim {
 namespace {
@@ -177,7 +178,12 @@ bool NetServer::init(const std::string& map_path, const std::string& params_path
     return true;
 }
 
-int NetServer::add_client(Transport* incoming, Transport* outgoing, int player_index) {
+void NetServer::set_configstring(std::vector<uint8_t> blob) {
+    m_config_chunks = chunk_config(blob, 512);
+}
+
+int NetServer::add_client(Transport* incoming, Transport* outgoing, int player_index,
+                          ReliableTransport* reliable) {
     if (player_index < 0) {
         // Reuse the first free slot: after a timeout a reconnect must land on
         // the same player the server kept in the world.
@@ -194,6 +200,8 @@ int NetServer::add_client(Transport* incoming, Transport* outgoing, int player_i
     link.rx = incoming;
     link.tx = outgoing;
     link.player = player_index;
+    link.rel = reliable;
+    if (reliable != nullptr) link.config_chunks = m_config_chunks;
     link.join_id = m_next_join_id++;
     if (player_index >= 0 && player_index < static_cast<int>(m_world.players.size())) {
         m_world.players[static_cast<std::size_t>(player_index)].active = true;
@@ -312,6 +320,15 @@ void NetServer::step() {
 
 void NetServer::send() {
     for (Link& link : m_links) {
+        if (link.rel != nullptr) {
+            // A2: the join configstring rides the reliable half of the socket and
+            // never blocks a snapshot. Window 32 is deeper than any blob we ship.
+            while (link.config_next < link.config_chunks.size() &&
+                   link.rel->send_reliable(link.config_chunks[link.config_next])) {
+                ++link.config_next;
+            }
+            link.rel->advance(m_world.tick);
+        }
         if (link.pending_full_state) {
             Snapshot full;
             full.tick = m_world.tick;
@@ -363,10 +380,11 @@ void NetServer::send() {
 
 bool NetClient::init(Transport* outgoing, Transport* incoming, int player_index,
                      const std::string& map_path, const std::string& params_path,
-                     std::string& error) {
+                     std::string& error, ReliableTransport* reliable) {
     m_tx = outgoing;
     m_rx = incoming;
     m_player = player_index;
+    m_rel = reliable;
 
     MapData map;
     if (!parse_map_file(map_path, map, error)) return false;
@@ -487,6 +505,14 @@ void NetClient::step_local() {
 }
 
 void NetClient::receive() {
+    if (m_rel != nullptr) {
+        std::vector<uint8_t> piece;
+        while (m_rel->recv_reliable(piece)) {
+            std::string error;
+            m_config.add(piece.data(), piece.size(), error);
+        }
+        m_rel->advance(m_local.tick);
+    }
     std::vector<uint8_t> packet;
     while (m_rx->recv(packet)) {
         PacketHeader header;

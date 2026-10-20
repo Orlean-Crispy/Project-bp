@@ -1,6 +1,7 @@
 #include "sim/net/reliable.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <cstring>
 
 namespace sim {

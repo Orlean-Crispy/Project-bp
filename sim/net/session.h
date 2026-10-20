@@ -10,10 +10,13 @@
 #include "sim/core/world.h"
 #include "sim/game/hitbox.h"
 #include "sim/net/interp.h"
+#include "sim/net/reliable.h"
 #include "sim/net/snapshot.h"
 #include "sim/net/transport.h"
 
 namespace sim {
+
+class ReliableTransport;
 
 struct InputCmd {
     uint32_t tick = 0;
@@ -60,7 +63,11 @@ public:
     bool init(const std::string& map_path, const std::string& params_path, int player_count,
               std::string& error);
 
-    int add_client(Transport* incoming, Transport* outgoing, int player_index);
+    // A2: pass the shared-socket wrapper to deliver the join configstring over the
+    // reliable stream; nullptr keeps the plain unreliable-only path (gates).
+    int add_client(Transport* incoming, Transport* outgoing, int player_index,
+                   ReliableTransport* reliable = nullptr);
+    void set_configstring(std::vector<uint8_t> blob);
     void remove_client(int link_index);
     void receive();
     void step();
@@ -116,6 +123,9 @@ private:
         int unacked = 0;
         Snapshot baseline;
         bool has_baseline = false;
+        ReliableTransport* rel = nullptr;
+        std::vector<std::vector<uint8_t>> config_chunks;
+        std::size_t config_next = 0;
         std::map<uint16_t, Snapshot> sent;  // seq -> snapshot, for ack lookup
         uint32_t last_acked_snapshot = 0;
     };
@@ -133,12 +143,14 @@ private:
     int m_timed_out = 0;
     uint32_t m_next_join_id = 1;
     std::vector<HitboxHistory> m_hitboxes;
+    std::vector<std::vector<uint8_t>> m_config_chunks;
 };
 
 class NetClient {
 public:
     bool init(Transport* outgoing, Transport* incoming, int player_index,
-              const std::string& map_path, const std::string& params_path, std::string& error);
+              const std::string& map_path, const std::string& params_path, std::string& error,
+              ReliableTransport* reliable = nullptr);
 
     void send_input(const MoveInput& input);
     void step_local();
@@ -164,6 +176,9 @@ public:
     bool join_failed() const { return m_join_failed; }
     const SnapshotInterpolator& remote() const { return m_remote; }
     const HitboxHistory& hitbox() const { return m_hitbox; }
+    bool config_ready() const { return m_config.complete(); }
+    uint16_t config_chunks() const { return m_config.total(); }
+    std::vector<uint8_t> config_string() const { return m_config.assemble(); }
     void reset_stats();
     ServerClock& clock() { return m_clock; }
 
@@ -207,6 +222,8 @@ private:
     uint32_t m_join_tick = 0;
     uint32_t m_join_id = 0;
     HitboxHistory m_hitbox;
+    ReliableTransport* m_rel = nullptr;
+    ConfigAssembler m_config;
     SnapshotInterpolator m_remote;
     ServerClock m_clock;
 };

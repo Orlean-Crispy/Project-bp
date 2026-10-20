@@ -54,7 +54,10 @@ bool ReliableTransport::recv(std::vector<uint8_t>& out) {
 }
 
 void ReliableTransport::advance(uint32_t tick) {
-    m_now_ms = static_cast<uint32_t>((static_cast<uint64_t>(tick) * 1000ull) / 64ull);
+    // Rollback moves the client clock backwards; RTO math must never see that,
+    // or `now - last_sent` wraps and every packet looks overdue.
+    const uint32_t raw = static_cast<uint32_t>((static_cast<uint64_t>(tick) * 1000ull) / 64ull);
+    if (raw > m_now_ms) m_now_ms = raw;
     flush(m_now_ms);
 }
 

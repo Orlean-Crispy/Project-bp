@@ -1878,6 +1878,61 @@ int run_match_test() {
     return 0;
 }
 
+int run_config_test() {
+    sim::NetConditions cond;
+    cond.loss = 0.5f;  // high enough that a chunk is certain to need a retransmit
+    cond.latency_ms = 20.0f;
+    sim::LoopbackTransport s2c(cond, 31);
+    sim::LoopbackTransport c2s(cond, 41);
+    sim::ReliableTransport srv(&s2c, &c2s);
+    sim::ReliableTransport cli(&c2s, &s2c);
+
+    std::string error;
+    sim::NetServer server;
+    if (!server.init("sim/data/maps/test_box.map", "sim/data/movement.toml", 1, error)) {
+        std::printf("FAIL: config server init: %s\n", error.c_str());
+        return 1;
+    }
+    std::vector<uint8_t> blob(4096);
+    for (std::size_t i = 0; i < blob.size(); ++i) {
+        blob[i] = static_cast<uint8_t>((i * 53u + 7u) & 0xFFu);
+    }
+    server.set_configstring(blob);
+    server.add_client(&srv, &srv, 0, &srv);
+
+    sim::NetClient client;
+    if (!client.init(&cli, &cli, 0, "sim/data/maps/test_box.map", "sim/data/movement.toml",
+                      error, &cli)) {
+        std::printf("FAIL: config client init: %s\n", error.c_str());
+        return 1;
+    }
+
+    int ticks = 0;
+    for (; ticks < 400; ++ticks) {
+        server.receive();
+        server.step();
+        server.send();
+        s2c.advance(static_cast<uint32_t>(ticks));
+        c2s.advance(static_cast<uint32_t>(ticks));
+        client.receive();
+        if (client.config_ready()) break;
+    }
+
+    const bool ready = client.config_ready();
+    const bool same = ready && client.config_string() == blob;
+    const bool joined = client.full_states() > 0;
+
+    const bool retransmitted = srv.retransmits() > 0;
+    std::printf("  [config] chunks %u/8 same %d full_state %d ticks %d retrans %d\n",
+                static_cast<unsigned>(client.config_chunks()), same ? 1 : 0, joined ? 1 : 0,
+                ticks, srv.retransmits());
+    if (!ready || !same || !joined || !retransmitted) {
+        std::printf("FAIL: A2 configstring over the reliable stream failed\n");
+        return 1;
+    }
+    return 0;
+}
+
 int run_dual_channel_test() {
     sim::NetConditions cond;
     cond.loss = 0.2f;
@@ -2118,6 +2173,7 @@ int run_net_test(const Options& opt) {
     failures += run_signal_test();
     failures += run_match_test();
     failures += run_dual_channel_test();
+    failures += run_config_test();
     failures += run_reliable_test();
     failures += run_ticket_test();
     failures += run_timeout_test();
