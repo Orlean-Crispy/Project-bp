@@ -87,7 +87,8 @@ void ReliableSender::on_ack(uint16_t ack, uint32_t bitmap, uint32_t now_ms) {
     }
 }
 
-ReliableReceiver::ReliableReceiver(uint16_t window) : m_window(window == 0 ? 1 : window) {}
+ReliableReceiver::ReliableReceiver(uint16_t window)
+    : m_window(window == 0 ? 1 : (window > kWindow ? kWindow : window)) {}
 
 void ReliableReceiver::on_packet(const uint8_t* data, size_t size,
                                  std::vector<std::vector<uint8_t>>& delivered) {
@@ -96,17 +97,20 @@ void ReliableReceiver::on_packet(const uint8_t* data, size_t size,
                          static_cast<uint16_t>(data[2] << 8);
     if (static_cast<uint16_t>(seq - m_next) > 0x8000) return;  // already delivered
     if (seq > m_next && static_cast<uint16_t>(seq - m_next) < m_window) {
-        m_pending.emplace(seq, std::vector<uint8_t>(data + 3, data + size));
+        Pending& slot = m_pending[seq % kWindow];
+        slot.seq = seq;
+        slot.payload.assign(data + 3, data + size);
+        slot.valid = true;
         return;
     }
     if (seq != m_next) return;
     delivered.emplace_back(data + 3, data + size);
     ++m_next;
     for (;;) {
-        auto it = m_pending.find(m_next);
-        if (it == m_pending.end()) break;
-        delivered.push_back(std::move(it->second));
-        m_pending.erase(it);
+        Pending& slot = m_pending[m_next % kWindow];
+        if (!slot.valid || slot.seq != m_next) break;
+        delivered.push_back(std::move(slot.payload));
+        slot.valid = false;
         ++m_next;
     }
 }
@@ -117,8 +121,12 @@ void ReliableReceiver::make_ack(std::vector<uint8_t>& out) const {
     out.push_back(2);
     put_u16(out, ack);
     uint32_t bitmap = 0;
-    for (const auto& kv : m_pending) {
-        const uint16_t delta = static_cast<uint16_t>(kv.first - ack);
+    // Fixed 32 slots, so this never allocates or walks a tree (audit R19). The
+    // delta test keeps the wire format identical to the old map scan.
+    for (uint16_t i = 0; i < kWindow; ++i) {
+        const Pending& slot = m_pending[i];
+        if (!slot.valid) continue;
+        const uint16_t delta = static_cast<uint16_t>(slot.seq - ack);
         if (delta >= 1 && delta <= 32) bitmap |= 1u << (delta - 1);
     }
     put_u32(out, bitmap);

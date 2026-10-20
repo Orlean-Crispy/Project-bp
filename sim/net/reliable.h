@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <map>
 #include <string>
 #include <vector>
 
@@ -49,9 +48,21 @@ public:
     void make_ack(std::vector<uint8_t>& out) const;
 
 private:
+    // The ACK bitmap is 32 bits wide, so the window is capped at 32 and a whole
+    // window of out-of-order packets fits in a fixed array. Slots are addressed
+    // by seq % kWindow and validated by the stored seq, so make_ack is a fixed
+    // 32-iteration scan instead of a std::map walk on every packet (audit R19).
+    static constexpr uint16_t kWindow = 32;
+
+    struct Pending {
+        uint16_t seq = 0;
+        bool valid = false;
+        std::vector<uint8_t> payload;
+    };
+
     uint16_t m_window;
     uint16_t m_next = 1;
-    std::map<uint16_t, std::vector<uint8_t>> m_pending;
+    Pending m_pending[kWindow];
 };
 
 uint32_t crc32(const uint8_t* data, size_t size);

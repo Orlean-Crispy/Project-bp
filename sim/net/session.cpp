@@ -105,33 +105,34 @@ void ServerClock::align(uint32_t server_tick) {
     m_initialized = true;
 }
 
-// The queue is an earliness window, not a latency buffer: a command labelled T is
-// applied at tick T no matter how early it arrives. Clients run kInputLead (4)
+// The window is an earliness window, not a latency buffer: a command labelled T
+// is applied at tick T no matter how early it arrives. Clients run kInputLead (4)
 // plus join slack (3) ahead, so the window must comfortably exceed 7 or the
 // oldest entry would be evicted before its tick is executed.
-static constexpr uint32_t kWindowTicks = 16;
-static constexpr std::size_t kWindowDepth = 16;
-
 InputWindow::Result InputWindow::push(uint32_t tick, const MoveInput& input) {
     if (tick <= m_last_executed) {
         // Already executed. A resend of a tick that was applied is the normal
         // redundancy path; one that arrives after a tick executed without input
         // is a genuine late command and is counted once.
         const uint32_t age = m_last_executed - tick;
-        if (age >= kWindowTicks) return Result::Duplicate;
+        if (age >= kWindow) return Result::Duplicate;
         const uint16_t bit = static_cast<uint16_t>(1u << age);
         if ((m_executed_seen & bit) != 0) return Result::Duplicate;
         m_executed_seen = static_cast<uint16_t>(m_executed_seen | bit);
         return Result::Late;
     }
     const uint32_t offset = tick - m_last_executed - 1;
-    if (offset >= kWindowTicks) return Result::TooFar;
+    if (offset >= kWindow) return Result::TooFar;
     const uint16_t bit = static_cast<uint16_t>(1u << offset);
     if ((m_seen & bit) != 0) return Result::Duplicate;
 
-    // Window == depth and duplicates are filtered above, so the queue can never
-    // overflow here; kWindowDepth is a static_assert-style guard, not a branch.
-    m_queue.emplace(tick, input);
+    // Window == depth and duplicates are filtered above, so the array can never
+    // overflow here; a slot is only ever reused after its tick was executed.
+    Entry& slot = m_slots[tick % kWindow];
+    slot.tick = tick;
+    slot.input = input;
+    slot.valid = true;
+    ++m_count;
     m_seen = static_cast<uint16_t>(m_seen | bit);
     return Result::Accepted;
 }
@@ -139,16 +140,16 @@ InputWindow::Result InputWindow::push(uint32_t tick, const MoveInput& input) {
 bool InputWindow::take(uint32_t tick, MoveInput& out) {
     if (tick > m_last_executed) {
         const uint32_t steps = tick - m_last_executed;
-        m_seen = steps >= kWindowTicks ? 0 : static_cast<uint16_t>(m_seen >> steps);
-        m_executed_seen =
-            steps >= kWindowTicks ? 0 : static_cast<uint16_t>(m_executed_seen << steps);
+        m_seen = steps >= kWindow ? 0 : static_cast<uint16_t>(m_seen >> steps);
+        m_executed_seen = steps >= kWindow ? 0 : static_cast<uint16_t>(m_executed_seen << steps);
         m_last_executed = tick;
     }
-    const auto it = m_queue.find(tick);
-    const bool found = it != m_queue.end();
+    Entry& slot = m_slots[tick % kWindow];
+    const bool found = slot.valid && slot.tick == tick;
     if (found) {
-        out = it->second;
-        m_queue.erase(it);
+        out = slot.input;
+        slot.valid = false;
+        --m_count;
     }
     // Bit 0 records whether the tick just executed had a real command; the
     // history lets a late arrival be told apart from a normal resend.

@@ -48,17 +48,30 @@ private:
 struct InputWindow {
     // The earliness window equals the queue depth (16), and duplicates are
     // filtered by the bitmap, so an entry can never be evicted: no Overflow state.
+    static constexpr uint32_t kWindow = 16;
+
     enum class Result { Accepted, Duplicate, Late, TooFar };
     Result push(uint32_t tick, const MoveInput& input);
     bool take(uint32_t tick, MoveInput& out);
-    std::size_t depth() const { return m_queue.size(); }
+    std::size_t depth() const { return static_cast<std::size_t>(m_count); }
     uint32_t last_executed() const { return m_last_executed; }
 
 private:
+    // One slot per tick offset in the window. The server used to store at most 16
+    // commands in a std::map and walk it on every packet; a fixed array keyed by
+    // tick % kWindow (validated by the stored tick) keeps the same semantics with
+    // no tree and no allocation (audit R19).
+    struct Entry {
+        uint32_t tick = 0;
+        MoveInput input;
+        bool valid = false;
+    };
+
     uint32_t m_last_executed = 0;
     uint16_t m_seen = 0;          // queued ticks, last_executed+1 .. +8
     uint16_t m_executed_seen = 0; // bit0 = last tick had input, bit1 = previous...
-    std::map<uint32_t, MoveInput> m_queue;
+    Entry m_slots[kWindow];
+    int m_count = 0;
 };
 
 class NetServer {
