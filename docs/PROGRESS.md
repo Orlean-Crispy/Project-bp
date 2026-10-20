@@ -1368,6 +1368,24 @@ wrapper，两个时钟不同步；`uint32` 减法回绕成几十亿，于是每�
 
 ---
 
+## 2026-10-20 · S46 · 体检：A4 第一批（网络闸门搬家）
+
+- 把 14 个网络闸门（join/udp/fragment/session/timeout/ticket/reliable/match/reconnect/config/
+  dual/signal/clock/net）从 `main.cpp` 搬到 `tests_net.cpp`，连同伴生的
+  `NetRunStats`、`net_test_input`、`run_net_scenario`。
+- `Options` 提到 `options.h`（main 与测试 TU 共用）；`tests_net.h` 只放声明，
+  `main.cpp` 负责解析与分发。include 放在匿名 namespace **之前**，否则声明会被内部链接化。
+- 结果：main.cpp 2916 → 1722 行；tests_net.cpp 1243 行。
+- 判据：全量构建 -Werror 无警告；16 项闸门 + bench ALL GREEN；
+  `net_selftest.ps1` joins=2 accepted=418 far=0 moved=46.68——行为与搬家前一致。
+
+### 教训
+
+- 第一次用 PowerShell 一行流写文件，静默失败（什么也没写），改用 Node 的 `fs` 一次成功。
+  文件搬运这种事，用「能报错的语言」而不是「猜它跑没跑的一行流」。
+
+---
+
 # 开发日志（详细）
 
 > 从 2026-10-20 起，在 PROGRESS 末尾追加详细日志；上面的 S 编号短条目保留，作为索引。
