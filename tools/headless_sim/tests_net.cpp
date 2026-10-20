@@ -1206,6 +1206,110 @@ int run_clock_check(const std::string& data_path) {
     return failures;
 }
 
+// R1: a correction must repair the rolled-back tick itself, not only the ticks
+// replayed after it. Otherwise the hitbox history keeps the pre-correction
+// prediction (M6 would rewind into it) and a duplicate snapshot at the same tick
+// fails same_state and rolls back again, inflating the N3 counters.
+int run_rollback_repair_check(const std::string& data_path) {
+    int failures = 0;
+    const std::string map_path = "sim/data/maps/metrics_flat.map";
+    std::string error;
+
+    sim::NetServer server;
+    if (!server.init(map_path, data_path, 1, error)) {
+        std::printf("FAIL: rollback server init: %s\n", error.c_str());
+        return 1;
+    }
+    sim::LoopbackTransport to_server(sim::NetConditions{}, 91);
+    sim::LoopbackTransport to_client(sim::NetConditions{}, 92);
+    server.add_client(&to_server, &to_client, 0);
+
+    sim::NetClient client;
+    if (!client.init(&to_server, &to_client, 0, map_path, data_path, error)) {
+        std::printf("FAIL: rollback client init: %s\n", error.c_str());
+        return 1;
+    }
+
+    auto tick_once = [&](const sim::MoveInput& in) {
+        client.send_input(in);
+        client.step_local();
+        server.receive();
+        server.step();
+        server.send();
+        to_server.advance(0);
+        to_client.advance(0);
+        client.receive();
+    };
+
+    sim::MoveInput input;
+    input.forward = 1.0f;
+    for (int i = 0; i < 80; ++i) tick_once(input);
+    if (!client.joined()) {
+        std::printf("FAIL: rollback client did not join\n");
+        return 1;
+    }
+
+    // Hand-feed a snapshot for a tick the client has already predicted, with a
+    // position its prediction cannot match. This is one real correction, using
+    // the same wire format and receive path as the server's own snapshots.
+    const uint32_t corrected_tick = client.tick();
+    sim::Snapshot auth;
+    auth.tick = corrected_tick;
+    auth.players.push_back(sim::to_snap(client.predicted()));
+    auth.players[0].pos.x += 0.25f;
+    const sim::Vec3 corrected_pos = auth.players[0].pos;
+    sim::PacketHeader header;
+    header.type = sim::PacketType::Snapshot;
+    header.seq = 1;
+    const std::vector<uint8_t> packet =
+        sim::wrap_packet(header, sim::encode_snapshot(auth, nullptr));
+
+    auto deliver = [&](const std::vector<uint8_t>& pkt) {
+        to_client.send(pkt);
+        // The loopback queues with a one-tick delay; two advances deliver now.
+        to_client.advance(0);
+        to_client.advance(0);
+        client.receive();
+    };
+
+    const int rollbacks_before = client.rollbacks();
+    deliver(packet);
+    const bool corrected_once = client.rollbacks() == rollbacks_before + 1;
+    // (c) the corrected tick's hitbox sample must be the corrected position.
+    const sim::HitboxSample sample = client.hitbox().at(corrected_tick);
+    const bool state_ok = sim::length(sample.pos - corrected_pos) <= 1e-4f;
+
+    // (b) a duplicate of that snapshot must compare equal to the repaired
+    // history entry, so it must not roll back a second time.
+    const int rollbacks_mid = client.rollbacks();
+    deliver(packet);
+    const bool dup_ok = client.rollbacks() == rollbacks_mid;
+
+    // Keep playing: (a) the client hitbox history still tracks the local tick.
+    for (int i = 0; i < 20; ++i) tick_once(input);
+    const bool hitbox_ok = client.hitbox().newest_tick() == client.tick();
+
+    std::printf("  [rollback] hitbox %d dup %d state %d\n", hitbox_ok ? 1 : 0, dup_ok ? 1 : 0,
+                state_ok ? 1 : 0);
+    if (!corrected_once) {
+        std::printf("FAIL: the hand-fed snapshot did not force exactly one rollback\n");
+        ++failures;
+    }
+    if (!hitbox_ok) {
+        std::printf("FAIL: the client hitbox history no longer ends at the local tick\n");
+        ++failures;
+    }
+    if (!dup_ok) {
+        std::printf("FAIL: a duplicate snapshot at the same tick rolled back again (R1)\n");
+        ++failures;
+    }
+    if (!state_ok) {
+        std::printf("FAIL: the hitbox at the corrected tick kept the old prediction (R1)\n");
+        ++failures;
+    }
+    return failures;
+}
+
 int run_net_test(const Options& opt) {
     int failures = 0;
 
@@ -1389,6 +1493,9 @@ int run_net_test(const Options& opt) {
         std::printf("FAIL: light-loss link did not converge\n");
         ++failures;
     }
+
+    // R1: the rolled-back tick itself must be repaired, not only the replay.
+    failures += run_rollback_repair_check(opt.data_path);
 
     // Gate 8c (plan 7.7): mid-match join and reconnect both go through FULL_STATE.
     failures += run_join_phase(opt.data_path);

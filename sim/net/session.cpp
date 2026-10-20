@@ -673,6 +673,13 @@ void NetClient::apply_snapshot(const Snapshot& snap) {
     from_snap(auth, corrected);
     m_local.players[0] = corrected;
     m_local.tick = snap.tick;
+    // R1: repair the rolled-back tick itself before replaying the later ones.
+    // The replay starts at index+1, so without this the entry for snap.tick
+    // keeps the pre-correction prediction. A later rewind to that tick would
+    // then sample the stale hitbox, and a duplicate snapshot at the same tick
+    // would fail same_state and roll back a second time.
+    m_history[index].state = corrected;
+    m_hitbox.record(m_local.players[0], m_local.params, snap.tick);
 
     for (size_t i = index + 1; i < m_history.size(); ++i) {
         m_local.step({m_history[i].input}, kDt);
