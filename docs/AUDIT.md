@@ -113,22 +113,22 @@ P0（可能算出错结果）：**本轮没有发现**。
 
 | id | sev | 位置 | 问题 | 状态 |
 |---|---|---|---|---|
-| AUD-01 | P1 | net_gateway pump | 联机时 `step_local` 不传 EventQueue，局内事件恒为空 | 待修 |
-| AUD-02 | P1 | main.gd 暂停 | 暂停停止网络泵，>5 s 会被服务器踢 | 待修 |
+| AUD-01 | P1 | net_gateway pump | 联机时 `step_local` 不传 EventQueue，局内事件恒为空 | ✅ 已修 |
+| AUD-02 | P1 | main.gd 暂停 | 暂停停止网络泵，>5 s 会被服务器踢 | ✅ 已修 |
 | AUD-03 | P1 | main.gd 菜单 | ESC 在 LAN 菜单上叠加暂停菜单，关闭后鼠标被捕获 | ✅ 已修 |
 | AUD-04 | P1 | main.gd HUD | `_update_hud` 写的 HP/IMP 同帧被 `_process` 覆盖，从未显示 | ✅ 已修 |
-| AUD-05 | P1 | bridge 远端采样 | 按预测 tick−1、frac=0 取样，插值实际退化为 nearest | 待修 |
-| AUD-06 | P2 | net_gateway | 信令成功但 UDP 失败时回落到地图世界，远端胶囊残留 | 待修 |
+| AUD-05 | P1 | bridge 远端采样 | 按预测 tick−1、frac=0 取样，插值实际退化为 nearest | ✅ 已修 |
+| AUD-06 | P2 | net_gateway | 信令成功但 UDP 失败时回落到地图世界，远端胶囊残留 | ✅ 已修 |
 | AUD-07 | P2 | main.gd | `link_lost` 永不触发（本地 tick 每帧都变） | ✅ 已删（由 snapshot_age 覆盖） |
-| AUD-08 | P2 | main.gd 胶囊 | 半径/身高写死，改 toml 会与碰撞不同步 | 待修 |
+| AUD-08 | P2 | main.gd 胶囊 | 半径/身高写死，改 toml 会与碰撞不同步 | ✅ 已修 |
 | AUD-09 | P2 | main.gd | `EYE_FALLBACK` 未使用 | ✅ 已删 |
-| AUD-10 | P2 | main.gd 键位表 | `KEYCODES` 缺 NUM/ENTER/方向键等，改键静默跳过 | 待修 |
+| AUD-10 | P2 | main.gd 键位表 | `KEYCODES` 缺 NUM/ENTER/方向键等，改键静默跳过 | ✅ 已修 |
 | AUD-11 | P2 | 头文件 | bridge/net_loop 有无用 include，mesh_builder 缺 `<algorithm>` | ✅ 已部分修（using 删除） |
-| AUD-12 | P2 | .gdextension | 声明了 release DLL 路径但从不产出 | 待修 |
+| AUD-12 | P2 | .gdextension | 声明了 release DLL 路径但从不产出 | ✅ 已修 |
 | AUD-13 | P2 | build_bridge.ps1 | 桥编译不带 `-Werror` 与 `BP_BUILD_ID` | 待修 |
 | AUD-14 | P2 | 端口字面量 | 27115/27016/27130 散落四处 | 待修 |
 | AUD-15 | P2 | tools/*.ps1 | Godot 路径/首跑导入块复制了五份 | 待修 |
-| AUD-16 | P2 | bridge | `get_hp/get_armor` 是常量 100/0 | 已知（M6 联网后替换） |
+| AUD-16 | P2 | bridge | `get_hp/get_armor` 是常量 100/0 | ⏸ 留到 M6 |
 | AUD-17 | P2 | main.gd 重连 | 重连按钮可能双击双触发；`joined_printed` 未复位 | 待修 |
 | AUD-18 | P2 | bridge 远端字典 | 每帧构造 `state` 字段但 GDScript 不读 | ✅ 已删 |
 | AUD-19 | P2 | setup_toolchain | 依赖未安装的 `7z`，Ninja 未锁版本 | 待修 |

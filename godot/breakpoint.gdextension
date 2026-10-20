@@ -6,5 +6,6 @@ reloadable = true
 
 [libraries]
 
+# AUD-12: only the template_debug DLL is built (tools/build_bridge.ps1); a
+# template_release line would point at a file that never exists.
 windows.debug.x86_64 = "res://bin/breakpoint_bridge.windows.template_debug.x86_64.dll"
-windows.release.x86_64 = "res://bin/breakpoint_bridge.windows.template_release.x86_64.dll"

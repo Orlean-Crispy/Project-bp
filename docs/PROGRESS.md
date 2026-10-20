@@ -1543,6 +1543,30 @@ wrapper，两个时钟不同步；`uint32` 减法回绕成几十亿，于是每�
 
 ---
 
+## 2026-10-20 · S57 · 桥侧体检：三条 P1 + 四条 P2
+
+- **AUD-01**：`NetClient::step_local(EventQueue*)` 贯穿（含回放），`pump(input, events)` 传入；
+  闸门 `[netevents] 1`——联机里起跳事件能到桥，drain_events 不再是空。
+- **AUD-02**：菜单暂停时仍泵网络（零输入），世界本地停走；`--force-paused` 下房主 8 s 后仍 peers 2。
+- **AUD-05**：远端采样改到客户端快照轴并带真实 frac，插值不再是 nearest。
+- **AUD-06**：信令成功但 UDP 失败时保持「已断开」，清远端胶囊，不回落到地图世界。
+- **AUD-08**：胶囊半径/身高从桥的参数读，改 toml 不再与碰撞不同步。
+- **AUD-10**：键名表补全 NUM/ENTER/方向键/鼠标中右键，未知键改为告警而非静默跳过。
+- **AUD-12**：删掉 template_release 这条永远不存在的 DLL 声明。
+- 复核：全量构建无警告；`--test-net` 里 `[netevents]` / `[rollback]` / `[netalloc]` 全在；
+  `smoke.ps1` ALL GREEN；桥重建通过。
+
+### 未做完（明确留档）
+
+- **AUD-13**：桥编译仍不带 -Werror / BP_BUILD_ID（godot-cpp 头自带告警，需先做范围隔离）。
+- **AUD-14**：端口字面量仍分散（27115/27016/27130）。
+- **AUD-15**：脚本公共块（Godot 路径、首跑导入）仍复制多份。
+- **AUD-17**：重连按钮双击保护、joined_printed 复位。
+- **AUD-19**：setup 仍依赖 7z、Ninja 未锁版本。
+- **AUD-16**：留到 M6（hp/护甲进快照后才有真实值）。
+
+---
+
 # 开发日志（详细）
 
 > 从 2026-10-20 起，在 PROGRESS 末尾追加详细日志；上面的 S 编号短条目保留，作为索引。
