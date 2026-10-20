@@ -17,6 +17,21 @@ const ArmorRow kRows[] = {
     {ArmorType::Heavy, "armor.heavy"},
 };
 
+// R17: armour_type is data/network input, so it must never index the table out
+// of bounds. -1 means "not a real armour type".
+int armor_index(ArmorType type) {
+    const int index = static_cast<int>(type);
+    return index >= 0 && index < kArmorTypeCount ? index : -1;
+}
+
+// absorb_percent is a percentage: 0..100. Outside that it either heals the
+// player (negative damage) or makes armour eat more than the hit.
+int absorb_percent(const ArmorDef& def) {
+    if (def.absorb_percent < 0) return 0;
+    if (def.absorb_percent > 100) return 100;
+    return def.absorb_percent;
+}
+
 }  // namespace
 
 uint64_t CombatParams::hash() const {
@@ -65,6 +80,9 @@ bool load_combat_params(const std::string& path, CombatParams& out,
                     v->number * 64.0 / static_cast<double>(def.max_armor > 0 ? def.max_armor : 1) + 0.5);
             }
         }
+        // R17: clamp here, at the one place the file is read, so no consumer has
+        // to cope with >100% absorption (which would turn a hit into healing).
+        def.absorb_percent = absorb_percent(def);
     }
     (void)warnings;
 
@@ -73,8 +91,9 @@ bool load_combat_params(const std::string& path, CombatParams& out,
 }
 
 void equip_armor(PlayerVitals& vitals, ArmorType type, const CombatParams& params) {
-    vitals.armor_type = type;
-    vitals.armor = params.armor[static_cast<int>(type)].max_armor;
+    const int index = armor_index(type);
+    vitals.armor_type = index < 0 ? ArmorType::None : type;
+    vitals.armor = params.armor[index < 0 ? 0 : index].max_armor;
     vitals.ticks_since_damage = 0;
     vitals.regen_accumulator = 0;
 }
@@ -83,9 +102,12 @@ int apply_damage(PlayerVitals& vitals, int damage, const CombatParams& params) {
     if (damage <= 0 || vitals.health <= 0) return 0;
 
     int remaining = damage;
-    if (vitals.armor > 0) {
-        const ArmorDef& def = params.armor[static_cast<int>(vitals.armor_type)];
-        const int absorbed = remaining * def.absorb_percent / 100;
+    const int type_index = armor_index(vitals.armor_type);
+    if (vitals.armor > 0 && type_index >= 0) {
+        const ArmorDef& def = params.armor[type_index];
+        // Re-clamped at use as well: a caller may hand us params that never went
+        // through load_combat_params (tests, future hot reload).
+        const int absorbed = remaining * absorb_percent(def) / 100;
         const int consumed = absorbed < vitals.armor ? absorbed : vitals.armor;
         vitals.armor -= consumed;
         remaining -= consumed;
@@ -99,8 +121,9 @@ int apply_damage(PlayerVitals& vitals, int damage, const CombatParams& params) {
 }
 
 void tick_vitals(PlayerVitals& vitals, const CombatParams& params) {
-    if (vitals.armor_type == ArmorType::None) return;
-    const ArmorDef& def = params.armor[static_cast<int>(vitals.armor_type)];
+    const int type_index = armor_index(vitals.armor_type);
+    if (type_index < 0 || vitals.armor_type == ArmorType::None) return;
+    const ArmorDef& def = params.armor[type_index];
     if (!def.regenerates) return;
     if (vitals.health <= 0) return;
     if (vitals.armor >= def.max_armor) return;

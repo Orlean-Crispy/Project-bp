@@ -88,16 +88,21 @@ public:
     int accepted_commands() const { return m_accepted_cmds; }
     int client_count() const { return static_cast<int>(m_links.size()); }
     int timed_out_clients() const { return m_timed_out; }
+    // R17: callers (tools, bridge) pass indices that may outlive a link or a
+    // slot. An out-of-range index returns a safe default instead of reading
+    // past the vector.
     uint32_t last_executed_tick(int link) const {
-        return m_links[static_cast<std::size_t>(link)].inputs.last_executed();
+        return valid_link(link) ? m_links[static_cast<std::size_t>(link)].inputs.last_executed() : 0;
     }
     uint32_t last_cmd_tick(int link) const {
-        return m_links[static_cast<std::size_t>(link)].last_cmd_tick;
+        return valid_link(link) ? m_links[static_cast<std::size_t>(link)].last_cmd_tick : 0;
     }
     uint32_t last_seen_tick(int link) const {
-        return m_links[static_cast<std::size_t>(link)].last_seen_tick;
+        return valid_link(link) ? m_links[static_cast<std::size_t>(link)].last_seen_tick : 0;
     }
     const HitboxHistory& hitboxes(int player) const {
+        static const HitboxHistory kNoHitboxes;
+        if (player < 0 || player >= static_cast<int>(m_hitboxes.size())) return kNoHitboxes;
         return m_hitboxes[static_cast<std::size_t>(player)];
     }
 
@@ -109,6 +114,10 @@ public:
     void debug_advance_seq(uint16_t delta);
 
 private:
+    bool valid_link(int link) const {
+        return link >= 0 && link < static_cast<int>(m_links.size());
+    }
+
     struct Link {
         Transport* rx = nullptr;
         Transport* tx = nullptr;

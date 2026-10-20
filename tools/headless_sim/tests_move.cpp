@@ -766,6 +766,24 @@ int run_health_test(const Options& opt) {
     // 40 * 66% = 26 absorbed, 14 to health, armour 50 -> 24.
     check("heavy armour: 40 damage -> 26 absorbed, 14 HP", heavy.armor == 24 && heavy.health == 86);
 
+    // R17: bad input must neither index the armour table out of bounds nor turn
+    // a hit into healing. An unknown type behaves like "no armour"; >100%
+    // absorption is clamped to 100% at use even without the loader.
+    sim::PlayerVitals bogus;
+    bogus.health = params.max_health;
+    bogus.armor = 50;
+    bogus.armor_type = static_cast<sim::ArmorType>(99);
+    sim::apply_damage(bogus, 25, params);
+    check("invalid armour type is ignored, not indexed", bogus.health == 75 && bogus.armor == 50);
+
+    sim::CombatParams clamping = params;
+    clamping.armor[static_cast<int>(sim::ArmorType::Heavy)].absorb_percent = 500;
+    sim::PlayerVitals clamped;
+    clamped.health = params.max_health;
+    sim::equip_armor(clamped, sim::ArmorType::Heavy, clamping);
+    sim::apply_damage(clamped, 25, clamping);
+    check("absorption above 100% cannot heal", clamped.health == 100 && clamped.armor == 25);
+
     sim::PlayerVitals broken = bare;
     broken.health = params.max_health;
     sim::equip_armor(broken, sim::ArmorType::Light, params);
