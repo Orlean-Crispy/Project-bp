@@ -1,14 +1,10 @@
-# run_demo.ps1 - build the bridge if needed, then launch the Godot demo.
+# run_demo.ps1 - build the bridge, then launch the Godot demo.
+# The Godot path and the first-run import live in tools/godot_env.ps1 (AUD-15),
+# so they are written once instead of in every launcher.
 $ErrorActionPreference = 'Stop'
-$root = Split-Path -Parent $PSScriptRoot
-$godot = 'C:\bp-toolchain\godot\Godot_v4.5-stable_win64.exe'
-if (-not (Test-Path $godot)) { throw "Godot not found at $godot - run tools/setup_toolchain.ps1" }
+. (Join-Path $PSScriptRoot 'godot_env.ps1')
 
 & (Join-Path $PSScriptRoot 'build_bridge.ps1')
 
-$project = Join-Path $root 'godot'
-if (-not (Test-Path (Join-Path $project '.godot'))) {
-    Write-Host 'first run: importing project'
-    & $godot --headless --editor --path $project --quit
-}
-& $godot --path $project
+$project = Initialize-BpProject
+& (Get-BpGodot) --path $project

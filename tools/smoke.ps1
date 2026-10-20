@@ -72,6 +72,16 @@ try {
     & $exe --test-events
     if ($LASTEXITCODE -ne 0) { throw 'event channel test failed' }
 
+    Write-Host '== godot bridge ==' -ForegroundColor Cyan
+    # The headless-sim gates above cannot see the bridge at all: if the DLL fails
+    # to load, every Godot check is meaningless and nothing else here notices.
+    & powershell -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'godot_check.ps1')
+    if ($LASTEXITCODE -eq 3) {
+        Write-Host 'SKIP: godot check (Godot or bridge DLL missing)' -ForegroundColor Yellow
+    } elseif ($LASTEXITCODE -ne 0) {
+        throw 'godot bridge check failed'
+    }
+
     Write-Host '== bench ==' -ForegroundColor Cyan
     & $exe --bench 1000
     if ($LASTEXITCODE -ne 0) { throw 'bench failed' }
