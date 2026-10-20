@@ -12,7 +12,8 @@
 2. 完整读 **docs/网络层深化_v0.4.md** 与 **docs/8.3候选B_v0.4.md**（v0.4 的两个专章，
    前者是 §7 的扩张与冲突裁决，后者是 §8.3 的选定方案）。
 3. 完整读 **docs/AGENTS.md**（铁律 / 判据清单 / 未结案 / 环境事实 / 文件地图）。
-4. 读 **docs/PROGRESS.md** 最后一节，再读 **docs/HANDOFF.md**。
+4. 读 **docs/PROGRESS.md** 最后一节，再读 **docs/HANDOFF.md**，并扫一眼 **docs/DEBT.md**
+   （未解决问题与技术债的单一入口；开工前先知道"哪些是已知的"）。
 5. 跑 tools\build.ps1，再跑 tools\smoke.ps1，确认 **17 项行为闸门 + bench 全绿**（第 17 项是 Godot 桥）。
 6. 只改一个文件集；改完立刻 commit；更新 PROGRESS。
 
@@ -119,7 +120,7 @@ v0.1 定义：**两个人、局域网、1 张 40×40 图、对枪 10 分钟不�
 1. M6 射击：WeaponDef、开火输入、hitscan + hitbox 回溯、三段判定、hp/armor 进快照、
    死亡/重生、穿透/衰减。
 2. M7/M8：音频、第三人称动画、第一人称视角模型。
-3. 代码体检已收口（AUDIT A1–A7、AUD-01…19；只剩 AUD-16 留到 M6）；剩余债见 docs/GAPS.md。
+3. 代码体检已收口（AUDIT A1–A7、AUD-01…19；只剩 AUD-16 留到 M6）；**未解决项与债看 docs/DEBT.md**。
 
 ---
 
@@ -163,6 +164,7 @@ powershell -File tools\run_demo.ps1     # Godot demo
 | docs/PROGRESS.md | 进度日志（S 短条目 + 末尾**详细开发日志**） |
 | docs/GAPS.md | v0.1 缺口 + 技术债盘点（只分析） |
 | docs/AUDIT.md | **代码体检清单**（P0–P3、证据、建议动作、处理顺序；A1–A7 已清） |
+| docs/DEBT.md | **未解决问题与技术债的单一入口**（34 条 + 设计待定 + 功能缺口 + 已接受边界） |
 | docs/backup.md | GitHub / bundle / 恢复步骤 |
 | docs/pitfalls/ | 事故案例（4 篇） |
 | docs/decisions/ | ADR（护甲 / 网络时间轴） |

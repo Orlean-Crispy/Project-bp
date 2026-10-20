@@ -160,6 +160,9 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 
 ## 4. 未结案（按优先级，每条必须有 lead）
 
+> **完整清单（含技术债、设计待定、功能缺口、已接受边界）只看 docs/DEBT.md**。
+> 下面只留"需要拍板/影响路线"的几条；条目增减先改 DEBT.md，再回来同步这里。
+
 1. **网络组局** — **已关闭**（M5 收尾完成）：信令组局、票据 resume 回原槽、HUD（含
    SERVER SILENT 1 s）、重连按钮、A5 网络网关拆分全部实测通过。第三人称动画与 5v5 选边
    按计划书属于 M7，不在此条。
@@ -256,7 +259,7 @@ sim/data/        movement.toml、combat.toml、keybinds.toml、maps/*.map
 bridge/          GDExtension 桥（唯一跨边界层）
 godot/           project.godot / main.tscn / main.gd / breakpoint.gdextension
 tools/           headless_sim（所有闸门）、move_metrics、net_loop（两进程联机）、run_net_demo（双实例）、build/smoke/build_bridge/run_demo/setup 脚本
-docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/、decisions/、keymap.md、demo-format.md、计划书_v0.3.md、IMPULSE_命名方案.md、GAPS.md、AUDIT.md
+docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/、decisions/、keymap.md、demo-format.md、计划书_v0.3.md、IMPULSE_命名方案.md、GAPS.md（历史）、AUDIT.md（审计记录）、DEBT.md（未解决问题单一入口）
 ```
 
 ### 7.1 地图
@@ -466,7 +469,7 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
 
 ```
 1. 读 docs/AGENTS.md（本文件）
-2. 读 docs/PROGRESS.md 最后一节 + docs/HANDOFF.md（若存在）
+2. 读 docs/PROGRESS.md 最后一节 + docs/HANDOFF.md（若存在）+ docs/DEBT.md 的未解决表
 3. 跑 tools\build.ps1，再跑 tools\smoke.ps1，确认 17 项行为闸门 + bench 全绿
 4. 只改一个文件集；大文件只做精确 edit
 5. 改完立刻 commit（一个功能一个 commit）
