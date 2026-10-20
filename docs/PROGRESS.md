@@ -1506,6 +1506,23 @@ wrapper，两个时钟不同步；`uint32` 减法回绕成几十亿，于是每�
 
 ---
 
+## 2026-10-20 · S55 · 体检 P2 批量（R10–R19）
+
+- 10 条一条一 commit。验证（我自己重跑）：`smoke.ps1` ALL GREEN；
+  `--test-wall` 打 `max_step=0.1172 m (limit 0.150) ok`（R11 现在真的会红）；
+  `--test-health` 打 `invalid armour type … ok / absorption above 100% … ok`（R17）；
+  `--test-net` 的 `window: accept 1 dup 1 late 1 far 1 exec-dup 1 full-window 1 depth 16`（R19 换成定长数组后语义不变）；
+  工作树干净。
+- 值得记的三点：
+  1. **改判据本身就是修 bug**：R11 的`max_step` 只打印不比对、R12 的「不外推」断言的是入参 tick——
+     这类「恒真判据」比没有判据更危险，它给人已经在保护的错觉。
+  2. **R14 用 A/B 证明零行为变化**：改完把旧版 stash，比对 `--test-net` 输出逐字节相同，
+     而不是「我觉得等价」。
+  3. **R19 把两个热路径 map 换成定长数组**（窗口 16 / 32），API 与语义不变，同样用逐字节 A/B 证明。
+- 剩余：R1（回滚未改写该 tick 的 history/hitbox）、R6（网络热路径每 tick 分配）。
+
+---
+
 # 开发日志（详细）
 
 > 从 2026-10-20 起，在 PROGRESS 末尾追加详细日志；上面的 S 编号短条目保留，作为索引。

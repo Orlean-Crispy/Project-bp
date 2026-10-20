@@ -155,15 +155,15 @@ P0（可能算出错结果）：**本轮没有发现**。
 | R7 | P1 | config.h/config.cpp | 6 个参数被加载/哈希但 sim 从不读取（用字面量代替） | ✅ 已修 |
 | R8 | P1 | combat.cpp | `CombatParams::hash()` 无人调用，两套 combat.toml 也能互通 | ✅ 已修 |
 | R9 | P1 | world.cpp 哈希 | `state_hash` 漏掉 state/timer/yaw 等参与后续 tick 的字段 | ✅ 已修 |
-| R10 | P2 | trace.cpp | 内层 `live_speed < kMinSpeed` 恒假（外层已排除） | 待修 |
-| R11 | P2 | tests_move.cpp | `max_step_length` 只打印不比对；>38.4 m/s 时 substep 超过墙厚 | 待修 |
-| R12 | P2 | tests_move.cpp | 「不外推」判据断言的是入参 tick，恒真；一处三元两边都是 'slide' | 待修 |
-| R13 | P2 | tests_move/tests_demo | TTK 闸门重算一遍伤害公式；录像块重复两处 | 待修 |
-| R14 | P2 | session/reliable | 64 Hz 又硬编码成 kDt、320 tick、`*1000/64` | 待修 |
-| R15 | P2 | pmove.h/brush/trace | 写了从不读的字段（wallrun_was_down、landed_solid、brush_index…） | 待修 |
-| R16 | P2 | 多处 | 零调用 API：TickClock、has/oldest_tick/empty、reload_pending… | 待修 |
-| R17 | P2 | combat/config | armor_type 未校验、absorb>100 会变成治疗；访问器无边界检查 | 待修 |
-| R18 | P2 | demo/bindings | `fopen(path.c_str())` 绕过 u8path（AGENTS 2） | 待修 |
-| R19 | P2 | reliable/session | 每包遍历 std::map 算 ack；InputWindow 用 map 存 tick | 待修 |
+| R10 | P2 | trace.cpp | 内层 `live_speed < kMinSpeed` 恒假（外层已排除） | ✅ 已修 |
+| R11 | P2 | tests_move.cpp | `max_step_length` 只打印不比对；>38.4 m/s 时 substep 超过墙厚 | ✅ 已修 |
+| R12 | P2 | tests_move.cpp | 「不外推」判据断言的是入参 tick，恒真；一处三元两边都是 'slide' | ✅ 已修 |
+| R13 | P2 | tests_move/tests_demo | TTK 闸门重算一遍伤害公式；录像块重复两处 | ✅ 已修 |
+| R14 | P2 | session/reliable | 64 Hz 又硬编码成 kDt、320 tick、`*1000/64` | ✅ 已修 |
+| R15 | P2 | pmove.h/brush/trace | 写了从不读的字段（wallrun_was_down、landed_solid、brush_index…） | ✅ 已修 |
+| R16 | P2 | 多处 | 零调用 API：TickClock、has/oldest_tick/empty、reload_pending… | ✅ 已修 |
+| R17 | P2 | combat/config | armor_type 未校验、absorb>100 会变成治疗；访问器无边界检查 | ✅ 已修 |
+| R18 | P2 | demo/bindings | `fopen(path.c_str())` 绕过 u8path（AGENTS 2） | ✅ 已修 |
+| R19 | P2 | reliable/session | 每包遍历 std::map 算 ack；InputWindow 用 map 存 tick | ✅ 已修 |
 
 **建议顺序**：R3/R4/R5（小、后果重）→ R2 → R9 → R7/R8 → R1/R6 → 其余 P2 分批。
