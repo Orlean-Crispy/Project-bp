@@ -1760,3 +1760,96 @@ Red Eclipse 的参考值。三个数字谁都没被验收过——手感验收�
   构建产物名保持工具名（ADR 已记录理由，不再当债）。
 - 名字的下一步不是继续改文档，而是 M5 收尾后进 M6；HUD 做资源条时按 ADR 读参数、画 J 图标。
 
+
+## 2026-10-20（下午–晚间）· M5 收尾 + 两轮代码体检（S39–S57 完整记录）
+
+### 0. 这一段的起点与目标
+
+起点：M5 的主干（不可靠 UDP / delta / 预测回滚 / FULL_STATE / 远端插值 / 事件通道 / 两进程）都已通，
+但 A1 信令、A2 可靠流、A5 票据还只是"协议件"，没有接进组局；局内没有 HUD；代码里积了 26 项
+可疑点（后来两轮体检实际找出 45 条）。
+
+目标按计划书顺序：**先把 M5 收口成可交付的基线，再做全量体检**，每一步都要「闸门先绿再提交」。
+
+### 1. M5 收尾：从「协议件」到「能两个人开局」
+
+| 步 | 做了什么 | 判据 |
+|---|---|---|
+| A1 组局 | `MatchHost` 自起 TCP 线程，握手 HELLO→ACK→MANIFEST→READY→MATCH_START，签发 32 B 票据 | `[match] accepted 1 slot 0 ticket 1 resume 1 tamper 1 full 1` |
+| 信令进 UDP | HELLO 从 6 B 变 22 B，带 16 B client_id；槽位来自信令而非到达顺序 | 两进程 net_selftest joins=2 |
+| 桥接 | host 起 MatchHost + NetServer（自占 slot 0），join 先 match_request 再连 UDP | host 见 `peer joined slot 1`，client 见 `joined slot 1` |
+| A2 共 socket | `ReliableTransport(tx,rx)` 打标 demux，configstring 走可靠流 | `[dual] 8/8 same 1`、`[config] matched 1` |
+| A5 重连 | 同 id + 票据 resume 回原槽；同槽 link 顶替而非新增 | `[reconnect] first 0 links 1 active 1`、客户端 `reconnect ok` |
+| 局内 UI | HUD（HP/ARMOR/IMP 点阵/速度/坐标/事件）、Esc 暂停菜单、失联提示 | `--hud-check` 与两进程联机 |
+| 失联检测 | `NetClient::snapshot_age()` > 1 s 显示 SERVER SILENT | 杀房主后 `server silent age=65` |
+
+踩过的两个真坑：
+
+1. **端口劫持**：27015/tcp 被 AppleMobileDeviceService 占着，而 Windows 的 `SO_REUSEADDR` 允许
+   第二个 socket 绑上已被 listen 的端口——`bind` 假成功，客户端连到别人的服务，报 `receive failed`。
+   修法：Windows 改 `SO_EXCLUSIVEADDRUSE`，默认信令端口换 27115。案例 docs/pitfalls/port-hijack.md。
+2. **一个 RTO 计时器被两个时钟推进**：闸门和 `NetServer::send()` 各自推进同一个 wrapper，
+   时间倒退后 `uint32` 回绕，全部包被判超时。修法：advance 取 max + 只由会话推进。
+
+### 2. 第一轮体检（A1–A7，结构）
+
+| 项 | 内容 | 结果 |
+|---|---|---|
+| A1 | `InputWindow::Overflow` 恒假（窗口 16 = 深度 16 + 位图去重） | 删 |
+| A2 | `AckTracker` 全仓零调用 | 删 |
+| A3 | Winsock 初始化写了两份 | 抽 `sim/net/winsock.h` |
+| A4 | 闸门文件 2916 行 / 34 个 `run_*` | 拆成 tests_net/tests_move/tests_demo + test_util，main 272 行 |
+| A5 | 桥 519 行塞了网络、渲染、输入、HUD | mesh_common.h、mesh_builder.*、net_gateway.*；SimWorld 478→313 |
+| A6 | configstring 只是任意 blob | 34 B 格式（version + params/geometry hash），失配拒局 |
+| A7 | 加入逻辑两份（net_loop 与桥） | 抽 `sim/net/admission.h` |
+
+### 3. 第二轮体检（AUD 19 条 + R 19 条）
+
+两个只读代理分审 sim 与 bridge/胶水，合并 38 条，**0 个 P0**。修复分四批：
+
+- **批一（UI）**：HUD 文本同帧被覆盖（HP/IMP 从未显示）、ESC 在 LAN 菜单上叠加暂停菜单导致鼠标捕获、
+  删掉不可达的 `link_lost` 与未用常量/字段。
+- **批二（P1 sim）**：R3 序号回绕（`Link::sent` 改按发送序 deque，闸门 `[seqwrap] ok`）、
+  R5 UDP 端口独占（`[udp] exclusive 1`）、R4 槽位释放（`[match] release 1`）、
+  R2 翻越/爬墙不能同 tick 双花 impulse（`[parkour] vault_climb_single 1`）、
+  R9 哈希补齐（`state_fields 8/8`、快照协议 3→4）、R7 六个假参数（删两个、读两个、实现受伤减速）、
+  R8 combat 哈希并入（`[config] refused 1 combat 1`）。
+- **批三（P2 sim）**：R10–R19——死分支、恒真判据（R11 `max_step` 只打印、R12 断言入参 tick）、
+  TTK 重算伤害、64 Hz 硬编码、未用字段/API、索引校验、u8path、两个热路径 map 换定长数组。
+- **批四（P1 sim）**：R1 回滚改写该 tick 的 history/hitbox（`[rollback] hitbox 1 dup 1 state 1`）、
+  R6 网络热路径零分配（`[netalloc] per_tick 0`，仅限 session 三步，序列化仍分配，已写明边界）。
+- **批五（桥）**：AUD-01 联机事件（`[netevents] 1`）、AUD-02 暂停不停网泵、AUD-05 远端采样改快照轴、
+  AUD-06/08/10/12。
+
+### 4. 证据（最终基线）
+
+- 16 项行为闸门 + bench：**ALL GREEN**；p99 0.40 µs，0.00 allocs/tick；
+- 两进程 LAN：`joins=2 accepted=414 far=0 moved=46.69`；
+- 协议版本：CMake / build_bridge / version.h 全为 **4**，文档无残留 v3；
+- 工作树干净，无 stash，bundle 已刷新。
+
+### 5. 失败与修正（这一段最值钱）
+
+1. **「验证」不等于「验收」**：我用 `--hud-check` 打印 getter 就宣布 HUD 完成，实际
+   渲染路径被同帧覆盖，HP 从没显示过。判据必须盯**用户看到的东西**。
+2. **恒真判据比没有判据更危险**：R11/R12 的检查永远不会失败，却让人以为有保护。修判据本身是一次 bug fix。
+3. **按行号搬代码，结构行会漂移**：前两次拆分让 `}  // namespace` 行号变了，第三次按旧坐标搬，
+   把 `main` 搬进了匿名 namespace。每次都要重新确认结构行。
+4. **文件操作别用一行流**：PowerShell 一行流写文件静默失败（什么都没写），换 Node 的 fs 一次成功。
+5. **代理会死在半路**：两次执行代理因余额中断，留下已提交和未提交的改动。处理方式固定为：
+   `git status` → 逐条复核 → 重跑闸门 → 收下能绿的、回滚不能的；不重做、不盲信自述。
+
+### 6. 明确未完成（不许含糊）
+
+- AUD-13 桥编译不带 `-Werror`/`BP_BUILD_ID`（godot-cpp 头自带告警，需范围隔离）；
+- AUD-14 端口字面量四处；AUD-15 脚本公共块五份；
+- AUD-17 重连按钮双击保护；AUD-19 setup 依赖 7z、Ninja 未锁版本；
+- AUD-16 留到 M6（hp/护甲未进快照）；
+- R6 只覆盖 session 三步，ByteWriter/编解码/回环队列仍约 40 次/tick 分配——需单独立项。
+
+### 7. 下一步
+
+先清 AUD-19（换机即炸）与 AUD-13（告警盲目），再按计划书进 **M6 射击**：
+WeaponDef(toml) → 开火输入 → hitscan + hitbox 回溯 → 三段伤害 → hp/armor 进快照 → 死亡/重生 → 穿透/衰减。
+
+---

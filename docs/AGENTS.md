@@ -335,6 +335,13 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
 - 重连（bridge `reconnect()`）：用**同一个 client_id + A5 票据**重走信令 resume，回原槽。
   判据：`--reconnect-check` 客户端打 `reconnect ok`，房主打 `signal slot 1 resumed 1` 并再次
   `peer joined slot 1`。
+- 回滚修复（R1）：`apply_snapshot` 在回放前把修正状态写回 `m_history[index]` 并重记该 tick 的 hitbox，
+  否则重复快照会二次回滚、回溯命中判定拿到修正前的位置。判据：`[rollback] hitbox 1 dup 1 state 1`。
+- 网络零分配（R6）：`NetServer::step` 用成员输入缓冲、客户端走 `World::step_single`、
+  `Link::sent` 与 `m_recent` 是容量 64 环形数组。判据：`[netalloc] per_tick 0`（只统计 session 三步；
+  序列化与回环传输仍分配，见 AUDIT 边界说明）。
+- 联机事件（AUD-01）：`NetClient::step_local(EventQueue*)` 贯穿回放，`pump(input, events)` 传入；
+  判据 `[netevents] 1`——联机里起跳事件能到桥，`drain_events()` 不再恒空。
 - Godot 启动菜单：无参数且非 headless 时显示 Host/Join/Single player；--menu 可在 headless
   下构建用于脚本检查；菜单打开时暂停 tick。
 - 时钟纠正（§7.0）：客户端按快照 ahead 的最小值检测漂移；超过 min+3 且冷却结束时跳过
@@ -351,7 +358,7 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
 - A2 接入会话：`NetServer::set_configstring(blob)` 切 512 B 块，`add_client(..., rel)` 后每 tick
   在 `send()` 里补投（窗口满就等下一 tick）；`NetClient::init(..., rel)` 收到即喂 `ConfigAssembler`，
   `config_ready()/config_chunks()/config_string()` 可查。
-  判据：[config] chunks 1 same 1 matched 1 refused 1 full_state 1 ticks 18 retrans 1。
+  判据：[config] chunks 1 same 1 matched 1 refused 1 combat 1 full_state 1 ticks 18 retrans 1。
   内容语义（sim/net/configstring.h）：34 B（version + params_hash + geometry_hash）；
   客户端收齐后比对，任一不符 → `config_mismatch()` 并 `join_failed`——宁可不进局，
   也不带错规则进局。桥的 host 已按 world 的哈希生成并下发。
@@ -454,7 +461,7 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
 1. **M6 射击**：WeaponDef(toml) → 开火输入 → hitscan + hitbox 回溯 → 三段伤害
    + hp/armor 进快照 + 死亡/重生 + 穿透/衰减；TTK 用 100 HP / 三甲复算。
 2. **M7 / M8**：动画、视角模型、音频垂直定位（§9.2 的楼层低通）。
-3. 代码体检已收口（AUDIT A1–A7 全部完成，A8 明确不改）；剩余债见 docs/GAPS.md。
+3. 代码体检：A1–A7、AUD-01…12、R1–R19 已完成；余 5 条 P2（AUD-13/14/15/17/19）与 AUD-16（M6 后）见 docs/AUDIT.md。
 
 ---
 

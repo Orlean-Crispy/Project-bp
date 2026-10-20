@@ -347,3 +347,77 @@ powershell -File tools\run_demo.ps1
 - 玩家可见：`godot/project.godot` 的 `config/name` 与 LAN 菜单标题已改为 IMPULSE。
 - 未决：impulse 上限 sim 4 / 方案 6 / 计划书 §5.2 待定（lead：M3 手感验收）；
   GitHub 仓库名仍是 `unknow`，改名需在 GitHub 侧操作。
+
+## 8. 2026-10-20（下午–晚间）· M5 收尾 + 两轮代码体检
+
+### 8.1 M5 现在意味着什么
+
+M5 已关闭（docs/AGENTS.md §0.2 标 ✅）。它包含：不可靠 UDP + delta 快照 + 预测回滚 + 时间对齐 +
+输入去重 + hitbox 历史 + FULL_STATE 加入/重连 + 远端插值 + 事件通道 + 真实 UDP + B1 分片 +
+多 peer + 两进程 + Godot --host/--connect + LAN 菜单 + 时钟纠正 + 远端 yaw + 5 s 掉线清理 + 槽位复用 +
+**A1 信令组局（27115）、A5 票据/重连、A2 可靠流共 socket（configstring）、局内 HUD、暂停菜单、失联检测**。
+
+不属于 M5（按计划书归 M7）：第三人称动画、5v5 选边。
+
+### 8.2 架构（这段是新拆的，找代码先看这里）
+
+```
+bridge/sim_bridge.cpp    SimWorld：状态/输入/事件/HUD 数值/Godot 绑定（313 行）
+bridge/net_gateway.*     NetGateway：全部 socket 与每 tick 网络泵（host/join/reconnect/pump）
+bridge/mesh_builder.*    build_map_mesh(collision) → godot 数组（纯函数）
+bridge/mesh_common.h     to_godot（Z-up→Y-up）、material_color（纯函数）
+sim/net/matchmaking.*    MatchHost/MatchClient：TCP 握手、票据、槽位（含 release）
+sim/net/admission.h      approve/take：UDP 谁可以被放进来（两个宿主共用）
+sim/net/reliable_transport.*  一条 socket 两种语义，打标 demux
+sim/net/configstring.h   34 B 配置契约（version + params_hash + geometry_hash）
+tools/headless_sim/      main.cpp（272 行，只分发）+ tests_net/move/demo + test_util
+```
+
+### 8.3 协议与数据格式（v4）
+
+- `BP_PROTOCOL_VERSION = 4`：HELLO 22 B（magic + 版本 + 16 B client_id）；快照新增
+  wall_normal/vault_dir/vault_rise（kFieldExtra）、jump_was_down（flags bit3）、slow_ticks。
+- 信令协议 v2：client_id 16 B、HELLO/ACK 带 32 B 票据、MATCH_START 带 game_port（= 信令端口 + 1）。
+- configstring v2：18 B payload，params_hash 已并入 combat 规则哈希。
+- 旧 DLL 与新 sim 不可混用（协议不兼容，有意为之）。
+
+### 8.4 本轮新增的闸门（都在 --test-net / --selftest 里）
+
+| 判据 | 说明 |
+|---|---|
+| `[signal] / [match] / [ticket]` | TCP 六消息、握手/票据/满员/恢复 |
+| `[match] … release 1` | 握手中断归还槽位 |
+| `[udp] exclusive 1` | 同端口第二个 socket 必须打不开 |
+| `[seqwrap] ok 1 delta +300 full +0` | u16 快照序号回绕后 ack 仍有效 |
+| `[dual] chunks 8/8` | 可靠流与快照共 socket 互不阻塞 |
+| `[config] matched 1 refused 1 combat 1` | 配置/战斗规则失配拒局 |
+| `[rollback] hitbox 1 dup 1 state 1` | 回滚改写该 tick 历史、重复快照不二次回滚 |
+| `[netalloc] per_tick 0` | session 三步稳态零分配 |
+| `[netevents] 1` | 联机时事件通道不再为空 |
+| `state_fields 8/8 / yaw_hash 1` | 世界哈希覆盖参与后续 tick 的字段 |
+| `[parkour] vault_climb_single 1` | 翻越与爬墙同 tick 只花一次 impulse |
+
+### 8.5 怎么验（照抄即可）
+
+```powershell
+powershell -File tools\build.ps1
+powershell -File tools\smoke.ps1          # 16 闸门 + bench，必须 ALL GREEN
+powershell -File tools\net_selftest.ps1   # 两进程真实 UDP：joins=2 far=0
+C:\bp-toolchain\godot\Godot_v4.5-stable_win64.exe --headless --path godot -- --hud-check
+```
+
+Godot 两进程手工验证：host `--host --port=27115`，client `--connect=127.0.0.1 --port=27115`；
+host 应打 `peer joined slot 1 / remote slot 1 visible`，client 打 `joined slot 1 / remote slot 0 visible`，
+两个 stderr 必须为空。重连验证加 `--reconnect-check`（host 应打 `signal slot 1 resumed 1`）。
+
+### 8.6 明确未完成（交接必读）
+
+- **AUD-19** setup_toolchain 依赖未安装的 7z、Ninja 未锁版本——换机首次安装会炸，第一优先。
+- **AUD-13** 桥编译不带 -Werror/BP_BUILD_ID（godot-cpp 头有告警，需范围隔离）。
+- AUD-14/15 端口常量与脚本公共块重复；AUD-17 重连按钮双击保护；AUD-16 留 M6。
+- R6 边界：只有 session 三步零分配；ByteWriter/编解码/回环队列仍约 40 次/tick，需单独立项。
+
+### 8.7 下一步
+
+清 AUD-19 → AUD-13 → AUD-17 → 14/15，然后进 M6：WeaponDef(toml) → 开火输入 → hitscan + hitbox 回溯
+→ 三段伤害 → hp/armor 进快照 → 死亡/重生 → 穿透/衰减。每一小步先写闸门。
