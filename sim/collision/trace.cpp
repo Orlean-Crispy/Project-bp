@@ -154,15 +154,9 @@ SlideResult slide_move(const CollisionWorld& world, const Vec3& start, const Vec
 
         bool bumped = false;
         for (int s = 0; s < steps; ++s) {
-            // vel is only changed by a bump, and a bump breaks out of this loop,
-            // so the speed measured above still holds for every sub-step.
-            const float live_speed = speed;
-            if (live_speed < kMinSpeed) {
-                vel = Vec3();
-                bumped = true;
-                break;
-            }
-            const Vec3 step = (vel / live_speed) * step_len;
+            // A bump is the only thing that changes vel, and it breaks out of the
+            // loop, so the speed measured above still holds for every sub-step.
+            const Vec3 step = (vel / speed) * step_len;
             const TraceResult tr = world.trace_box(result.pos, result.pos + step, mins, maxs);
 
             if (tr.start_solid) {
@@ -173,12 +167,12 @@ SlideResult slide_move(const CollisionWorld& world, const Vec3& start, const Vec
 
             if (tr.fraction >= 1.0f) {
                 result.pos += step;
-                time_left -= step_len / live_speed;
+                time_left -= step_len / speed;
                 continue;
             }
 
             result.pos = tr.end_pos;
-            time_left -= (step_len * tr.fraction) / live_speed;
+            time_left -= (step_len * tr.fraction) / speed;
 
             const float into = dot(vel, tr.normal);
             if (into < 0.0f) vel -= tr.normal * into;
