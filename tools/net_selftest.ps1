@@ -1,6 +1,8 @@
 # net_selftest.ps1 - two-process LAN check (not part of smoke: it uses wall time).
 # Starts one server and two clients over real UDP, then verifies joins, input
 # application and snapshot flow from the logs.
+# The port is not passed: net_loop defaults to the gate port in sim/net/ports.h,
+# so a gate run cannot collide with a developer's session (AUD-14).
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 Push-Location $root
@@ -8,21 +10,20 @@ try {
     $exe = Join-Path (Get-Location) 'build\net_loop.exe'
     if (-not (Test-Path $exe)) { throw 'net_loop.exe not built; run tools/build.ps1' }
 
-    $port = 27130
     $serverLog = 'build\net_selftest_server.log'
     $c0Log = 'build\net_selftest_c0.log'
     $c1Log = 'build\net_selftest_c1.log'
 
     $server = Start-Process -FilePath $exe -ArgumentList @(
-        '--serve', '--port', "$port", '--players', '2', '--seconds', '5'
+        '--serve', '--players', '2', '--seconds', '5'
     ) -PassThru -NoNewWindow -RedirectStandardOutput $serverLog -RedirectStandardError 'build\net_selftest_server.err'
 
     Start-Sleep -Milliseconds 600
     $c0 = Start-Process -FilePath $exe -ArgumentList @(
-        '--join', '127.0.0.1', '--port', "$port", '--slot', '0', '--seconds', '4'
+        '--join', '127.0.0.1', '--slot', '0', '--seconds', '4'
     ) -PassThru -NoNewWindow -RedirectStandardOutput $c0Log -RedirectStandardError 'build\net_selftest_c0.err'
     $c1 = Start-Process -FilePath $exe -ArgumentList @(
-        '--join', '127.0.0.1', '--port', "$port", '--slot', '1', '--seconds', '4'
+        '--join', '127.0.0.1', '--slot', '1', '--seconds', '4'
     ) -PassThru -NoNewWindow -RedirectStandardOutput $c1Log -RedirectStandardError 'build\net_selftest_c1.err'
 
     $c0.WaitForExit()
@@ -43,14 +44,18 @@ try {
         [math]::Abs([double]$final.Groups[1].Value + 16.0) + [math]::Abs([double]$final.Groups[2].Value)
     } else { 0.0 }
 
+    # AUD-14: the server derives the game port; prove the derivation is what ran.
+    $bound = [regex]::Match($serverText, 'server signal=(\d+) game=(\d+)')
+    $portsOk = $bound.Success -and ([int]$bound.Groups[2].Value -eq [int]$bound.Groups[1].Value + 1)
+
     $clientOk = $true
     foreach ($text in @($c0Text, $c1Text)) {
         $m = [regex]::Match($text, 'final joined=1 snapshots=(\d+)')
         if (-not $m.Success -or [int]$m.Groups[1].Value -lt 100) { $clientOk = $false }
     }
 
-    Write-Host "joins=$joins accepted=$accepted far=$far moved=$([math]::Round($moved, 2)) clients_ok=$clientOk"
-    if ($joins -ne 2 -or $accepted -lt 100 -or $far -ne 0 -or $moved -lt 2.0 -or -not $clientOk) {
+    Write-Host "joins=$joins accepted=$accepted far=$far moved=$([math]::Round($moved, 2)) ports_ok=$portsOk clients_ok=$clientOk"
+    if ($joins -ne 2 -or $accepted -lt 100 -or $far -ne 0 -or $moved -lt 2.0 -or -not $portsOk -or -not $clientOk) {
         Write-Host 'FAIL: two-process LAN check failed' -ForegroundColor Red
         exit 1
     }

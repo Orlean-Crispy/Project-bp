@@ -1,27 +1,3 @@
-#include <cstdio>
-#include <string>
-#include <vector>
-
-#include "options.h"
-#include "tests_net.h"
-
-#include "sim/net/admission.h"
-#include "sim/net/configstring.h"
-#include "sim/net/fragment.h"
-#include "sim/net/handshake.h"
-#include "sim/net/matchmaking.h"
-#include "sim/net/netchan.h"
-#include "sim/net/reliable.h"
-#include "sim/net/reliable_transport.h"
-#include "sim/net/session.h"
-#include "sim/net/signaling.h"
-#include "sim/net/ticket.h"
-#include "sim/net/transport.h"
-#include "sim/net/udp_hub.h"
-#include "sim/net/udp_socket.h"
-#include "sim/net/udp_transport.h"
-
-
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -33,24 +9,32 @@
 #include <thread>
 #include <vector>
 
+#include "options.h"
+#include "tests_net.h"
+
 #include "bridge/remote_sampling.h"
 #include "sim/core/tick.h"
 #include "sim/core/version.h"
 #include "sim/core/world.h"
 #include "sim/demo/demo.h"
-#include "sim/input/bindings.h"
 #include "sim/game/combat.h"
-#include "sim/net/fragment.h"
+#include "sim/input/bindings.h"
 #include "sim/net/admission.h"
+#include "sim/net/configstring.h"
+#include "sim/net/fragment.h"
 #include "sim/net/handshake.h"
 #include "sim/net/matchmaking.h"
 #include "sim/net/netchan.h"
+#include "sim/net/ports.h"
 #include "sim/net/reliable.h"
 #include "sim/net/reliable_transport.h"
 #include "sim/net/session.h"
 #include "sim/net/signaling.h"
 #include "sim/net/ticket.h"
 #include "sim/net/transport.h"
+#include "sim/net/udp_hub.h"
+#include "sim/net/udp_socket.h"
+#include "sim/net/udp_transport.h"
 
 struct NetRunStats {
     bool ok = false;
@@ -738,7 +722,7 @@ int run_match_test() {
     const bool accepted = sim::match_request("127.0.0.1", port, a, nullptr, ra) && ra.ok &&
                           ra.status == sim::MatchStatus::Accepted && ra.slot == 0 &&
                           ra.has_ticket && ra.seed == 7 && ra.players == 2 &&
-                          ra.map == "playground" && ra.game_port == static_cast<uint16_t>(port + 1);
+                          ra.map == "playground" && ra.game_port == sim::game_port_of(port);
 
     // A5: the same client id + ticket returns to its old slot.
     sim::MatchReply rb;
@@ -1180,10 +1164,11 @@ int run_signal_test() {
     match.map = "playground";
     match.seed = 7;
     match.players = 2;
-    match.game_port = 27016;
+    match.game_port = sim::game_port_of(sim::kGateSignalPort);
     match_ok = peer->send_message(match, error) && client.recv_message(in, 1000, error) &&
                in.type == sim::SignalType::MatchStart && in.map == "playground" &&
-               in.seed == 7 && in.players == 2 && in.game_port == 27016;
+               in.seed == 7 && in.players == 2 &&
+               in.game_port == sim::game_port_of(sim::kGateSignalPort);
 
     sim::SignalMessage full;
     full.type = sim::SignalType::FullState;

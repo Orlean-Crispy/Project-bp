@@ -28,6 +28,7 @@
 #include "sim/core/version.h"
 #include "sim/core/world.h"
 #include "sim/input/bindings.h"
+#include "sim/net/ports.h"
 #include "sim/net/session.h"
 
 using namespace godot;
@@ -266,6 +267,10 @@ public:
     String get_build_id() const { return String(sim::kBuildId); }
     int get_protocol_version() const { return static_cast<int>(sim::kProtocolVersion); }
 
+    // AUD-14: the LAN menu starts on the port sim/net/ports.h defines; GDScript
+    // must not carry its own copy of the number.
+    int get_default_signal_port() const { return static_cast<int>(sim::kDefaultSignalPort); }
+
     PackedVector3Array get_vertices() const { return m_vertices; }
     PackedVector3Array get_normals() const { return m_normals; }
     PackedColorArray get_colors() const { return m_colors; }
@@ -306,6 +311,7 @@ protected:
         ClassDB::bind_method(D_METHOD("get_crouch_height"), &SimWorld::get_crouch_height);
         ClassDB::bind_method(D_METHOD("get_build_id"), &SimWorld::get_build_id);
         ClassDB::bind_method(D_METHOD("get_protocol_version"), &SimWorld::get_protocol_version);
+        ClassDB::bind_method(D_METHOD("get_default_signal_port"), &SimWorld::get_default_signal_port);
         ClassDB::bind_method(D_METHOD("get_vertices"), &SimWorld::get_vertices);
         ClassDB::bind_method(D_METHOD("get_normals"), &SimWorld::get_normals);
         ClassDB::bind_method(D_METHOD("get_colors"), &SimWorld::get_colors);

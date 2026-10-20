@@ -1,6 +1,7 @@
 // net_loop - two-process LAN check for the session layer.
-//   net_loop --serve --port 27016 --players 2 --seconds 4
-//   net_loop --join 127.0.0.1 --port 27016 --slot 0 --seconds 4
+//   net_loop --serve --players 2 --seconds 4
+//   net_loop --join 127.0.0.1 --slot 0 --seconds 4
+// --port defaults to the gate port in sim/net/ports.h (AUD-14).
 // The server binds a real UDP socket; clients send HELLO, receive FULL_STATE and
 // then predict at 64 Hz. Not a gate (it depends on wall-clock scheduling), but
 // the two-process equivalent of the in-process UDP session test.
@@ -18,6 +19,7 @@
 #include "sim/net/admission.h"
 #include "sim/net/handshake.h"
 #include "sim/net/matchmaking.h"
+#include "sim/net/ports.h"
 #include "sim/net/session.h"
 #include "sim/net/udp_hub.h"
 #include "sim/net/udp_transport.h"
@@ -32,7 +34,7 @@ struct Options {
     std::string host = "127.0.0.1";
     std::string map = "sim/data/maps/metrics_flat.map";
     std::string data = "sim/data/movement.toml";
-    uint16_t port = 27016;
+    uint16_t port = sim::kGateSignalPort;
     int players = 2;
     int slot = 0;
     double seconds = 4.0;
@@ -60,7 +62,7 @@ int run_server(const Options& opt) {
         return 1;
     }
     sim::UdpPeerHub hub;
-    const uint16_t game_port = matcher.port() + 1;
+    const uint16_t game_port = sim::game_port_of(matcher.port());
     if (!hub.open(game_port, error) || hub.local_port() != game_port) {
         std::fprintf(stderr, "hub open: %s\n", error.c_str());
         return 1;
@@ -218,8 +220,9 @@ int run_client(const Options& opt) {
 
 void usage() {
     std::printf(
-        "net_loop --serve [--port 27016] [--players 2] [--seconds 4] [--map f] [--data f]\n"
-        "net_loop --join <ip> [--port 27016] [--slot 0] [--seconds 4] [--map f] [--data f]\n");
+        "net_loop --serve [--port %u] [--players 2] [--seconds 4] [--map f] [--data f]\n"
+        "net_loop --join <ip> [--port %u] [--slot 0] [--seconds 4] [--map f] [--data f]\n",
+        static_cast<unsigned>(sim::kGateSignalPort), static_cast<unsigned>(sim::kGateSignalPort));
 }
 
 }  // namespace

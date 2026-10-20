@@ -43,7 +43,7 @@ var autoplay := false
 var last_event := "-"
 var host_mode := false
 var connect_ip := ""
-var net_port := 27115  # A1 signalling; the game port is this + 1
+var net_port := 0  # A1 signalling; 0 = bridge default, the game port is this + 1
 var joined_printed := false
 var last_peer_count := -1
 var remote_nodes := {}
@@ -84,6 +84,9 @@ func _ready() -> void:
 			reconnect_check = true
 
 	sim = SimWorld.new()
+	if net_port <= 0:
+		# AUD-14: the default port lives in sim/net/ports.h, not in this script.
+		net_port = int(sim.get_default_signal_port())
 	var base := ProjectSettings.globalize_path("res://")
 	var map_path := base.path_join("../sim/data/maps/playground.map")
 	var data_path := base.path_join("../sim/data/movement.toml")
@@ -136,10 +139,10 @@ func _ready() -> void:
 	add_child(status_label)
 	_update_hud()
 	if hud_check:
-		print("hud hp=%d armor=%d impulse=%d/%d role=%s vertices=%d build=%s protocol=%d" % [
+		print("hud hp=%d armor=%d impulse=%d/%d role=%s vertices=%d build=%s protocol=%d port=%d" % [
 			sim.get_hp(), sim.get_armor(), sim.get_impulses(), sim.get_max_impulses(),
 			sim.get_role(), sim.get_vertices().size(),
-			sim.get_build_id(), sim.get_protocol_version()
+			sim.get_build_id(), sim.get_protocol_version(), net_port
 		])
 		get_tree().quit()
 	if force_paused:

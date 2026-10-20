@@ -7,6 +7,7 @@
 #include <godot_cpp/core/error_macros.hpp>
 
 #include "sim/net/handshake.h"
+#include "sim/net/ports.h"
 
 namespace bridge {
 
@@ -28,7 +29,8 @@ bool NetGateway::start_host(const std::string& map, const std::string& data, int
     if (!m_server->init(map, data, players, error)) {
         return fail("breakpoint host: ", error);
     }
-    // A1: the TCP control plane owns admission; the game port is signal + 1.
+    // A1: the TCP control plane owns admission. The game port is derived, never
+    // passed in, so it cannot drift from the signalling port (sim/net/ports.h).
     m_match = std::make_unique<sim::MatchHost>();
     // The listen server owns slot 0 itself, so clients start at slot 1.
     if (!m_match->start(static_cast<uint16_t>(port), static_cast<uint8_t>(players), map, 7u, 1,
@@ -44,7 +46,7 @@ bool NetGateway::start_host(const std::string& map, const std::string& data, int
         m_server->set_configstring(sim::encode_config(cfg));
     }
     m_hub = std::make_unique<sim::UdpPeerHub>();
-    const uint16_t game_port = m_match->port() + 1;
+    const uint16_t game_port = sim::game_port_of(m_match->port());
     if (!m_hub->open(game_port, error) || m_hub->local_port() != game_port) {
         return fail("breakpoint host: ", error);
     }
