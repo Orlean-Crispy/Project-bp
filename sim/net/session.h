@@ -163,6 +163,9 @@ public:
     int decode_failures() const { return m_decode_fail; }
     int stale_skips() const { return m_stale; }
     uint32_t last_snapshot_tick() const { return m_last_snapshot_tick; }
+    // Ticks since the last snapshot arrived; the only honest "server is gone"
+    // signal a client has (a frozen world looks identical to a dead link).
+    int snapshot_age() const;
     int corrections() const { return m_corrections; }
     int clock_skips() const { return m_clock_skips; }
     float max_correction() const { return m_max_correction; }

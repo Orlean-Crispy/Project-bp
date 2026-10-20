@@ -31,7 +31,7 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 | M2 基础 pmove | ✅ | 走/跑/跳/蹲、step-up、蹲下空间、Q3 对标数值 |
 | M3 parkour | ✅ 首版 | slide / dash / wallrun / wallclimb / vault，全部有 headless 闸门 |
 | M4 demo 与跨机比对 | ✅ 同机 / ⏸ 跨机 | 录制回放、逐 tick 哈希、dump 比对工具就绪；**跨机需要第二台机器** |
-| M5 网络 | 🔶 部分 | 不可靠通道 + delta + 预测回滚 + 时间对齐 + 去重 + hitbox + 加入/重连 + 远端插值 + 事件通道 + 真实 UDP + B1 分片 + 多 peer 会话 + 两进程 + Godot --host/--connect + 远端渲染 + LAN 菜单 + 时钟纠正 + 远端 yaw/掉线清理 5 s/槽位复用已通；**A1/A2/A5 协议已通（未接组局）、局内 UI 未做** |
+| M5 网络 | 🔶 部分 | 不可靠通道 + delta + 预测回滚 + 时间对齐 + 去重 + hitbox + 加入/重连 + 远端插值 + 事件通道 + 真实 UDP + B1 分片 + 多 peer 会话 + 两进程 + Godot --host/--connect + 远端渲染 + LAN 菜单 + 时钟纠正 + 远端 yaw/掉线清理 5 s/槽位复用已通；**A1 组局（信令 27115）、A5 票据/重连（resume 回原槽）、A2 可靠流共 socket、局内 HUD/暂停菜单/失联检测已通；第三人称动画未做** |
 | M6 射击 | 🔶 起步 | HP/护甲规则已实现；hitscan、后坐力表、三段判定、穿透未做 |
 | M7 打磨 / M8 视角模型 | ❌ | 未开始 |
 
@@ -157,11 +157,10 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 
 ## 4. 未结案（按优先级，每条必须有 lead）
 
-1. **网络组局收尾** — Godot 菜单已走信令（27115/TCP → 27116/UDP），host 占 slot 0、客人从 1 起，
-   5 s 掉线清理、槽位复用、重连顶替已通；局内 HUD/Esc 菜单已做。仍缺
-   **真实断线检测（快照年龄）+ 重连按钮**、第三人称动画。lead：现在。
-2. **v0.4 的 M5 增量** — A1/A2/A5 协议均已通且测试，待接入组局
-   （信令线程、单 socket 双队列、重连状态机）；B1 分片已完成。lead：现在。
+1. **网络组局** — 信令组局、票据 resume 回原槽、HUD（含 SERVER SILENT 1 s）与重连按钮
+   全部实测通过；仅剩第三人称动画与 5v5 选边。lead：M7。
+2. **v0.4 的 M5 增量** — A1/A2/A5 全部接入并实测（信令线程、单 socket 双队列、重连状态机、
+   B1 分片）；余 **A2 configstring 语义**（传输已验证，内容是任意 blob）。lead：M6 前。
 3. **M6 射击** — hitscan、后坐力表、三段部位判定（hitbox 已就绪）、穿透、伤害衰减、
    hitmarker 全未做。护甲的**吸收比例 66%** 与**再生 5 s / 10 s** 是提案值，需要确认。
 4. **Godot 版本** — 计划书写 4.7 Mono，但 godot-cpp 最高只有 4.5，现用 4.5。
@@ -326,8 +325,15 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
   client 打 joined slot 1 / remote slot 0 visible（两个 headless Godot 进程实测）。
 - 局内 HUD（godot/main.gd）：HP/护甲（桥里是占位 100/0，等 M6 联网）、impulse 条
   用 `get_max_impulses()` 画格（**不写死**），状态行显示 role/slot/peers/waiting；
-  Esc 开合暂停菜单（Resume / Leave）。判据：`--hud-check` 打 `hud hp=100 armor=0 impulse=4/4 role=solo`。
-  已知局限：断线检测只看「世界 tick 是否 1.5 s 不动」，真实的「服务器失联」需要快照年龄，未做。
+  Esc 开合暂停菜单（Resume / Reconnect（仅客户端）/ Leave）。
+  判据：`--hud-check` 打 `hud hp=100 armor=0 impulse=4/4 role=solo`。
+- 失联检测（`NetClient::snapshot_age()`）：客户端用**最后一次收到快照的 tick 差**判断，
+  > 64 tick（1 s）显示 `SERVER SILENT x.xs`。世界仍在本地推进也能看出来——
+  「tick 停走」只能发现模拟卡死，发现不了服务器没了。
+  判据：杀掉房主后客户端打 `breakpoint: server silent age=65`。
+- 重连（bridge `reconnect()`）：用**同一个 client_id + A5 票据**重走信令 resume，回原槽。
+  判据：`--reconnect-check` 客户端打 `reconnect ok`，房主打 `signal slot 1 resumed 1` 并再次
+  `peer joined slot 1`。
 - Godot 启动菜单：无参数且非 headless 时显示 Host/Join/Single player；--menu 可在 headless
   下构建用于脚本检查；菜单打开时暂停 tick。
 - 时钟纠正（§7.0）：客户端按快照 ahead 的最小值检测漂移；超过 min+3 且冷却结束时跳过

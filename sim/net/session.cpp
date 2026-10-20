@@ -415,6 +415,13 @@ bool NetClient::init(Transport* outgoing, Transport* incoming, int player_index,
     return true;
 }
 
+int NetClient::snapshot_age() const {
+    if (!m_joined) return 0;
+    return m_local.tick > m_last_snapshot_tick
+               ? static_cast<int>(m_local.tick - m_last_snapshot_tick)
+               : 0;
+}
+
 const PlayerState& NetClient::predicted() const { return m_local.players[0]; }
 
 void NetClient::reset_stats() {

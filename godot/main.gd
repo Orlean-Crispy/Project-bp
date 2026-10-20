@@ -46,6 +46,9 @@ var hud_check := false
 var last_seen_tick := 0
 var stall_seconds := 0.0
 var link_lost := false
+var silent_printed := false
+var reconnect_check := false
+var reconnect_done := false
 
 func _ready() -> void:
 	RenderingServer.set_default_clear_color(Color(0.07, 0.08, 0.1))
@@ -66,6 +69,8 @@ func _ready() -> void:
 			force_menu = true
 		elif arg == "--hud-check":
 			hud_check = true
+		elif arg == "--reconnect-check":
+			reconnect_check = true
 
 	sim = SimWorld.new()
 	var base := ProjectSettings.globalize_path("res://")
@@ -141,6 +146,17 @@ func _update_hud() -> void:
 		parts.append("peers %d" % sim.get_peer_count())
 		if not sim.get_joined():
 			parts.append("waiting for server")
+		elif sim.get_role() != "host":
+			# Snapshot age is the only honest "server is gone" signal: the local
+			# world keeps stepping even when nothing arrives.
+			var age := int(sim.get_snapshot_age())
+			if age > 64:
+				parts.append("SERVER SILENT %.1fs" % (float(age) / 64.0))
+				if not silent_printed:
+					silent_printed = true
+					print("breakpoint: server silent age=%d" % age)
+			else:
+				silent_printed = false
 	if link_lost:
 		parts.append("LINK LOST")
 	status_label.text = "  ".join(parts)
@@ -211,6 +227,15 @@ func _toggle_game_menu() -> void:
 		resume.text = "Resume"
 		resume.pressed.connect(_toggle_game_menu)
 		box.add_child(resume)
+		if sim != null and sim.is_networked() and sim.get_role() != "host":
+			var again := Button.new()
+			again.text = "Reconnect"
+			again.pressed.connect(func() -> void:
+				var ok: bool = sim.reconnect()
+				print("breakpoint: reconnect %s" % ("ok" if ok else "failed"))
+				_toggle_game_menu()
+			)
+			box.add_child(again)
 		var leave := Button.new()
 		leave.text = "Leave"
 		leave.pressed.connect(func() -> void: get_tree().quit())
@@ -345,6 +370,11 @@ func _update_remote_players(players: Array) -> void:
 func _process(delta: float) -> void:
 	if sim == null or camera == null:
 		return
+	if reconnect_check and not reconnect_done and sim.is_networked() and sim.get_joined():
+		if int(sim.get_tick()) > 64:
+			reconnect_done = true
+			var ok: bool = sim.reconnect()
+			print("breakpoint: reconnect %s" % ("ok" if ok else "failed"))
 	if menu_open or game_menu_open:
 		accumulator = 0.0
 		return

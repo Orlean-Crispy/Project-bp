@@ -1284,6 +1284,25 @@ wrapper，两个时钟不同步；`uint32` 减法回绕成几十亿，于是每�
 
 ---
 
+## 2026-10-20 · S40 · 失联检测（快照年龄）+ A5 票据重连
+
+- `NetClient::snapshot_age()`：本地 tick − 最后一份快照的 tick；桥暴露 `get_snapshot_age()`。
+  之前 HUD 用「tick 1.5 s 不动」判断，那只抓得到模拟卡死——服务器死了客户端照样自己走。
+- HUD：客户端 `age > 64`（1 s）显示 `SERVER SILENT x.xs`；暂停菜单加 Reconnect。
+- 桥 `reconnect()`：同 client_id + A5 票据重走信令 resume，回原槽，不重新排队。
+- 判据一（失联）：起 host+client，杀掉 host，4 s 后客户端打 `breakpoint: server silent age=65`。
+- 判据二（重连）：`--reconnect-check` → 客户端 `reconnect ok`；房主
+  `signal slot 1 resumed 1` 并再次 `peer joined slot 1`（同一槽，不是新号）。
+- 16 项闸门 + bench 全绿。
+
+### 债
+
+- 重连后客户端会短暂 `peers 0`（旧 UDP 已关、新 HELLO 未到），HUD 会闪一下；可接受，未打磨。
+- 全链路的自动化闸门仍是分段的（[match] 握手 / [reconnect] 顶替 / --reconnect-check 端到端），
+  没有一条命令一次跑完全部。
+
+---
+
 # 开发日志（详细）
 
 > 从 2026-10-20 起，在 PROGRESS 末尾追加详细日志；上面的 S 编号短条目保留，作为索引。

@@ -188,12 +188,26 @@ public:
 
     bool join(const String& host, int port) {
         if (m_net_client) return false;
-        std::string error;
         m_client_id = make_client_id();
+        m_join_host = host;
+        m_join_port = port;
+        m_has_ticket = false;
+        return join_impl(host, port, nullptr);
+    }
+
+    // A5: a resume keeps the same client id and presents the ticket the host
+    // issued, so it comes back to its old slot instead of queueing for a new one.
+    bool reconnect() {
+        if (!m_net_client || m_hosting || !m_has_ticket) return false;
+        return join_impl(m_join_host, m_join_port, &m_ticket);
+    }
+
+    bool join_impl(const String& host, int port, const sim::Ticket* resume) {
+        std::string error;
         // A1/A5: ask the host for a slot and a ticket before touching UDP.
         sim::MatchReply reply;
         if (!sim::match_request(host.utf8().get_data(), static_cast<uint16_t>(port), m_client_id,
-                                nullptr, reply) ||
+                                resume, reply) ||
             !reply.ok || reply.status != sim::MatchStatus::Accepted) {
             std::printf("breakpoint: join signal failed error='%s' status=%d\n",
                         reply.error.c_str(), static_cast<int>(reply.status));
@@ -201,6 +215,13 @@ public:
             ERR_PRINT(String("breakpoint join: signalling failed"));
             return false;
         }
+        if (reply.has_ticket) {
+            m_ticket = reply.ticket;
+            m_has_ticket = true;
+        }
+        // Admitted: the old link (if any) can go before the new one is built.
+        m_net_client.reset();
+        m_udp.reset();
         m_udp = std::make_unique<sim::UdpTransport>();
         if (!m_udp->open(0, error) ||
             !m_udp->connect_peer(host.utf8().get_data(), reply.game_port, error)) {
@@ -357,6 +378,10 @@ public:
     int get_max_impulses() const { return m_world.params.max_impulses; }
 
     // Placeholder until hp/armor are networked (M6).
+    int get_snapshot_age() const {
+        return m_net_client ? m_net_client->snapshot_age() : -1;
+    }
+
     int get_hp() const { return 100; }
     int get_armor() const { return 0; }
 
@@ -379,6 +404,7 @@ protected:
         ClassDB::bind_method(D_METHOD("drain_events"), &SimWorld::drain_events);
         ClassDB::bind_method(D_METHOD("host", "port", "players"), &SimWorld::host);
         ClassDB::bind_method(D_METHOD("join", "host", "port"), &SimWorld::join);
+        ClassDB::bind_method(D_METHOD("reconnect"), &SimWorld::reconnect);
         ClassDB::bind_method(D_METHOD("step_network"), &SimWorld::step_network);
         ClassDB::bind_method(D_METHOD("is_networked"), &SimWorld::is_networked);
         ClassDB::bind_method(D_METHOD("get_joined"), &SimWorld::get_joined);
@@ -392,6 +418,7 @@ protected:
         ClassDB::bind_method(D_METHOD("get_state"), &SimWorld::get_state);
         ClassDB::bind_method(D_METHOD("get_impulses"), &SimWorld::get_impulses);
         ClassDB::bind_method(D_METHOD("get_max_impulses"), &SimWorld::get_max_impulses);
+        ClassDB::bind_method(D_METHOD("get_snapshot_age"), &SimWorld::get_snapshot_age);
         ClassDB::bind_method(D_METHOD("get_hp"), &SimWorld::get_hp);
         ClassDB::bind_method(D_METHOD("get_armor"), &SimWorld::get_armor);
         ClassDB::bind_method(D_METHOD("get_eye_height"), &SimWorld::get_eye_height);
@@ -459,6 +486,10 @@ private:
     std::unique_ptr<sim::LoopbackTransport> m_local_to_client;
     bool m_hosting = false;
     sim::ClientId m_client_id{};
+    sim::Ticket m_ticket{};
+    bool m_has_ticket = false;
+    String m_join_host;
+    int m_join_port = 0;
     std::chrono::steady_clock::time_point m_last_hello{};
     PackedVector3Array m_vertices;
     PackedVector3Array m_normals;
