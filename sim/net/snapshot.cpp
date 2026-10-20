@@ -21,7 +21,8 @@ bool same_status(const PlayerSnap& a, const PlayerSnap& b) {
     return a.flags == b.flags && a.impulses == b.impulses && a.state == b.state;
 }
 bool same_timers(const PlayerSnap& a, const PlayerSnap& b) {
-    return a.state_ticks == b.state_ticks && a.dash_cooldown == b.dash_cooldown;
+    return a.state_ticks == b.state_ticks && a.dash_cooldown == b.dash_cooldown &&
+           a.slow_ticks == b.slow_ticks;
 }
 bool same_yaw(const PlayerSnap& a, const PlayerSnap& b) { return a.yaw == b.yaw; }
 bool same_extra(const PlayerSnap& a, const PlayerSnap& b) {
@@ -42,6 +43,7 @@ PlayerSnap to_snap(const PlayerState& p) {
     s.state = static_cast<uint8_t>(p.state);
     s.state_ticks = static_cast<uint16_t>(p.state_ticks);
     s.dash_cooldown = static_cast<uint16_t>(p.dash_cooldown);
+    s.slow_ticks = static_cast<uint16_t>(p.slow_ticks);
     s.wall_normal = p.wall_normal;
     s.vault_dir = p.vault_dir;
     s.vault_rise = p.vault_rise;
@@ -59,6 +61,7 @@ void from_snap(const PlayerSnap& s, PlayerState& p) {
     p.state = static_cast<ParkourState>(s.state);
     p.state_ticks = s.state_ticks;
     p.dash_cooldown = s.dash_cooldown;
+    p.slow_ticks = s.slow_ticks;
     p.jump_was_down = (s.flags & 8) != 0;
     p.wall_normal = s.wall_normal;
     p.vault_dir = s.vault_dir;
@@ -104,6 +107,7 @@ std::vector<uint8_t> encode_snapshot(const Snapshot& current, const Snapshot* ba
         if (mask & kFieldTimers) {
             w.u16(now.state_ticks);
             w.u16(now.dash_cooldown);
+            w.u16(now.slow_ticks);
         }
         if (mask & kFieldYaw) w.f32(now.yaw);
         if (mask & kFieldExtra) {
@@ -155,6 +159,7 @@ bool decode_snapshot(const uint8_t* data, size_t size, const Snapshot* baseline,
         if (mask & kFieldTimers) {
             p.state_ticks = r.u16();
             p.dash_cooldown = r.u16();
+            p.slow_ticks = r.u16();
         }
         if (mask & kFieldYaw) p.yaw = r.f32();
         if (mask & kFieldExtra) {

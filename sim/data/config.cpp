@@ -128,12 +128,12 @@ uint64_t MovementParams::hash() const {
      .f32(gravity).f32(jump_velocity).f32(step_height).f32(crouch_height)
      .f32(stand_height).f32(player_radius).f32(crouch_speed_scale);
     h.u32(static_cast<uint32_t>(max_impulses)).u32(recharge_on_ground ? 1u : 0u);
-    h.f32(slide_entry_window).f32(slide_min_speed).f32(slide_friction_scale).f32(slide_jump_boost)
+    h.f32(slide_min_speed).f32(slide_friction_scale).f32(slide_jump_boost)
      .f32(slide_entry_boost).f32(slide_max_duration);
     h.f32(wallrun_min_approach_speed).f32(wallrun_max_duration)
      .f32(wallrun_gravity_scale).f32(wallrun_normal_dot);
     h.f32(wallclimb_max_duration).f32(wallclimb_speed);
-    h.f32(vault_max_height).f32(vault_duration).f32(vault_forward_boost);
+    h.f32(vault_max_height).f32(vault_duration);
     h.f32(dash_speed).f32(dash_cooldown);
     h.f32(min_wall_thickness).u32(static_cast<uint32_t>(max_slide_steps))
      .u32(static_cast<uint32_t>(max_bumps));
@@ -211,7 +211,6 @@ bool load_movement_params(const std::string& path, MovementParams& out,
     b.integer("parkour.max_impulses", p.max_impulses);
     b.boolean("parkour.recharge_on_ground", p.recharge_on_ground);
 
-    b.number("slide.entry_window", p.slide_entry_window);
     b.number("slide.min_speed", p.slide_min_speed);
     b.number("slide.friction_scale", p.slide_friction_scale);
     b.number("slide.jump_boost", p.slide_jump_boost);
@@ -228,7 +227,6 @@ bool load_movement_params(const std::string& path, MovementParams& out,
 
     b.number("vault.max_height", p.vault_max_height);
     b.number("vault.duration", p.vault_duration);
-    b.number("vault.forward_boost", p.vault_forward_boost);
 
     b.number("dash.speed", p.dash_speed);
     b.number("dash.cooldown", p.dash_cooldown);

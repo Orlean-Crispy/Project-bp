@@ -21,6 +21,7 @@ struct PlayerSnap {
     uint8_t state = 0;
     uint16_t state_ticks = 0;
     uint16_t dash_cooldown = 0;
+    uint16_t slow_ticks = 0;  // remaining post-hit movement penalty (6.10)
     // R9: these survive a tick and steer the next one (wall run direction,
     // scripted vault), so a reconciliation that cannot see them would accept a
     // divergent prediction. Sent as their own delta field group.

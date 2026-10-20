@@ -92,7 +92,8 @@ bool same_state(const PlayerSnap& a, const PlayerState& b) {
     // would have fixed it never happens. jump_was_down rides in the flags.
     return a.pos == bs.pos && a.vel == bs.vel && a.yaw == bs.yaw && a.flags == bs.flags &&
            a.impulses == bs.impulses && a.state == bs.state && a.state_ticks == bs.state_ticks &&
-           a.dash_cooldown == bs.dash_cooldown && a.wall_normal == bs.wall_normal &&
+           a.dash_cooldown == bs.dash_cooldown && a.slow_ticks == bs.slow_ticks &&
+           a.wall_normal == bs.wall_normal &&
            a.vault_dir == bs.vault_dir && a.vault_rise == bs.vault_rise;
 }
 

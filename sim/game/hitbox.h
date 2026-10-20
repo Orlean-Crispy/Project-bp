@@ -15,7 +15,8 @@ enum class HitZone : uint8_t {
 };
 
 // One tick of a player's damageable volume (plan 7.3). Multipliers are not
-// stored per sample: zone_multiplier() is the single source and never changes.
+// stored per sample: zone_multiplier() is the single source, and the head
+// multiplier comes from the tuning (movement.toml [damage]).
 struct HitboxSample {
     Vec3 pos;  // feet position
     float height = 1.42f;
@@ -25,8 +26,8 @@ struct HitboxSample {
 };
 
 HitZone hit_zone_at(const HitboxSample& sample, float y);
-float zone_multiplier(HitZone zone);
-float hit_multiplier(const HitboxSample& sample, float y);
+float zone_multiplier(HitZone zone, const MovementParams& params);
+float hit_multiplier(const HitboxSample& sample, float y, const MovementParams& params);
 bool hitbox_contains(const HitboxSample& sample, const Vec3& point);
 
 // Plan 7.3: 64 ticks = 1 second at 64 Hz, recorded every tick by both sides.

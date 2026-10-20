@@ -19,10 +19,12 @@ HitZone hit_zone_at(const HitboxSample& sample, float y) {
     return HitZone::Legs;
 }
 
-float zone_multiplier(HitZone zone) {
+float zone_multiplier(HitZone zone, const MovementParams& params) {
     switch (zone) {
         case HitZone::Head:
-            return 5.0f;  // plan 6.10: v0.3 raised the headshot multiplier from 4
+            // plan 6.10: v0.3 raised the headshot multiplier from 4; the value
+            // is tuning data now (movement.toml [damage].headshot_mult).
+            return params.headshot_mult;
         case HitZone::Chest:
             return 1.0f;
         case HitZone::Legs:
@@ -31,8 +33,8 @@ float zone_multiplier(HitZone zone) {
     return 1.0f;
 }
 
-float hit_multiplier(const HitboxSample& sample, float y) {
-    return zone_multiplier(hit_zone_at(sample, y));
+float hit_multiplier(const HitboxSample& sample, float y, const MovementParams& params) {
+    return zone_multiplier(hit_zone_at(sample, y), params);
 }
 
 bool hitbox_contains(const HitboxSample& sample, const Vec3& point) {

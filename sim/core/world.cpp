@@ -48,7 +48,8 @@ uint64_t World::state_hash() const {
         h.u32(static_cast<uint32_t>(p.impulses));
         h.u32(static_cast<uint32_t>(p.state))
             .u32(static_cast<uint32_t>(p.state_ticks))
-            .u32(static_cast<uint32_t>(p.dash_cooldown));
+            .u32(static_cast<uint32_t>(p.dash_cooldown))
+            .u32(static_cast<uint32_t>(p.slow_ticks));
         h.u32(p.jump_was_down ? 1u : 0u)
             .u32(p.slide_was_down ? 1u : 0u)
             .u32(p.dash_was_down ? 1u : 0u)

@@ -9,7 +9,6 @@ namespace {
 constexpr float kGroundProbe = 0.02f;   // 2 cm
 constexpr float kProbeBack = 0.05f;     // start the wall probe slightly behind
 constexpr float kProbeForward = 0.15f;  // ...so touching a wall still registers
-constexpr float kVerticalNormal = 0.7f; // |n.z| above this is floor/ceiling, not wall
 
 float horizontal_speed(const Vec3& v) {
     return std::sqrt(v.x * v.x + v.y * v.y);
@@ -93,14 +92,14 @@ struct WallProbe {
 // Looks for a vertical surface within reach along dir. Only wall-like normals
 // count, so standing next to a crate does not start a wall run on the floor.
 WallProbe probe_wall(const CollisionWorld& world, const Vec3& pos, const Vec3& dir,
-                     const Vec3& mins, const Vec3& maxs) {
+                     const Vec3& mins, const Vec3& maxs, const MovementParams& params) {
     WallProbe result;
     if (length(dir) < 1e-4f) return result;
     const Vec3 unit = normalized(dir);
     const TraceResult tr = world.trace_box(pos - unit * kProbeBack, pos + unit * kProbeForward,
                                            mins, maxs);
     if (tr.start_solid || tr.fraction >= 1.0f) return result;
-    if (std::fabs(tr.normal.z) > kVerticalNormal) return result;
+    if (std::fabs(tr.normal.z) > params.wallrun_normal_dot) return result;
     result.hit = true;
     result.normal = tr.normal;
     result.brush = tr.brush;
@@ -162,7 +161,7 @@ VaultProbe probe_vault(const CollisionWorld& world, const PlayerState& player,
     const TraceResult face = world.trace_box(chest, chest + unit * (params.player_radius + 0.35f),
                                              mins, maxs);
     if (face.start_solid || face.fraction >= 1.0f) return result;
-    if (std::fabs(face.normal.z) > kVerticalNormal) return result;
+    if (std::fabs(face.normal.z) > params.wallrun_normal_dot) return result;
 
     // Height of the surface just past that face.
     // Step past the contact point by the player radius plus a margin, so the
@@ -196,6 +195,10 @@ float effective_max_speed(const PlayerState& player, const MovementParams& param
     return speed;
 }
 
+void apply_damage_slow(PlayerState& player, const MovementParams& params) {
+    player.slow_ticks = params.damage_slow_ticks;  // refresh, never add
+}
+
 void player_hull(const PlayerState& player, const MovementParams& params, Vec3& mins, Vec3& maxs) {
     const float height = player.crouched ? params.crouch_height : params.stand_height;
     mins = Vec3(-params.player_radius, -params.player_radius, 0.0f);
@@ -219,6 +222,11 @@ void pmove(PlayerState& player, const MoveInput& input, const CollisionWorld& wo
     if (length(wish) > 1.0f) wish = normalized(wish);
 
     if (player.dash_cooldown > 0) --player.dash_cooldown;
+
+    // Section 6.10: the post-hit movement penalty is derived from its tick timer
+    // here, so effective_max_speed (the single speed path) reads the live value.
+    player.slow_factor = player.slow_ticks > 0 ? params.damage_slow_factor : 1.0f;
+    if (player.slow_ticks > 0) --player.slow_ticks;
 
     const bool do_dash = input.dash && !player.dash_was_down && player.dash_cooldown == 0;
     player.dash_was_down = input.dash;
@@ -280,7 +288,7 @@ void pmove(PlayerState& player, const MoveInput& input, const CollisionWorld& wo
         // After the velocity is projected onto the wall plane it runs parallel to
         // the wall, so probing along the velocity would always miss. Probe back
         // along the stored normal instead.
-        const WallProbe wall = probe_wall(world, player.pos, -player.wall_normal, mins, maxs);
+        const WallProbe wall = probe_wall(world, player.pos, -player.wall_normal, mins, maxs, params);
         const int max_ticks = static_cast<int>(params.wallrun_max_duration * hz + 0.5f);
         const bool keep = player.on_ground == false && input.wallrun && wall.hit &&
                           player.state_ticks <= max_ticks;
@@ -293,7 +301,7 @@ void pmove(PlayerState& player, const MoveInput& input, const CollisionWorld& wo
     } else if (player.state == ParkourState::WallClimb) {
         ++player.state_ticks;
         const int max_ticks = static_cast<int>(params.wallclimb_max_duration * hz + 0.5f);
-        const WallProbe wall = probe_wall(world, player.pos, facing, mins, maxs);
+        const WallProbe wall = probe_wall(world, player.pos, facing, mins, maxs, params);
         const bool keep = input.wallclimb && wall.hit && player.state_ticks <= max_ticks;
         if (!keep) {
             player.state = player.on_ground ? ParkourState::Ground : ParkourState::Air;
@@ -338,7 +346,7 @@ void pmove(PlayerState& player, const MoveInput& input, const CollisionWorld& wo
 
     // Wall climb works from the ground too (Apex style), wall run does not.
     if (!busy && input.wallclimb && player.impulses > 0) {
-        const WallProbe wall = probe_wall(world, player.pos, facing, mins, maxs);
+        const WallProbe wall = probe_wall(world, player.pos, facing, mins, maxs, params);
         if (wall.hit && wall.brush && wall.brush->climbable) {
             player.state = ParkourState::WallClimb;
             player.state_ticks = 0;
@@ -351,7 +359,7 @@ void pmove(PlayerState& player, const MoveInput& input, const CollisionWorld& wo
         input.wallrun && player.impulses > 0 &&
         horizontal_speed(player.vel) >= params.wallrun_min_approach_speed) {
         const Vec3 move_dir(player.vel.x, player.vel.y, 0.0f);
-        const WallProbe wall = probe_wall(world, player.pos, move_dir, mins, maxs);
+        const WallProbe wall = probe_wall(world, player.pos, move_dir, mins, maxs, params);
         if (wall.hit && wall.brush && wall.brush->wallrunnable) {
             player.state = ParkourState::WallRun;
             player.state_ticks = 0;

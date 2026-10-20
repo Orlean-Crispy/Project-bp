@@ -569,6 +569,44 @@ int run_parkour_test(const Options& opt) {
         std::printf("  [parkour] vault_climb_single %d\n", single ? 1 : 0);
     }
 
+    // R7: movement.toml [damage] is live in the effective-speed path: a hit
+    // costs 15% speed for 1.5 s, a second hit refreshes (never stacks), and the
+    // speed comes back when the timer runs out.
+    {
+        reset(-10.0f, 7.0f);
+        sim::apply_damage_slow(world.players[0], world.params);
+        float slowed_peak = 0.0f;
+        for (int i = 0; i < 20; ++i) {
+            MoveInput in;
+            in.forward = 1.0f;
+            world.step({in}, kDt);
+            const sim::Vec3& v = world.players[0].vel;
+            slowed_peak = std::max(slowed_peak, std::sqrt(v.x * v.x + v.y * v.y));
+        }
+        sim::apply_damage_slow(world.players[0], world.params);
+        const bool refreshed = world.players[0].slow_ticks == world.params.damage_slow_ticks;
+        for (int i = 0; i < world.params.damage_slow_ticks + 8; ++i) {
+            MoveInput in;
+            in.forward = 1.0f;
+            world.step({in}, kDt);
+        }
+        float restored_peak = 0.0f;
+        for (int i = 0; i < 10; ++i) {
+            MoveInput in;
+            in.forward = 1.0f;
+            world.step({in}, kDt);
+            const sim::Vec3& v = world.players[0].vel;
+            restored_peak = std::max(restored_peak, std::sqrt(v.x * v.x + v.y * v.y));
+        }
+        const float expected = world.params.base_speed * world.params.damage_slow_factor;
+        const bool slow_ok = std::fabs(slowed_peak - expected) < 0.05f && refreshed &&
+                             std::fabs(restored_peak - world.params.base_speed) < 0.05f;
+        if (!slow_ok) ++failures;
+        std::printf("  %-34s slowed %.2f restored %.2f m/s  %s\n", "damage slow -15% for 1.5 s",
+                    static_cast<double>(slowed_peak), static_cast<double>(restored_peak),
+                    slow_ok ? "ok" : "FAIL");
+    }
+
     if (failures != 0) {
         std::printf("FAIL: %d parkour checks failed\n", failures);
         return 1;
@@ -883,10 +921,10 @@ int run_hitbox_test(const Options& opt) {
     const sim::HitboxSample stand = history.at(11);
     check("standing height is 1.42 m", std::fabs(stand.height - 1.42f) < 1e-4f);
     check("head band", sim::hit_zone_at(stand, 1.30f) == sim::HitZone::Head);
-    check("head multiplier is x5", sim::hit_multiplier(stand, 1.30f) == 5.0f);
+    check("head multiplier is x5", sim::hit_multiplier(stand, 1.30f, params) == 5.0f);
     check("chest band", sim::hit_zone_at(stand, 0.90f) == sim::HitZone::Chest);
     check("leg band", sim::hit_zone_at(stand, 0.30f) == sim::HitZone::Legs);
-    check("leg multiplier is x0.7", sim::hit_multiplier(stand, 0.30f) == 0.7f);
+    check("leg multiplier is x0.7", sim::hit_multiplier(stand, 0.30f, params) == 0.7f);
     check("just above the head line is head", sim::hit_zone_at(stand, 0.84f * 1.42f) ==
                                                   sim::HitZone::Head);
     check("just below the head line is chest", sim::hit_zone_at(stand, 0.80f * 1.42f) ==

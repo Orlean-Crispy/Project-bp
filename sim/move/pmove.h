@@ -56,10 +56,18 @@ struct PlayerState {
     // rollback snapshot can never silently replay with a different max speed.
     float speed_coefficient = 1.0f;
     float slow_factor = 1.0f;
+    // Section 6.10: ticks of the post-hit movement penalty still to serve. pmove
+    // derives slow_factor from this every tick, so the penalty can never be left
+    // on by accident (whole ticks, no float time - iron law B).
+    int slow_ticks = 0;
 };
 
 // max speed = base * weapon * slow * crouch (plan section 5.10).
 float effective_max_speed(const PlayerState& player, const MovementParams& params);
+
+// Section 6.10: a hit slows movement by damage_slow_factor for damage_slow_ticks
+// (15% for 1.5 s at the default tuning). Repeated hits refresh, never stack.
+void apply_damage_slow(PlayerState& player, const MovementParams& params);
 
 void player_hull(const PlayerState& player, const MovementParams& params, Vec3& mins, Vec3& maxs);
 

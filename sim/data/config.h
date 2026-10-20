@@ -29,7 +29,6 @@ struct MovementParams {
     bool recharge_on_ground = true;
 
     // slide
-    float slide_entry_window = 0.15f;
     float slide_min_speed = 5.08f;
     float slide_friction_scale = 0.35f;
     float slide_jump_boost = 1.15f;
@@ -49,7 +48,6 @@ struct MovementParams {
     // vault
     float vault_max_height = 1.22f;
     float vault_duration = 0.35f;
-    float vault_forward_boost = 1.2f;
 
     // dash
     float dash_speed = 11.43f;
