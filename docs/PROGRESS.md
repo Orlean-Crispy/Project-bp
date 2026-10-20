@@ -1923,6 +1923,7 @@ DLL 就在 `godot/bin/` 里，导出表里 `breakpoint_library_init` 也在，�
 - `tools/smoke.ps1`：**17 项行为闸门 + bench ALL GREEN**（p99 0.40 µs，0.00 allocs/tick），
   其中第 17 项自带两条：`hud hp=100 armor=0 impulse=4/4 role=solo vertices=360
   build=<hash> protocol=4 port=27115` 与两进程 `reconnect ok / double=0 / signal slot 1 resumed 1`；
+  （S59 之后协议升到 5、hud 行多了 protocol/port 之外的快照字段说明，见下一节。）
 - `tools/net_selftest.ps1`：`joins=2 accepted=420 far=0 moved=46.69 ports_ok=True clients_ok=True`；
 - 两个 Godot 进程**一个 `--port` 都不带**：host 打 `hosting on port 27115`、client 打
   `connecting to 127.0.0.1:27115`，双方互相 `remote slot N visible`；
@@ -1977,6 +1978,16 @@ DLL 就在 `godot/bin/` 里，导出表里 `breakpoint_library_init` 也在，�
 4. 死代码清掉 11 处：rng_at64、clampf、dropped_commands、decode_failures、stale_skips、
    sent_packets、delivered_packets、PlayerState::tick、last_acked_snapshot、Link::ever_seen、
    DemoWriter::m_file。
+
+### 1b. 按里程碑看的检查表
+
+| 里程碑 | 查了什么 | 代表性问题 | 修法与判据 | 仍留 |
+|---|---|---|---|---|
+| M1 地图/碰撞/哈希 | .map 解析（entity/brush/平面/材质）、单位换算、扫掠与分步、geometry_hash、--info | --info 只打印；origin 在桥里换算；geometry_hash 不含 _climbable；0 brush 地图能加载；bumps 多给一次 | 断言 test_box 形状（2 entities / 8 brushes / 21.0 m）；entity_origin_metres()；哈希含标志并缓存；拒绝空 brush；严格 < | 分步长度与防穿注释/判据表述（AUD-33） |
+| M2 基础 pmove | 走跑跳蹲、step-up、蹲下空间、摩擦/加速、数值与计划书 §5.6 | 空中也 step-up；impulse 每 tick 回满；NaN 输入能污染整局 | 仅着地 step；recharge_ticks=32；入口 isfinite/dt 守卫 | 手感常量仍是字面量（AUD-28） |
+| M3 parkour | slide/dash/wallrun/wallclimb/vault 状态机、enter/exit 对称、计时、代价 | 滑铲跳那一 tick 仍走 slide 摩擦；爬墙 keep 不查 climbable；翻越/爬墙被当 Jump | 重算 sliding；keep 查标志；Jump 要求 jump 沿 | 空中 mantle 的定位（设计待定 2） |
+| M4 demo/比对 | 格式、头部、录制回放、--dump/--compare、分叉定位 | Reader 泄漏句柄；截断当 EOF；build_id 从不比较；compare 一方 EOF 也 PASS | 析构/close；feof 区分；build_id 进 mismatch 且返回 1；同 EOF + rows>0 | demo 初始状态不完整（AUD-30） |
+| M5 网络 | 线格式、delta、回滚、输入窗口、时钟、可靠流、票据、组局、分片、UDP、桥 | 快照缺三个沿与 speed_coefficient；幽灵链路永不超时；全零 id 可占房主槽；ack_bits 恒 0 却宣称有；闸门多处只打印 | 协议 v5 + [snapfields]；超时从 add_client 起算；拒全零 id；netchan 注明；9 处判据改成能失败 | AUD-20/21/22/23/24/26/27 |
 
 ### 2. 做了什么（按域）
 

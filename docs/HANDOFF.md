@@ -1,4 +1,4 @@
-# HANDOFF — 会话完整交接（2026-10-18 ~ 10-19）
+# HANDOFF — 会话完整交接（2026-10-18 ~ 10-20）
 
 > 用途：上下文被压缩或换会话后，除了 docs/AGENTS.md 的约束，还需要知道**这一天到底做过什么、
 > 为什么这么做、证据是什么**。约束与未结案以 AGENTS.md 为准；本文件只记录过程与结论。
@@ -7,8 +7,12 @@
 
 ## 0. 一句话总结
 
-从零搭起 M0–M4 全部、M5 的网络骨架、M6 的 HP/护甲规则；16 项 headless 行为闸门 + bench 全绿；
-Godot 4.5 宿主 + GDExtension 桥可运行。所有试玩反馈都已落回 sim 层并带回归测试。
+从零搭起 M0–M4 全部、M5 的网络骨架、M6 的 HP/护甲规则；17 项行为闸门 + bench 全绿
+（第 17 项是 Godot 桥，含暂停不掉线）；Godot 4.5 宿主 + GDExtension 桥可运行。
+所有试玩反馈都已落回 sim 层并带回归测试。
+
+**最新一次是 2026-10-20 夜的 M1–M5 全量审计（S59），看 §9。** 它改了协议（v5）、
+把一批"只打印不断言"的闸门改成会失败，并留下 12 条带 lead 的未修项。
 
 ---
 
@@ -369,7 +373,7 @@ bridge/mesh_common.h     to_godot（Z-up→Y-up）、material_color（纯函数�
 sim/net/matchmaking.*    MatchHost/MatchClient：TCP 握手、票据、槽位（含 release）
 sim/net/admission.h      approve/take：UDP 谁可以被放进来（两个宿主共用）
 sim/net/reliable_transport.*  一条 socket 两种语义，打标 demux
-sim/net/configstring.h   34 B 配置契约（version + params_hash + geometry_hash）
+sim/net/configstring.h   18 B 配置契约（version u16 + params_hash + geometry_hash）
 tools/headless_sim/      main.cpp（272 行，只分发）+ tests_net/move/demo + test_util
 ```
 
@@ -431,7 +435,7 @@ client 应打 `reconnect ok` 与 `reconnect double=0`）。
 - 第 17 项在没装 Godot（或没建 DLL）的机器上打印 SKIP 并返回 3——smoke 视为跳过；
   跨机 demo 比对仍缺第二台机器。
 
-AUD-19/13/17/14/15 已清（S58）；S59 又修了 25 项（impulse 充能、空中 step-up、Jump 事件、geometry_hash 标志、快照 v5、
+AUD-19/13/17/14/15 已清（S58）；S59 又修了三十余条（impulse 充能、空中 step-up、Jump 事件、geometry_hash 标志、快照 v5、
 幽灵链路超时、全零 id、demo 句柄/截断、桥的 solo 分配/眼高/失败清理、CLI 校验，
 以及一大批"只打印不断言"的闸门）。细节见 PROGRESS 最后一节与 AUDIT 第 6 节。
 
@@ -449,4 +453,172 @@ AUD-19/13/17/14/15 已清（S58）；S59 又修了 25 项（impulse 充能、空
 | tools/build_bridge.ps1 | 与 CMake 同一套标志 + BP_BUILD_ID |
 | tools/godot_env.ps1 | 唯一知道 Godot 路径与首跑导入（`$env:BP_GODOT` 优先） |
 | tools/godot_check.ps1 | 第 17 项闸门：--hud-check + 两进程重连，带超时，退出码 3 = SKIP |
-| tools/check_sources.ps1 | sim 源码清单 + 端口字面量 lint |
+| tools/check_sources.ps1 | sim 源码清单 + 端口字面量 + 三条铁律 lint（含 untracked） |
+
+---
+
+## 9. 2026-10-20（夜）· M1–M5 全量审计交接（S59）
+
+> 这一节是给"下一个打开仓库的人"的：**先读 §9.2 的三件事**，再决定要不要动代码。
+
+### 9.1 一句话
+
+四个**只读**代理分别通读 sim 核心/移动、sim 网络、bridge+Godot、tools+闸门；我逐条复核后
+修了 **三十余条**（§9.4 逐条列出；其中 2 条真数据缺陷、1 大类"闸门根本不会失败"），协议升到 **v5**，
+17 项闸门现在**真的会红**。剩 **12 条 + 5 个设计待定**，其中 AUD-20/26/27 排在 M6 前。
+
+### 9.2 先看这三件事（否则一定会改错）
+
+1. **协议 v5，快照字段变了。**
+   PlayerSnap 现在带四个 *_was_down（flags bit0-6）、recharge_progress、speed_coefficient。
+   旧 DLL 与旧 EXE **不能混用**（HELLO 版本号会拒）。要动快照，必须同时改：
+   sim/core/version.h、sim/net/snapshot.h/.cpp、session.cpp 的 same_state、
+   tests_net.cpp 的 [snapfields]、本文件 §8.6、docs/AGENTS §8.4。
+   **判据**：--test-net 里 [snapfields] 1。
+2. **17 项闸门现在会真的失败。** --bench 超过 4 ms 或有任何分配就返回 1；--info 会断言
+   test_box 的形状；光线命中要求 fraction 落在区间；墙测试要求"真的到达墙"；
+   --play 遇到不同 build_id 直接失败。看到红先怀疑实现，不要先怀疑环境。
+3. **文档曾经跑在代码前面。** 本轮发现三处：--force-paused 从未解析（AUD-02 的验证是假的）、
+   entry["state"] 没删（AUD-18 写着已删）、"桥已下发 configstring"（真实链路没接可靠流）。
+   以后写"已通"之前先找到会失败的闸门；找不到就先写进 docs/AUDIT.md §6.2。
+
+### 9.3 这五类问题，如果没修会发生什么（按后果排序）
+
+| 类 | 具体 | 没修的后果 |
+|---|---|---|
+| A | impulse 着地**每 tick** +1 | 4 个 impulse **62 ms** 回满，M3 的 parkour 资源与冷却全部失真，"省着用"这件事不存在 |
+| B | 回滚快照缺 slide/dash/vault 沿与 speed_coefficient | 按住滑铲/冲刺每个快照都被当"刚按下"重放：白扣 impulse、修正数暴涨、位置永远追不上 |
+| C | 从没收到包的链路永不超时 | 掉线者永久占槽 + 每 tick 继续 FULL_STATE（约 43 KB/s）；越玩越卡、新玩家进不来，还能看到"立正幽灵" |
+| D | 全零 client_id 被当成"空闲槽" | 局域网里任何人构造一个全零 id 就能占走房主 slot 0，把房主顶掉 |
+| E | 闸门只打印不 return | 所有"证据"都可能是假的：9 处判据（info/bench/land/分片/dup/字段/胸倍率/墙到达/光线 fraction）从未失败过 |
+
+### 9.4 已修（按域逐条；每条都给出"现在怎么证明"）
+
+| 域 | 修了什么 | 证明 |
+|---|---|---|
+| 模拟 | impulse 充能改 recharge_ticks（toml + hash） | --test-parkour：31 tick 不回、第 32 tick 回 1 |
+| 模拟 | 空中不再 step-up | --test-step 仍绿；跳跃撞台沿不再抬升 |
+| 模拟 | Jump 事件要求按下沿 + 起跳前着地 | --test-events（jump tick 5 / land tick 47） |
+| 模拟 | 删 PlayerState.tick，hash 用 recharge_progress | state_fields 21/21 |
+| 模拟 | geometry_hash 含 _climbable/_wallrunnable 且缓存 | [config] 与两进程联机 |
+| 模拟 | bumps 严格 < max_bumps | --test-wall 100 次 × 5 档 |
+| 模拟 | pmove 拒绝 NaN/dt≤0，输入钳 [-1,1] | --selftest 600 tick 一致 |
+| 模拟 | 爬墙 keep 检查 climbable | --test-parkour wall climb |
+| 模拟 | 0 brush 地图报错 | --info 现在断言 brush>0 |
+| 模拟 | entity origin 由 map_parse 换算 | check_sources 的 0.0254 规则 |
+| 网络 | 协议 v5：四个沿 + recharge + speed_coefficient | [snapfields] 1 |
+| 网络 | 超时从 add_client 起算 | [timeout] joined 1 dropped 1 reuse 1 |
+| 网络 | 拒绝全零 client_id | [match] 拒绝路径（与 tamper 同出口） |
+| 网络 | MatchHost::start 先 stop | 重复 host 不再 terminate |
+| 网络 | peer 收件队列封顶 64 | 长局内存不随孤儿 peer 增长 |
+| 网络 | bad_snapshots() 接到 net_loop | 手工跑 net_loop 可见 bad= |
+| demo | DemoReader 析构/close；短读≠EOF | --test-demo 截断检测 |
+| demo | build_id 进 mismatch，--play 失败 | --test-demo 改参数/改构建都红 |
+| demo | --compare 要求同 EOF 且 rows>0 | 空/截断 dump 会失败 |
+| demo | 删除死字段 m_file | 编译期 |
+| 桥 | solo 用 step_single | 铁律 E（0 分配） |
+| 桥 | params_hash 用 combined | [config] combat 1 同源 |
+| 桥 | 眼高 0.9×姿态高度（蹲下会降） | --hud-check 手动可见，逻辑单点 |
+| 桥 | join 失败回滚 disconnected | 失败后 solo 仍能走 |
+| 桥 | start_host 失败 abort_host() | 不再留 TCP 线程/端口 |
+| 桥 | join_impl 先建后换 | 瞬时 UDP 失败不打断现有会话 |
+| 桥 | 删除未读 entry["state"] | 每帧少一个 Variant |
+| Godot | --force-paused 真解析 | godot_check「暂停 7 s 不掉线」 |
+| Godot | 暂停时同步相机 + drain 事件 | 恢复不瞬移、旧事件不集中吐出 |
+| Godot | Esc 过滤 echo；autoplay 改边沿 | 长按不反复开关；跳帧也能跳 |
+| 工具 | CLI 全量校验、record/play 互斥、dump 需 play | --bench 0 / --ticks -1 报错退出 2 |
+| 工具 | 闸门改成能失败（9 处） | 见 §9.3 E |
+| 工具 | CMake 与 build_bridge 同解释源清单 | 在 sim_sources.txt 加注释不再只坏一边 |
+| 工具 | check_sources 收 untracked + 三条铁律 lint | sources ok / ports ok / rules ok |
+| 工具 | run_net_alloc_check 移回 tests_net | AUDIT A4 名副其实；[netalloc] 0 |
+| 清理 | 死代码 11 处 | 全量 -Werror + 频率扫描 |
+
+### 9.5 未修（12 条）与设计待定（5 条）
+
+| id | sev | 一句话 | lead |
+|---|---|---|---|
+| AUD-20 | P1 | 客户端落后不补 tick，>110 ms 卡顿后输入永久 Late | **M6 前** |
+| AUD-26 | P1 | UDP recv 不校验源地址（同网段可注入） | **M6 前** |
+| AUD-27 | P1 | 正常离开不释放组局槽位（N 个 id 后 RoomFull） | **M6 前** |
+| AUD-21 | P1 | 序列化/接收每 tick 约 4-8 次分配（[netalloc] 只覆盖 session 三步） | M6 |
+| AUD-22 | P1 | 可靠流 u16 回绕不安全（第 65536 个包后静默死） | M6 |
+| AUD-23 | P1 | FragmentedTransport 未接真实链路（M6 加 hp 后满编快照会走 IP 分片） | M6 |
+| AUD-24 | P1 | admission 无 TTL/上限 | M6 |
+| AUD-25 | P2 | ReliableTransport 的 now_ms 只在 advance 更新（采样少一 tick） | 顺手 |
+| AUD-28 | P2 | 手感常量仍是字面量（0.02/-0.05/+0.15/0.5×/0.05/0.2/0.55/1e-3/0.7），违反铁律 I | M6 前 |
+| AUD-29 | P2 | combat.toml 无未知键诊断；max_health 无消费者 | M6 |
+| AUD-30 | P2 | demo 初始状态不完整（只能从 spawn 录）；DemoWriter 非流式 | M6 |
+| AUD-31..35 | P2 | 信令主线程同步 / HUD 每帧重拼 / 左右键侧别 / trace 注释 / 5 tick 上限 | M7 |
+
+**设计待定（需要拍板，不是 bug）**
+1. impulse 充能速率（现 recharge_ticks=32 = 0.5 s/个，是提案）；
+2. 空中 step-up 已按"不该免费上台阶"关掉；要做 Apex 式 mantle 应显式实现；
+3. 护甲吸收 66% 与再生 5 s/10 s 仍是提案（改 1% 就破 TTK 判据）；
+4. 可靠流 configstring 目前只在闸门启用（真实链路靠 FULL_STATE 两个哈希拒局）；
+5. acked_cmd 与 ack_bits 暂未消费（后者恒 0，已在 netchan.h 注明），M6 接输入 ack 时再定。
+
+### 9.6 怎么验（照抄，含预期输出）
+
+~~~powershell
+powershell -File tools\build.ps1          # -Werror，零告警
+powershell -File tools\smoke.ps1          # 17 项 + bench；结尾 ALL GREEN
+powershell -File tools\build_bridge.ps1   # 与 CMake 同一套标志
+powershell -File tools\godot_check.ps1    # hud + 重连 double=0 + 暂停 7 s
+powershell -File tools\net_selftest.ps1   # joins=2 accepted≈420 far=0 ports_ok=True
+~~~
+
+关键行（数字可小幅浮动，语义不能变）：
+
+~~~
+PASS: 2 entities, 8 brushes, 21.0 m across
+state_fields  21/21
+  [snapfields] 1
+  impulse recharge interval          top-up after 32 ticks=1  ok
+  [fragment] 3000B 1 small 1 lossy delivered 9 corrupted 0
+  [netalloc] per_tick 0
+PASS: p99 within the 4 ms budget, zero allocations per tick
+hud hp=100 armor=0 impulse=4/4 role=solo vertices=360 build=<hash> protocol=5 port=27115
+PASS: the link survived 7 s with the menu open
+~~~
+
+**别手敲裸 --hud-check**：扩展加载失败时它不退出，会挂着并把 DLL 锁住（ld 报 Permission denied）。
+用 godot_check.ps1（带超时）。
+
+### 9.7 下一个人的前 30 分钟
+
+1. 读 docs/AGENTS.md §0.2 / §3 / §5 / §8，再读本文件 §8 与 §9。
+2. git log --oneline -8：f6f9e29 是审计收尾，前面 5 条是 AUD-19/13/17/14/15。
+3. build.ps1 → smoke.ps1：**不绿不要往下走**，红的那个就是战场。
+4. build_bridge.ps1 → godot_check.ps1：确认扩展真的加载、端口来自 ports.h。
+5. 要动快照/协议：先读 §9.2 第 1 条（六个地方必须一起改）。
+6. 要动移动：先跑 --test-parkour，再按 pmove.cpp 顶部的顺序注释读。
+7. 要动网络：先跑 --test-net，再读 session.cpp 的输入窗口、回滚、时钟三段。
+8. 接手 M6：从 AUD-16（hp/armor 进快照）开始，它同时解决 AUD-29。
+
+### 9.8 本轮踩的坑（过程记录，不是设计决策）
+
+1. $Host 是 PowerShell 只读自动变量，两进程脚本第一版直接崩；改名 $hostProcess。
+2. 扩展加载失败时 --hud-check 不退出 → 留下 3 个僵尸 Godot → 下一次链接报
+   cannot open output file … Permission denied。**改 DLL 前先确认没有 Godot 在跑。**
+3. 中文路径又咬人：objdump/nm 对 DLL 直接 No such file or directory，只能复制到 ASCII 目录再看导出表。
+4. probe 与已有的 World probe 撞名 → conflicting declaration；改名 probe_field。
+5. 快照往返断言把 slow_factor 算进去——它是 pmove 每 tick 从 slow_ticks 派生的，不是线上状态。
+6. soak 阈值收到 30 tick 立刻红：45 tick 的"不动"是**贴墙顶着走**，合法。最终按"solid 才是真冻结"
+   （≤2）判，frozen 放到 64（1 s）。
+7. [fragment] 一开始要求 30% 丢包下 delivered≥10，实测 9。阈值要卡在"能证明重组发生过"的最低线
+   （改 5），否则闸门变成运气测试。
+
+### 9.9 文件地图变化（本轮）
+
+- **新增**：sim/net/ports.h（唯一端口来源）、map_parse.h 的 entity_origin_metres()、
+  tools/godot_env.ps1、tools/godot_check.ps1；Snapshot 新增 kFieldCharge 字段组。
+- **删除**：rng_at64、clampf、Session 的三个死 accessor、LoopbackTransport 的两个计数器、
+  PlayerState::tick、Link::ever_seen、last_acked_snapshot、DemoWriter::m_file。
+- **移动**：run_net_alloc_check 从 main.cpp 移到 tests_net.cpp（main.cpp 只剩参数与分发）。
+- **协议**：BP_PROTOCOL_VERSION=5（version.h 是唯一来源）。
+
+### 9.10 存档
+
+- commit f6f9e29（审计修复 + 文档），已推 main。
+- bundle：G:\BreakpointBackups\breakpoint-20261020-161319.bundle（verify 通过）。
+- 工作树干净；无残留 Godot 进程。
