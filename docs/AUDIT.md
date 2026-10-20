@@ -157,7 +157,7 @@ P0（可能算出错结果）：**本轮没有发现**。
   `-isystem` 引入（第三方告警进不了我们的 `-Werror`）；`BP_BUILD_ID` 用与 CMake 相同的
   `git rev-parse --short HEAD` 注入，桥暴露 `get_build_id()/get_protocol_version()`。
   顺带把版本号收成单一来源 `sim/core/version.h`（CMake 不再定义 protocol/sim 版本）。
-  验证：桥在 `-Werror` 下零告警；Godot 打 `breakpoint: build <hash> protocol 4` 且 hash == HEAD。
+  验证：桥在 `-Werror` 下零告警；Godot 打 `breakpoint: build <hash> protocol 5` 且 hash == HEAD。
 
 - **AUD-14 · 端口四处写死且已经漂移**：菜单/run_net_demo 27115、net_loop 默认 27016、
   闸门脚本 27130，游戏端口一处写 `+1`、一处写 27116。现在只在 `sim/net/ports.h` 出现
@@ -217,3 +217,80 @@ P0（可能算出错结果）：**本轮没有发现**。
 | R19 | P2 | reliable/session | 每包遍历 std::map 算 ack；InputWindow 用 map 存 tick | ✅ 已修 |
 
 **建议顺序**：R3/R4/R5（小、后果重）→ R2 → R9 → R7/R8 → R1/R6 → 其余 P2 分批。
+## 6. 第三轮（2026-10-20 晚，M1–M5 全量只读审计）
+
+> 四个只读代理（sim 核心/移动、sim 网络、bridge+Godot、tools+闸门）分别通读，我再逐条复核。
+> 结论：**闸门大面积"能打印但不能失败"**，另有两处真数据缺陷。下面按处理结果分三块：
+> 已修（有闸门证明）、记录在案的未修（有严重度与 lead）、以及设计待定项。
+
+### 6.1 已修（本轮改动，全部有闸门）
+
+| 域 | 问题 | 修法与判据 |
+|---|---|---|
+| 模拟 | impulse 着地**每 tick** +1：4 个 impulse 62 ms 回满 | 新参数 `recharge_ticks=32`（进 toml/params_hash）；`--test-parkour` 断言 31 tick 不回、第 32 tick 回 1 |
+| 模拟 | 空中也跑 step-up：跳跃撞台沿=免费上台阶 | 仅 on_ground 走 step_slide_move；空中走 slide_move |
+| 模拟 | 翻越/爬墙被当成跳跃事件 | Jump 事件要求 `input.jump` 按下沿 + 起跳前着地 |
+| 模拟 | `state_hash` 含 `PlayerState.tick`，但它不进快照 → 回滚后假分叉 | 删除该字段（无人读），哈希改为 `recharge_progress` |
+| 模拟 | `geometry_hash` 不含 `_climbable/_wallrunnable` → 两份不同规则地图同哈希 | 折进哈希；并缓存（原来每 tick 重算全图） |
+| 模拟 | bumps 上限 `<=` 实际给 5 次而非 4 | 改严格 `<` |
+| 模拟 | pmove 无 NaN/dt 守卫，一条坏命令污染整局 | 入口拒绝非有限值与 dt<=0；forward/right 钳到 [-1,1] |
+| 模拟 | 爬墙 keep 只查 wall.hit，不查 climbable | keep 补 brush 标志 |
+| 模拟 | map_parse 接受 0 brush 的图（玩家永远下落） | 明确报错 |
+| 模拟 | entity origin 在桥里乘 0.0254（违反铁律 A） | 新增 `entity_origin_metres()`，桥不再换算；check_sources 新增 0.0254 规则 |
+| 网络 | PlayerSnap 缺 slide/dash/vault 按下沿与 speed_coefficient → 回滚把"按住"当"刚按下" | 协议 v5：flags bit4-6 + `recharge_progress` + `speed_coefficient`；`[snapfields]` 逐字段往返 |
+| 网络 | 从没发过包的 link 永不超时（幽灵槽位 + 43 KB/s） | `last_rx_tick` 从 add_client 起算；`[timeout]` 仍绿 |
+| 网络 | 全零 client_id 被当成"空闲槽"占位，可顶掉房主 slot 0 | HELLO 直接拒（`[match] tamper` 路径同一出口） |
+| 网络 | MatchHost::start 对已 join 线程再赋值 → terminate | 先 stop() |
+| 网络 | PeerTransport 收件队列无上限（孤儿 peer 长局 OOM） | 队列封顶 64 |
+| 网络 | 客户端错误快照计数无读者 | 暴露 `bad_snapshots()`，net_loop 打印 `bad=` |
+| demo | DemoReader 无析构：每次 --play 泄漏句柄并锁文件 | 加析构/close/禁用拷贝 |
+| demo | 截断的 demo 当干净 EOF → 回放 PASS | `feof` 区分短读，报 truncated |
+| demo | 头里 build_id 从不比较，异构建 demo 静默 PASS | 比较 build_id，`--play` 遇 header mismatch 返回 1 |
+| demo | `--compare` 一方 EOF 也 PASS，空 dump 也 PASS | 要求同时 EOF 且 rows>0 |
+| 桥 | solo 每 tick 构造 vector（`step({input})`） | 改 `step_single`；铁律 E |
+| 桥 | params_hash 只含 movement，与联机不同源 | 改 `combined_params_hash`（读 combat.toml） |
+| 桥 | 相机眼高恒 1.55（高于站姿头顶、蹲下不动） | 0.9×当前姿态高度 |
+| 桥 | join 信令失败后 m_disconnected 卡死，solo 冻结 | 失败且未建链路时回滚标志 |
+| 桥 | start_host 失败遗留 TCP 线程/端口/僵尸房主 | `abort_host()` 全清 |
+| 桥 | join_impl 先销毁旧链路再建新的 | 先建后换，失败保留旧会话 |
+| 桥 | 每帧未读的 `entry["state"]`（AUD-18 声称已删） | 删除 |
+| Godot | `--force-paused` 只声明不解析（AUD-02 从没被真正验证） | 解析该参数；godot_check 新增"暂停 7 s 不掉线" |
+| Godot | 暂停分支不更新相机/不 drain 事件 | 两者都做 |
+| Godot | `tick == 20` 用帧采样等值，跳帧则永不跳 | 改一次性边沿 |
+| Godot | Esc 无 `echo` 过滤，长按反复开关菜单 | 加 `not event.echo` |
+| 工具 | `--ticks/-1`、`--bench 0/abc` 崩溃或静默 0 | strtol 全量校验；`--script` 未知报错；`--record+--play` 互斥；`--dump` 需 `--play` |
+| 闸门 | `--info`/`--bench` 只打印，smoke 只看退出码 | 断言 brush/实体/bounds；p99≤4 ms 且 allocs==0 才算过 |
+| 闸门 | `--test-net` 的 land 事件、分片 delivered、dup 帧、selftest 字段覆盖、胸倍率、墙"是否真到达"、光线 fraction、大厅 slot1 打印、join 文件写失败静默跳过 | 全部补成可失败断言；netalloc 阈值由 `>1.0` 改 `!=0` |
+| 工具 | `run_net_alloc_check` 定义在 main.cpp（与 AUDIT A4 声明矛盾） | 移进 tests_net.cpp |
+| 工具 | CMake 的 `file(STRINGS)` 不过滤注释，与 build_bridge 解释不一致 | 过滤空行/注释 |
+| 工具 | check_sources 只看已跟踪文件、规则全靠文档 | 收 untracked；新增 sim 无 Godot、0.0254 唯一、无状态 RNG 三条规则（先剥注释再匹配） |
+
+### 6.2 记录在案、本轮**未修**（有严重度与 lead）
+
+| id | sev | 问题 | lead |
+|---|---|---|---|
+| AUD-20 | P1 | 客户端落后没有补 tick 路径：一次 >110 ms 卡顿吃掉 lead+slack 后，命令永久 Late，只能重连 | M6 前 |
+| AUD-21 | P1 | 序列化/接收热路径每次约 4-8 次堆分配（`[netalloc]` 只统计 session 三步，边界已写明） | M6 |
+| AUD-22 | P1 | 可靠流 `seq <= ack` / `seq > m_next` 不是回绕安全的（第 65536 个包后流静默死） | M6 |
+| AUD-23 | P1 | `FragmentedTransport` 只在闸门里组装，bridge/net_loop 的真实 UDP 没套（M6 加 hp 后满编快照会走 IP 分片） | M6 |
+| AUD-24 | P1 | admission 无 TTL/上限：TCP 通过但没发 HELLO 的 id 永久占一条 deque | M6 |
+| AUD-26 | P1 | UDP recv 丢弃源地址，同网段任意主机可注入快照/命令 | M6 前 |
+| AUD-27 | P1 | MatcHost 槽位在"正常离开"时不释放（bridge 从不 release）：N 个 id 后房间永久 RoomFull | M6 前 |
+| AUD-31 | P2 | 桥的 `match_request` 在主线程同步执行（最坏约 11 s 窗口冻结） | M7 |
+| AUD-25 | P2 | `ReliableTransport` 的 now_ms 只在 advance 更新，采样少算一 tick | 顺手 |
+| AUD-28 | P2 | 仍有一批手感常量是字面量（0.02 / -0.05 / +0.15 / 滑铲结束 0.5× / 攀爬 0.05 / 墙跑内推 0.2 / 翻越 0.55 / 1e-3 / 可行走 0.7），违反铁律 I | M6 前 |
+| AUD-29 | P2 | combat.toml 加载无未知键/类型诊断；`max_health` 无消费者（M6 接 vitals） | M6 |
+| AUD-30 | P2 | demo 初始状态不完整（只能从 spawn 录制）；DemoWriter 不是流式写 | M6 |
+| AUD-32 | P2 | GDScript HUD 每帧重拼；左右 Ctrl/Shift 未区分侧别；tick 秒数三处写死 | M7 |
+| AUD-33 | P2 | trace 的注释与判据仍把 step_len 当"防穿墙"依据（真正防穿是连续扫掠） | M7 |
+| AUD-35 | P2 | 主循环每帧最多 5 tick，超出部分直接丢弃（持续 <13 fps 时 sim 时钟落后） | M7 |
+
+### 6.3 设计待定（不是 bug，需要拍板）
+
+1. impulse 充能速率：计划书只写"触地开始充能"，现值 `recharge_ticks=32`（0.5 s/个）是提案。
+2. 空中 step-up：本轮按"跳跃撞台沿不该免费上台阶"关掉；若要做 Apex 式自动 mantle 应显式实现。
+3. 护甲吸收 66% 与再生 5 s/10 s 仍是提案值（改 1% 就会破 TTK 0.6–1.2 s 判据）。
+4. 可靠流 configstring 只在闸门启用：真实链路靠 FULL_STATE 的两个哈希拒局（功能已覆盖），
+   可靠通道留给 M6 之后的资产；AGENTS 已改成这个说法，不再宣称"桥已下发 configstring"。
+5. 快照 `acked_cmd` 与包头 `ack_bits` 暂未消费（后者恒 0，已在 netchan.h 注明），M6 接输入 ack 时再定。
+

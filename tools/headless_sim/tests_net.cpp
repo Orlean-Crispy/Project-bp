@@ -11,6 +11,7 @@
 
 #include "options.h"
 #include "tests_net.h"
+#include "test_util.h"
 
 #include "bridge/remote_sampling.h"
 #include "sim/core/tick.h"
@@ -183,7 +184,9 @@ int run_net_events_check(const std::string& data_path) {
         }
     }
 
-    const bool ok = total > 0 && jumps > 0;
+    // AUD-01 promised jump *and* land: the land half was only printed, so an event
+    // channel that dropped every landing still passed.
+    const bool ok = total > 0 && jumps > 0 && lands > 0;
     std::printf("  [netevents] %d\n", ok ? 1 : 0);
     if (!ok) {
         std::printf("FAIL: a networked jump produced no client events (total %d, jumps %d, "
@@ -279,7 +282,13 @@ int run_join_phase(const std::string& data_path) {
     // A client whose params_hash differs must refuse the full state instead of
     // simulating a different world (plan 7.7; v0.4 A1 config hash).
     FILE* bad = std::fopen("build/join_bad.toml", "wb");
-    if (bad != nullptr) {
+    if (bad == nullptr) {
+        // Silently skipping this made the "wrong rules are refused" gate vanish on
+        // a machine without a build directory.
+        std::printf("FAIL: cannot write build/join_bad.toml for the join-hash check\n");
+        return failures + 1;
+    }
+    {
         std::fprintf(bad, "[base]\naccel = 12.0\n");
         std::fclose(bad);
 
@@ -433,7 +442,12 @@ int run_fragment_check() {
 
     std::printf("  [fragment] 3000B %d small %d lossy delivered %d corrupted %d\n", big_ok,
                 small_ok, delivered, corrupted);
-    if (!big_ok || !small_ok || corrupted != 0) {
+    // At 30% loss some payloads must still arrive intact; without a lower bound a
+    // receiver that never reassembles anything also reported corrupted == 0.
+    // 20 payloads at 30% loss: a few are completely lost, so require a real
+    // fraction to arrive (9-15 is the normal range), not all of them.
+    const bool delivered_ok = delivered >= 5;
+    if (!big_ok || !small_ok || corrupted != 0 || !delivered_ok) {
         std::printf("FAIL: fragment reassembly is wrong\n");
         ++failures;
     }
@@ -820,10 +834,11 @@ int run_match_test() {
     slots_cleared = aborted.slot_of(d) < 0 && aborted.slot_of(e) < 0;
     release_ok = reserved && released && reclaim && second_slot;
 
-    std::printf("  [match] accepted %d slot 0 ticket %d resume %d tamper %d full %d events %d admit %d release %d\n",
-                accepted, resume, resume, tamper, full,
+    std::printf("  [match] accepted %d slot 0 ticket %d resume %d second %d tamper %d full %d "
+                "events %d admit %d release %d slots %d\n",
+                accepted, resume, resume, second, tamper, full,
                 event_accepted && event_resumed && event_full ? 1 : 0, admit_ok ? 1 : 0,
-                release_ok ? 1 : 0);
+                release_ok ? 1 : 0, slots_cleared ? 1 : 0);
     if (!accepted || !resume || !tamper || !second || !full || !event_accepted ||
         !event_resumed || !event_full || !admit_ok || !release_ok || !slots_cleared) {
         std::printf("FAIL: A1/A5 matchmaking failed: %s\n", error.c_str());
@@ -1357,6 +1372,77 @@ int run_rollback_repair_check(const std::string& data_path) {
     return failures;
 }
 
+// R6 (iron law E): the network tick must not allocate in steady state. Only the
+// two per-tick simulation calls are counted; packet serialisation and the loopback
+// queue are outside the 4 ms sim budget, so counting them would measure the test
+// transport instead of the session hot path.
+//
+// The threshold is zero, not "close to zero": averaging over 100 ticks used to
+// turn one 100-allocation tick into 1.0 per tick, which a "> 1" check passed.
+int run_net_alloc_check(const std::string& data_path) {
+    const std::string map_path = "sim/data/maps/metrics_flat.map";
+    std::string error;
+    sim::NetServer server;
+    if (!server.init(map_path, data_path, 1, error)) {
+        std::printf("FAIL: netalloc server init: %s\n", error.c_str());
+        return 1;
+    }
+    sim::NetConditions conditions;
+    sim::LoopbackTransport to_server(conditions, 1234);
+    sim::LoopbackTransport to_client(conditions, 5678);
+    server.add_client(&to_server, &to_client, 0);
+
+    sim::NetClient client;
+    if (!client.init(&to_server, &to_client, 0, map_path, data_path, error)) {
+        std::printf("FAIL: netalloc client init: %s\n", error.c_str());
+        return 1;
+    }
+
+    auto tick_once = [&](const sim::MoveInput& in) {
+        client.send_input(in);
+        client.step_local();
+        server.receive();
+        server.step();
+        server.send();
+        to_server.advance(0);
+        to_client.advance(0);
+        client.receive();
+    };
+
+    // Warm up past one-time growth: the 128-tick history, the 64-tick snapshot
+    // rings and the loopback queues.
+    sim::MoveInput in;
+    in.forward = 1.0f;
+    for (int i = 0; i < 200; ++i) tick_once(in);
+
+    constexpr int kTicks = 100;
+    unsigned long long allocs = 0;
+    for (int i = 0; i < kTicks; ++i) {
+        client.send_input(in);
+        const unsigned long long before_local = allocation_count();
+        client.step_local();
+        const unsigned long long after_local = allocation_count();
+        server.receive();
+        const unsigned long long before_server = allocation_count();
+        server.step();
+        const unsigned long long after_server = allocation_count();
+        server.send();
+        to_server.advance(0);
+        to_client.advance(0);
+        client.receive();
+        allocs += (after_local - before_local) + (after_server - before_server);
+    }
+
+    std::printf("  [netalloc] per_tick %g\n",
+                static_cast<double>(allocs) / static_cast<double>(kTicks));
+    if (allocs != 0) {
+        std::printf("FAIL: the net tick allocated %llu times over %d ticks (iron law E)\n", allocs,
+                    kTicks);
+        return 1;
+    }
+    return 0;
+}
+
 int run_net_test(const Options& opt) {
     int failures = 0;
 
@@ -1430,7 +1516,12 @@ int run_net_test(const Options& opt) {
         duplicate.tick = 11;
         duplicate.players = {a, b};
         interp.push(duplicate);
-        const bool duplicate_ignored = interp.size() == before_dup;
+        // Size alone is not the test: a push that *replaced* the frame would keep
+        // the size and still corrupt the sample.
+        std::vector<sim::PlayerSnap> after_dup;
+        const bool duplicate_ignored =
+            interp.size() == before_dup && interp.sample(11, 0.5f, after_dup) &&
+            std::fabs(after_dup[0].pos.x - 1.5f) < 1e-5f;
 
         // AUD-05: the bridge rule must pick a tick inside the buffered range and
         // a real fraction, so sample() blends the two bracketing frames instead
@@ -1496,6 +1587,63 @@ int run_net_test(const Options& opt) {
         std::printf("  [yaw] full %d delta %d\n", full_ok, delta_ok);
         if (!full_ok || !delta_ok) {
             std::printf("FAIL: view yaw does not survive snapshot encoding\n");
+            ++failures;
+        }
+    }
+
+    // Every movement field must survive the wire: rollback rebuilds the player from
+    // a snapshot, so a missing edge bit replays a held slide/dash/vault as a fresh
+    // press, and a missing charge/speed pair replays at the wrong speed.
+    {
+        sim::PlayerState src;
+        src.pos = sim::Vec3(1.0f, 2.0f, 3.0f);
+        src.vel = sim::Vec3(4.0f, 5.0f, 6.0f);
+        src.yaw = 0.5f;
+        src.on_ground = true;
+        src.crouched = true;
+        src.active = false;
+        src.jump_was_down = true;
+        src.slide_was_down = true;
+        src.dash_was_down = true;
+        src.vault_was_down = true;
+        src.impulses = 3;
+        src.recharge_progress = 17;
+        src.speed_coefficient = 0.75f;
+        src.slow_ticks = 12;
+        src.slow_factor = 0.85f;
+        src.state = sim::ParkourState::WallRun;
+        src.state_ticks = 5;
+        src.dash_cooldown = 9;
+        src.wall_normal = sim::Vec3(1.0f, 0.0f, 0.0f);
+        src.vault_dir = sim::Vec3(0.0f, 1.0f, 0.0f);
+        src.vault_rise = 0.4f;
+
+        sim::Snapshot one;
+        one.tick = 42;
+        one.players = {sim::to_snap(src)};
+        const std::vector<uint8_t> bytes = sim::encode_snapshot(one, nullptr);
+        sim::Snapshot decoded;
+        const bool decoded_ok = sim::decode_snapshot(bytes.data(), bytes.size(), nullptr, decoded) &&
+                                decoded.players.size() == 1;
+        sim::PlayerState round;
+        if (decoded_ok) sim::from_snap(decoded.players[0], round);
+        const bool fields_ok =
+            decoded_ok && round.pos == src.pos && round.vel == src.vel && round.yaw == src.yaw &&
+            round.on_ground == src.on_ground && round.crouched == src.crouched &&
+            round.active == src.active && round.jump_was_down == src.jump_was_down &&
+            round.slide_was_down == src.slide_was_down &&
+            round.dash_was_down == src.dash_was_down &&
+            round.vault_was_down == src.vault_was_down && round.impulses == src.impulses &&
+            round.recharge_progress == src.recharge_progress &&
+            round.speed_coefficient == src.speed_coefficient && round.slow_ticks == src.slow_ticks &&
+            // slow_factor is derived from slow_ticks by pmove, not carried state.
+            round.state == src.state &&
+            round.state_ticks == src.state_ticks && round.dash_cooldown == src.dash_cooldown &&
+            round.wall_normal == src.wall_normal && round.vault_dir == src.vault_dir &&
+            round.vault_rise == src.vault_rise;
+        std::printf("  [snapfields] %d\n", fields_ok ? 1 : 0);
+        if (!fields_ok) {
+            std::printf("FAIL: the snapshot loses a movement field (protocol 5)\n");
             ++failures;
         }
     }

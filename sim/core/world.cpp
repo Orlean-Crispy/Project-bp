@@ -12,6 +12,10 @@ void step_player(PlayerState& player, const MoveInput& input, const CollisionWor
                  EventQueue* events) {
     const bool was_ground = player.on_ground;
     const float fall_speed = player.vel.z;
+    // A jump is a *pressed* edge on the ground. The old test only looked at the
+    // velocity, so a vault or a wall climb starting from the floor was reported as
+    // a jump (wrong sound, wrong HUD, wrong statistics).
+    const bool jump_pressed = input.jump && !player.jump_was_down;
     pmove(player, input, collision, params, dt);
     if (events == nullptr) return;
 
@@ -23,7 +27,7 @@ void step_player(PlayerState& player, const MoveInput& input, const CollisionWor
         event.entity_id = static_cast<uint16_t>(entity);
         event.a = player.pos;
         events->push(event);
-    } else if (was_ground && !player.on_ground && player.vel.z > 0.0f) {
+    } else if (jump_pressed && was_ground && !player.on_ground && player.vel.z > 0.0f) {
         SimEvent event;
         event.tick = tick;
         event.type = EventType::Jump;
@@ -73,7 +77,7 @@ uint64_t World::state_hash() const {
             .u32(p.vault_was_down ? 1u : 0u);
         h.vec3(p.wall_normal).vec3(p.vault_dir).f32(p.vault_rise);
         h.f32(p.speed_coefficient).f32(p.slow_factor);
-        h.u32(p.tick);
+        h.u32(static_cast<uint32_t>(p.recharge_progress));
     }
     return h.value();
 }

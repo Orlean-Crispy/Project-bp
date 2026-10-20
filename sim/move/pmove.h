@@ -37,7 +37,8 @@ struct PlayerState {
     bool on_ground = false;
     bool crouched = false;
     int impulses = 4;
-    uint32_t tick = 0;
+    // Ticks of ground contact towards the next impulse (see recharge_ticks).
+    int recharge_progress = 0;
 
     ParkourState state = ParkourState::Ground;
     int state_ticks = 0;        // ticks spent in the current timed state

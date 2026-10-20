@@ -10,7 +10,7 @@ LoopbackTransport::LoopbackTransport(NetConditions conditions, uint32_t seed)
     : m_conditions(conditions), m_seed(seed) {}
 
 void LoopbackTransport::send(const std::vector<uint8_t>& data) {
-    ++m_sent;
+
     const uint32_t seq = m_seq++;
 
     // Loss and duplication are decided per packet from (seed, seq), so the same
@@ -54,7 +54,7 @@ void LoopbackTransport::advance(uint32_t tick) {
     for (size_t i = 0; i < m_queue.size();) {
         if (m_queue[i].deliver_tick == 0) {
             m_inbox.push_back(std::move(m_queue[i].data));
-            ++m_delivered;
+
             m_queue.erase(m_queue.begin() + static_cast<long>(i));
         } else {
             --m_queue[i].deliver_tick;

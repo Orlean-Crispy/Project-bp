@@ -25,7 +25,9 @@
 #include "remote_sampling.h"
 #include "sim/collision/map_parse.h"
 #include "sim/core/event.h"
+#include "sim/core/tick.h"
 #include "sim/core/version.h"
+#include "sim/data/config.h"
 #include "sim/core/world.h"
 #include "sim/input/bindings.h"
 #include "sim/net/ports.h"
@@ -63,22 +65,26 @@ public:
             return false;
         }
 
+        // R8: the join hash covers movement *and* combat, exactly like the server
+        // and client do; the movement-only hash would accept a different combat.toml.
+        if (!sim::load_combat_beside(m_data_path, m_world.combat, error)) {
+            ERR_PRINT(String("breakpoint: ") + String(error.c_str()));
+            return false;
+        }
         m_world.collision.build(map);
-        m_world.params_hash = m_world.params.hash();
+        m_world.params_hash = sim::combined_params_hash(m_world.params, m_world.combat);
 
         sim::PlayerState player;
         player.pos = sim::Vec3(-16.0f, 0.0f, 0.05f);
         player.impulses = m_world.params.max_impulses;
 
+        // Iron law A: the bridge must not convert units. map_parse does it once for
+        // everything, including entity origins.
         for (const auto& entity : map.entities) {
             const auto it = entity.keys.find("classname");
             if (it == entity.keys.end() || it->second != "info_player_start") continue;
-            const auto origin = entity.keys.find("origin");
-            if (origin == entity.keys.end()) continue;
-            float x = 0.0f, y = 0.0f, z = 0.0f;
-            if (std::sscanf(origin->second.c_str(), "%f %f %f", &x, &y, &z) == 3) {
-                player.pos = sim::Vec3(x * 0.0254f, y * 0.0254f, z * 0.0254f);
-            }
+            sim::Vec3 spawn;
+            if (sim::entity_origin_metres(entity, spawn)) player.pos = spawn;
         }
 
         m_world.players.clear();
@@ -123,7 +129,9 @@ public:
         // when it is disconnected; only step() from solo play may advance it.
         if (m_net.active()) return;
         if (m_world.players.empty()) return;
-        m_world.step({m_input}, 1.0f / 64.0f, &m_events);
+        // step_single exists exactly for this: step({input}) would build a
+        // one-element vector 64 times a second (iron law E).
+        m_world.step_single(m_input, static_cast<float>(sim::tick_seconds()), &m_events);
     }
 
     // ---- networking (host = listen server + local client, join = client) ----
@@ -188,7 +196,6 @@ public:
             entry["slot"] = static_cast<int>(i);
             entry["pos"] = to_godot(players[i].pos);
             entry["crouched"] = (players[i].flags & 2) != 0;
-            entry["state"] = players[i].state;
             entry["yaw"] = players[i].yaw;
             out.push_back(entry);
         }
@@ -253,7 +260,14 @@ public:
     int get_hp() const { return 100; }
     int get_armor() const { return 0; }
 
-    float get_eye_height() const { return 1.55f; }
+    // 90% of the hull height, so crouching lowers the camera with the body. The
+    // old constant 1.55 m was above the 1.42 m standing hull and did not move when
+    // crouched, which let a crouched player see over cover.
+    float get_eye_height() const {
+        const bool crouched = !m_world.players.empty() && m_world.players[0].crouched;
+        const float height = crouched ? m_world.params.crouch_height : m_world.params.stand_height;
+        return height * 0.9f;
+    }
 
     // AUD-08: the remote capsule has to match the collision hull, so it reads
     // these from movement.toml through the bridge instead of hard-coding them.

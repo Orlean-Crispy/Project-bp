@@ -19,6 +19,7 @@ crouch_speed_scale = 0.4 # fractional max speed while crouched
 [parkour]
 max_impulses       = 4   # placeholder until derived from map defence timings (8.3)
 recharge_on_ground = true
+recharge_ticks     = 32  # ground contact per impulse (0.5 s); a proposal, not verified
 
 [slide]
 min_speed      = 5.08

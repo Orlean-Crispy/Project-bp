@@ -26,4 +26,9 @@ struct MapData {
 bool parse_map_text(const std::string& text, MapData& out, std::string& error);
 bool parse_map_file(const std::string& path, MapData& out, std::string& error);
 
+// Spawn point of one entity in metres, i.e. the only other place Quake units used
+// to be converted (the bridge did it by hand, which broke iron law A). Returns
+// false when the entity has no parsable "origin".
+bool entity_origin_metres(const MapEntity& entity, Vec3& out);
+
 }  // namespace sim

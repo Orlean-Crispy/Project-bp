@@ -82,9 +82,7 @@ bool get_string(FILE* f, std::string& s) {
 
 }  // namespace
 
-DemoWriter::~DemoWriter() {
-    if (m_file) std::fclose(m_file);
-}
+DemoWriter::~DemoWriter() = default;
 
 bool DemoWriter::open(const std::string& path, const DemoHeader& header, std::string& error) {
     FILE* probe = open_u8(path, L"wb");
@@ -219,10 +217,21 @@ bool DemoReader::open(const std::string& path, DemoHeader& header, std::string& 
         return false;
     }
 
+    // A second open() used to overwrite the handle and leak the first file.
+    if (m_file) std::fclose(m_file);
     m_file = f;
     m_header = h;
     header = h;
     return true;
+}
+
+DemoReader::~DemoReader() { close(); }
+
+void DemoReader::close() {
+    if (m_file) {
+        std::fclose(m_file);
+        m_file = nullptr;
+    }
 }
 
 bool DemoReader::next(DemoTick& tick, bool& has_tick, std::string& error) {
@@ -236,7 +245,14 @@ bool DemoReader::next(DemoTick& tick, bool& has_tick, std::string& error) {
     uint32_t tick_index = 0;
     uint64_t hash = 0;
     uint16_t count = 0;
-    if (!get_u32(m_file, tick_index)) return true;  // clean end of file
+    if (!get_u32(m_file, tick_index)) {
+        // A short read at a record boundary is either a clean EOF or a cut file;
+        // only feof() can tell them apart. Calling both "done" made a truncated
+        // demo replay as PASS.
+        if (std::feof(m_file)) return true;
+        error = "truncated tick header";
+        return false;
+    }
     if (!get_u64(m_file, hash) || !get_u16(m_file, count) || count > 64) {
         error = "truncated tick record";
         return false;
@@ -263,8 +279,13 @@ bool DemoReader::next(DemoTick& tick, bool& has_tick, std::string& error) {
 
 std::string demo_mismatch_reason(const DemoHeader& demo, uint32_t sim_version,
                                  uint32_t protocol_version, uint64_t params_hash,
-                                 uint64_t geometry_hash) {
+                                 uint64_t geometry_hash, const char* build_id) {
     std::string reason;
+    // docs/demo-format.md: a different build must at least be named. Two builds of
+    // the same version used to replay silently.
+    if (build_id != nullptr && demo.build_id != build_id) {
+        reason += "build_id " + demo.build_id + " != " + std::string(build_id) + "; ";
+    }
     if (demo.sim_version != sim_version) {
         reason += "sim_version " + std::to_string(demo.sim_version) + " != " +
                   std::to_string(sim_version) + "; ";

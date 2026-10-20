@@ -94,6 +94,7 @@ bool same_state(const PlayerSnap& a, const PlayerState& b) {
     return a.pos == bs.pos && a.vel == bs.vel && a.yaw == bs.yaw && a.flags == bs.flags &&
            a.impulses == bs.impulses && a.state == bs.state && a.state_ticks == bs.state_ticks &&
            a.dash_cooldown == bs.dash_cooldown && a.slow_ticks == bs.slow_ticks &&
+           a.recharge == bs.recharge && a.speed_coefficient == bs.speed_coefficient &&
            a.wall_normal == bs.wall_normal &&
            a.vault_dir == bs.vault_dir && a.vault_rise == bs.vault_rise;
 }
@@ -224,6 +225,10 @@ int NetServer::add_client(Transport* incoming, Transport* outgoing, int player_i
     link.sent.init();
     if (reliable != nullptr) link.config_chunks = m_config_chunks;
     link.join_id = m_next_join_id++;
+    // The timeout has to start at admission, not at the first packet: a client
+    // that dies right after HELLO used to keep its slot (and its FULL_STATE
+    // traffic) for the whole match, with no way to reclaim it.
+    link.last_rx_tick = m_world.tick;
     if (player_index >= 0 && player_index < static_cast<int>(m_world.players.size())) {
         m_world.players[static_cast<std::size_t>(player_index)].active = true;
     }
@@ -257,7 +262,6 @@ void NetServer::receive() {
             size_t size = 0;
             if (!unwrap_packet(packet, header, payload, size)) continue;
             link.last_rx_tick = m_world.tick;
-            link.ever_seen = true;
             if (header.type != PacketType::Command) continue;
 
             std::vector<InputCmd> cmds;
@@ -272,7 +276,7 @@ void NetServer::receive() {
                     link.baseline = acked->snapshot;
                     link.has_baseline = true;
                     link.unacked = 0;
-                    link.last_acked_snapshot = header.ack;
+                    (void)header.ack;  // cumulative ack only; see netchan.h
                 }
             }
 
@@ -317,7 +321,7 @@ void NetServer::step() {
     constexpr uint32_t kTimeoutTicks = seconds_to_ticks(5.0f);
     for (int i = static_cast<int>(m_links.size()) - 1; i >= 0; --i) {
         const Link& link = m_links[static_cast<std::size_t>(i)];
-        if (link.ever_seen && m_world.tick - link.last_rx_tick > kTimeoutTicks) {
+        if (m_world.tick - link.last_rx_tick > kTimeoutTicks) {
             ++m_timed_out;
             remove_client(i);
         }

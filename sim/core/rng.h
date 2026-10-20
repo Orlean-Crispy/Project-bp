@@ -21,16 +21,6 @@ inline uint32_t rng_at(uint32_t tick, uint16_t entity, uint16_t index, uint32_t 
     return x;
 }
 
-// 64-bit variant for cases that need more than 2^32 addressability.
-inline uint64_t rng_at64(uint32_t tick, uint16_t entity, uint16_t index, uint32_t salt) {
-    uint64_t x = (static_cast<uint64_t>(tick) << 32) ^ (static_cast<uint64_t>(entity) << 16) ^ index;
-    x ^= static_cast<uint64_t>(salt) * 0x9E3779B97F4A7C15ull;
-    x ^= x >> 30; x *= 0xBF58476D1CE4E5B9ull;
-    x ^= x >> 27; x *= 0x94D049BB133111EBull;
-    x ^= x >> 31;
-    return x;
-}
-
 // Uniform in [0, 1). 24-bit mantissa keeps the result identical on every IEEE754
 // machine without needing doubles.
 inline float rng_unit(uint32_t tick, uint16_t entity, uint16_t index, uint32_t salt) {

@@ -32,8 +32,6 @@ public:
     bool recv(std::vector<uint8_t>& out) override;
     void advance(uint32_t tick) override;
 
-    int sent_packets() const { return m_sent; }
-    int delivered_packets() const { return m_delivered; }
     int dropped_packets() const { return m_dropped; }
 
 private:
@@ -48,8 +46,6 @@ private:
     uint32_t m_seq = 0;
     std::vector<InFlight> m_queue;
     std::vector<std::vector<uint8_t>> m_inbox;
-    int m_sent = 0;
-    int m_delivered = 0;
     int m_dropped = 0;
 };
 

@@ -20,7 +20,17 @@ endif()
 
 # Single source of truth shared with tools/build_bridge.ps1. Add new sim .cpp
 # files to tools/sim_sources.txt, not here.
-file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/tools/sim_sources.txt" SIM_SOURCES)
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/tools/sim_sources.txt" SIM_SOURCES_RAW)
+# build_bridge.ps1 already dropped blanks and '#' lines; CMake did not, so one
+# comment in the shared list would become a "source file" here only.
+set(SIM_SOURCES "")
+foreach(line ${SIM_SOURCES_RAW})
+  string(STRIP "${line}" line)
+  if(line STREQUAL "" OR line MATCHES "^#")
+    continue()
+  endif()
+  list(APPEND SIM_SOURCES "${line}")
+endforeach()
 add_library(sim STATIC ${SIM_SOURCES})
 target_include_directories(sim PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 if(WIN32)

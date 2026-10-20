@@ -34,7 +34,6 @@ class ServerClock {
 public:
     void align(uint32_t server_tick);
     void advance() { ++m_command_tick; }
-    bool initialized() const { return m_initialized; }
     uint32_t command_tick() const { return m_command_tick; }
 
 private:
@@ -92,7 +91,6 @@ public:
     uint32_t tick() const { return m_world.tick; }
     int full_snapshots() const { return m_full; }
     int delta_snapshots() const { return m_delta; }
-    int dropped_commands() const { return m_late_cmds; }
     int duplicate_commands() const { return m_dup_cmds; }
     int late_commands() const { return m_late_cmds; }
     int far_commands() const { return m_far_cmds; }
@@ -142,7 +140,6 @@ private:
         uint32_t last_cmd_tick = 0;
         uint32_t last_seen_tick = 0;
         uint32_t last_rx_tick = 0;
-        bool ever_seen = false;
         uint16_t last_cmd_seq = 0;
         bool has_command = false;
         MoveInput last_input;
@@ -200,7 +197,6 @@ private:
             }
         };
         SentRing sent;
-        uint32_t last_acked_snapshot = 0;
     };
 
     World m_world;
@@ -237,8 +233,9 @@ public:
     uint32_t tick() const { return m_local.tick; }
     int rollbacks() const { return m_rollbacks; }
     int snapshots_received() const { return m_snapshots; }
-    int decode_failures() const { return m_decode_fail; }
-    int stale_skips() const { return m_stale; }
+    // Malformed or reordered snapshots: a rising number means the baseline ring
+    // is too shallow or the link reorders badly.
+    int bad_snapshots() const { return m_decode_fail + m_stale; }
     uint32_t last_snapshot_tick() const { return m_last_snapshot_tick; }
     // Ticks since the last snapshot arrived; the only honest "server is gone"
     // signal a client has (a frozen world looks identical to a dead link).

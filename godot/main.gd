@@ -59,6 +59,7 @@ var reconnect_check := false
 var reconnect_done := false
 var reconnect_locked := false
 var force_paused := false
+var autoplay_jumped := false
 var menu_accumulator := 0.0
 
 func _ready() -> void:
@@ -82,6 +83,10 @@ func _ready() -> void:
 			hud_check = true
 		elif arg == "--reconnect-check":
 			reconnect_check = true
+		elif arg == "--force-paused":
+			# AUD-02 gate: start with the in-game menu open so a headless run can
+			# prove the network pump keeps going while the world is paused.
+			force_paused = true
 
 	sim = SimWorld.new()
 	if net_port <= 0:
@@ -225,7 +230,7 @@ func _input(event: InputEvent) -> void:
 		# decrease it, otherwise the whole view feels mirrored.
 		yaw -= event.relative.x * SENSITIVITY
 		pitch = clampf(pitch - event.relative.y * SENSITIVITY, -1.5533, 1.5533)
-	elif event is InputEventKey and event.pressed and event.physical_keycode == KEY_ESCAPE:
+	elif event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_ESCAPE:
 		if menu_open:
 			_close_net_menu()
 		else:
@@ -454,6 +459,13 @@ func _process(delta: float) -> void:
 				menu_accumulator = 0.0
 			_update_net_state()
 			_update_hud()
+		# The world keeps stepping while the menu is open (the link must not time
+		# out), so the camera has to follow it: otherwise resuming snapped it back.
+		camera.position = sim.get_position() + Vector3(0.0, sim.get_eye_height(), 0.0)
+		camera.rotation = Vector3(pitch, atan2(-cos(yaw), sin(yaw)), 0.0)
+		# Drain while paused too: otherwise a one-second pause fills the ring with
+		# stale jump/land events that all fire on resume.
+		sim.drain_events()
 		return
 
 	var forward := Input.get_action_strength("bp_MoveForward") - Input.get_action_strength("bp_MoveBack")
@@ -471,7 +483,10 @@ func _process(delta: float) -> void:
 	if autoplay and tick < 128:
 		# Stand still until grounded, jump once, then move. This makes the
 		# event-channel check deterministic instead of depending on the spawn.
-		jump = jump or tick == 20
+		# An edge, not an equality: a frame can cross two ticks (19 -> 21).
+		if tick >= 20 and not autoplay_jumped:
+			autoplay_jumped = true
+			jump = true
 		if tick >= 40:
 			if tick < 90:
 				forward = 1.0

@@ -28,6 +28,9 @@ MatchHost::~MatchHost() { stop(); }
 
 bool MatchHost::start(uint16_t port, uint8_t players, std::string map, uint32_t seed,
                       uint8_t reserved, std::string& error) {
+    // Assigning over a joinable thread terminates the process; a host that is
+    // started twice must stop the first listener first.
+    if (m_thread.joinable()) stop();
     m_players = players == 0 ? 1 : players;
     m_reserved = reserved > m_players ? m_players : reserved;
     m_map = std::move(map);
@@ -121,6 +124,16 @@ void MatchHost::serve(TcpStream& stream) {
     if (hello.type != SignalType::Hello || hello.protocol != kSignalProtocol) {
         send_reject(stream, MatchStatus::BadProtocol, m_server_tick.load(), error);
         event.status = MatchStatus::BadProtocol;
+        push(event);
+        return;
+    }
+
+    // m_slots uses an all-zero ClientId as "free", so a zero id would look like a
+    // resume of whatever slot holds zeros -- including the host's reserved slot 0.
+    if (hello.client_id == ClientId{}) {
+        send_reject(stream, MatchStatus::BadTicket, m_server_tick.load(), error);
+        event.client_id = hello.client_id;
+        event.status = MatchStatus::BadTicket;
         push(event);
         return;
     }

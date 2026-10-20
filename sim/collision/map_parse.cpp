@@ -275,7 +275,23 @@ bool parse_map_text(const std::string& text, MapData& out, std::string& error) {
         error = "map contains no entities";
         return false;
     }
+    if (map.brushes.empty()) {
+        // A map with entities but no brushes loads "successfully" into a world
+        // with no collision: the player falls forever and every trace misses.
+        error = "map contains no brushes";
+        return false;
+    }
     out = map;
+    return true;
+}
+
+bool entity_origin_metres(const MapEntity& entity, Vec3& out) {
+    const auto it = entity.keys.find("origin");
+    if (it == entity.keys.end()) return false;
+    float x = 0.0f, y = 0.0f, z = 0.0f;
+    char extra = 0;
+    if (std::sscanf(it->second.c_str(), "%f %f %f %c", &x, &y, &z, &extra) != 3) return false;
+    out = Vec3(x * kUnitToMetre, y * kUnitToMetre, z * kUnitToMetre);
     return true;
 }
 

@@ -54,7 +54,7 @@ inline Vec3 normalized(const Vec3& v) {
 inline Vec3 vmin(const Vec3& a, const Vec3& b) { return Vec3(std::min(a.x, b.x), std::min(a.y, b.y), std::min(a.z, b.z)); }
 inline Vec3 vmax(const Vec3& a, const Vec3& b) { return Vec3(std::max(a.x, b.x), std::max(a.y, b.y), std::max(a.z, b.z)); }
 
-inline float clampf(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
+
 
 struct Bounds {
     Vec3 mins;

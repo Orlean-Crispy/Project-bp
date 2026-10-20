@@ -9,7 +9,8 @@
 
 namespace sim {
 
-// A1 control plane: a small length-prefixed binary protocol over TCP (27015),
+// A1 control plane: a small length-prefixed binary protocol over TCP (port range and
+// defaults live in sim/net/ports.h),
 // deliberately separate from the UDP snapshot channel. v0.1 only needs the six
 // messages below; assets (maps/material tables) are listed here and fetched out
 // of band, never carried inline.

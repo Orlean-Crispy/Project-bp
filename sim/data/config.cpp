@@ -136,7 +136,8 @@ uint64_t MovementParams::hash() const {
     h.f32(base_speed).f32(accel).f32(air_accel).f32(friction).f32(stop_speed)
      .f32(gravity).f32(jump_velocity).f32(step_height).f32(crouch_height)
      .f32(stand_height).f32(player_radius).f32(crouch_speed_scale);
-    h.u32(static_cast<uint32_t>(max_impulses)).u32(recharge_on_ground ? 1u : 0u);
+    h.u32(static_cast<uint32_t>(max_impulses)).u32(recharge_on_ground ? 1u : 0u)
+     .u32(static_cast<uint32_t>(recharge_ticks));
     h.f32(slide_min_speed).f32(slide_friction_scale).f32(slide_jump_boost)
      .f32(slide_entry_boost).f32(slide_max_duration);
     h.f32(wallrun_min_approach_speed).f32(wallrun_max_duration)
@@ -232,6 +233,7 @@ bool load_movement_params(const std::string& path, MovementParams& out,
 
     b.integer("parkour.max_impulses", p.max_impulses);
     b.boolean("parkour.recharge_on_ground", p.recharge_on_ground);
+    b.integer("parkour.recharge_ticks", p.recharge_ticks);
 
     b.number("slide.min_speed", p.slide_min_speed);
     b.number("slide.friction_scale", p.slide_friction_scale);

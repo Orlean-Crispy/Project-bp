@@ -1956,5 +1956,112 @@ DLL 就在 `godot/bin/` 里，导出表里 `breakpoint_library_init` 也在，�
 债清了，按计划书进 **M6 射击最小闭环**：WeaponDef(toml) → 开火输入 → hitscan（复用 hitbox 历史）
 → 三段伤害 → hp/armor 进快照 → 死亡/重生。判据先写：固定靶命中/未命中、三段倍率、TTK 0.6–1.2 s。
 
+## 2026-10-20（夜）· M1–M5 全量审计与修复（S59）
+
+### 0. 目标
+
+用户要求「M1 到 M5 完整检查一遍，确定功能完整、代码正常、无无用代码、无屎山，架构合规」。
+做法：四个**只读**代理（sim 核心/移动、sim 网络、bridge+Godot、tools+闸门）分别通读，
+我再逐条复核、逐条决定「修 / 记 / 待定」。不给"整体良好"这种结论，只给能验证的条目。
+
+### 1. 结论先说
+
+1. **闸门大面积"能打印不能失败"**：`--info`、`--bench`、land 事件、分片 delivered、dup 帧、
+   selftest 的 8/21 字段、胸倍率、墙"是否真的到达"、光线 fraction、join 文件写失败静默跳过——
+   smoke 只看退出码，所以它们全绿却从不证明任何事。这是本轮最大的一类问题。
+2. **两处真数据缺陷**：impulse 着地**每 tick** 回满（4 个 62 ms 到手）；
+   回滚快照缺 slide/dash/vault 三个按下沿与 speed_coefficient（按住会被当成"刚按下"重放）。
+3. **三处"文档说了、代码没做"**：`--force-paused` 从没被解析（AUD-02 的验证是假的）、
+   `entry["state"]` 没删（AUD-18 写着已删）、桥从未接可靠流 configstring（AGENTS 写着已下发）。
+   分别改成：真解析、删除、把文档说成真话（真实链路靠 FULL_STATE 两个哈希拒局，功能已覆盖）。
+4. 死代码清掉 11 处：rng_at64、clampf、dropped_commands、decode_failures、stale_skips、
+   sent_packets、delivered_packets、PlayerState::tick、last_acked_snapshot、Link::ever_seen、
+   DemoWriter::m_file。
+
+### 2. 做了什么（按域）
+
+**模拟/碰撞**
+- impulse 充能改整数间隔 `recharge_ticks`（toml + params_hash）；`--test-parkour` 断言
+  「31 tick 不回、第 32 tick 回 1」。
+- 空中不再 step-up（只有 on_ground 才 step_slide_move）；跳跃撞台沿不再免费上台阶。
+- Jump 事件要求 jump 按下沿 + 起跳前着地；翻越/爬墙不再被报成跳跃。
+- `geometry_hash` 纳入 `_climbable/_wallrunnable` 并缓存；bumps 上限改严格 `<`。
+- pmove 入口拒绝 NaN/dt≤0，forward/right 钳到 [-1,1]；爬墙 keep 检查 climbable。
+- map_parse 拒绝 0 brush 的图；新增 `entity_origin_metres()`，桥不再做第二次 0.0254 换算。
+- 删除 `PlayerState.tick`（不进快照却进哈希 → 回滚后假分叉）。
+
+**网络**
+- 协议 **v5**：PlayerSnap 增加三个按下沿（flags bit4-6）、`recharge_progress`、
+  `speed_coefficient`；`[snapfields]` 逐字段往返断言。
+- 链路超时从 add_client 起算（原来"没收到过包"的 link 永不超时 → 幽灵槽 + 43 KB/s）。
+- HELLO 拒绝全零 client_id（原来会被当成"空闲槽"占住，可顶掉房主 slot 0）。
+- MatchHost::start 先 stop 旧线程；PeerTransport 收件队列封顶 64；暴露 `bad_snapshots()` 供 net_loop 打印。
+- `ack_bits` 在 v0.1 恒 0，netchan.h 写明，不再假装"每包带 32 位 mask"。
+
+**桥/Godot**
+- solo 步进改 `step_single`；params_hash 改 combined（含 combat.toml）。
+- 眼高 0.9×当前姿态高度（原来恒 1.55，比站姿头顶还高、蹲下不动）。
+- join 失败回滚 disconnected；start_host 失败清 TCP/端口；join_impl 先建后换。
+- `--force-paused` 真解析；暂停时同步相机并 drain 事件；Esc 过滤 echo；autoplay 跳跃改边沿。
+- 删除未读的 `entry["state"]`。
+
+**demo/键位/工具**
+- DemoReader 加析构/close、区分短读与 EOF；build_id 进 mismatch，`--play` 遇 mismatch 返回 1。
+- `--compare` 要求两边同时 EOF 且 rows>0；`key_from_name("NONE")` 往返。
+- CLI：strtol 全量校验、未知 --script 报错、--record/--play 互斥、--dump 需 --play、usage 补 --tolerance。
+- `run_net_alloc_check` 从 main.cpp 移进 tests_net.cpp；CMake 源清单过滤空行/注释。
+- check_sources 收 untracked，新增三条铁律 lint（sim 无 Godot / 0.0254 只在 map_parse / 无状态 RNG），
+  匹配前先剥注释。
+
+### 3. 为什么（架构判断）
+
+- **闸门必须能失败**：只会打印的判据给人"已验证"的错觉，比没有判据更危险（教训 3/13）。
+- **状态哈希的字段集 = 快照的字段集**：两者唯一用途都是"两边是不是同一个世界"；
+  只要有一个字段只在一侧，回滚与跨机比对就会给出相反结论。v5 就是补齐这个集合。
+- **单位转换只能有一个地方**：桥里那次 0.0254 不是"顺手"，是让规矩失效的第一步；
+  现在由 map_parse 提供米制接口、lint 兜底。
+- **文档里"已完成"的每一句都要有代码/闸门支撑**：本轮三处都是文档跑在代码前面。
+
+### 4. 证据（本轮最终基线）
+
+- 全量构建 `-Werror` 零告警；`smoke.ps1` **17 项 + bench ALL GREEN**，新增判定：
+  `p99 within 4 ms / 0 allocs`、`state_fields 21/21`、`[snapfields] 1`、
+  `impulse recharge interval … ok`、`[fragment] delivered 9`、`[netalloc] per_tick 0`、
+  `[match] … second 1 … slots 1`、`--info` 断言 2 entities/8 brushes/21.0 m。
+- `godot_check.ps1`：`hud … protocol=5 port=27115` + 重连 `double=0` + **暂停 7 s 不掉线**。
+- `net_selftest.ps1`：`joins=2 accepted≈420 far=0 moved≈46.7 ports_ok=True`。
+- `check_sources.ps1`：`sources ok: 27` / `ports ok` / `rules ok`。
+
+### 5. 失败与修正
+
+1. 快照往返断言第一版把 `slow_factor` 算进去——它是 pmove 每 tick 从 slow_ticks 派生的，
+   不是线上状态。改成只比真状态，并在注释里写明"派生量不算"。
+2. soak 阈值收到 30 tick 立刻红：45 tick 的"不动"是**贴墙顶着走**，不是冻结。最终按
+   "solid 才是真冻结"保留 2 tick，frozen 放到 64（1 s）并写清理由。
+3. `[fragment]` 一开始要求 delivered≥10，30% 丢包下实测 9。阈值要卡在"能证明重组发生过"
+   的最低线（改 5），否则闸门变成运气测试。
+4. 改 main.cpp 的 include 后忘了 `tick_seconds`/`load_combat_beside` 的头文件，-Werror 立刻抓住。
+5. `probe` 这个变量名与已有的 `World probe` 撞名，编译报 "conflicting declaration"——改名 `probe_field`。
+
+### 6. 明确未完成（都在 AUDIT 6.2/6.3，带 lead）
+
+- AUD-20 客户端落后不补 tick（>110 ms 卡顿后输入永久 Late）；
+- AUD-21 序列化/接收热路径仍每次 4-8 次分配（`[netalloc]` 只覆盖 session 三步）；
+- AUD-22 可靠流 u16 回绕不安全；AUD-23 分片传输未接真实链路；
+- AUD-24 admission 无 TTL；AUD-26 UDP 不校验源地址；AUD-27 正常离开不释放组局槽位；
+- AUD-28 手感常量仍是字面量（铁律 I）；AUD-29 combat 诊断与 max_health；
+- AUD-31 桥的信令在主线程同步（最坏 ~11 s 冻结）；AUD-32..35 表现层/主循环项；
+- 设计待定：impulse 充能速率、空中 step-up 是否做成 mantle、护甲 66%、configstring 的定位。
+
+### 7. 下一步
+
+M6 射击，顺序不变：WeaponDef(toml) → 开火输入 → hitscan + hitbox 回溯 → 三段伤害 →
+hp/armor 进快照（顺带 AUD-16/AUD-29）→ 死亡/重生 → 穿透/衰减。
+AUD-20/26/27 在 M6 前清（都影响"两个人真打一局"）。
+
+---
+
+
+
 
 ---

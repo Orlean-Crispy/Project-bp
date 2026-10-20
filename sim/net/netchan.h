@@ -15,9 +15,13 @@ enum class PacketType : uint8_t {
 };
 
 // Unreliable channel header (plan section 7.1): every packet carries its own
-// sequence and the last sequence seen from the peer plus a 32-bit ack mask, which
-// is all Q3's netchan needs for an unreliable stream. Nothing blocks on a lost
+// sequence and the last sequence seen from the peer. Nothing blocks on a lost
 // packet.
+//
+// ack_bits is on the wire but always zero in v0.1: the delta path only needs the
+// cumulative ack (baseline = the snapshot the client acknowledged). Filling the
+// mask would let the server pick a better baseline, but nothing consumes it yet,
+// so it is documented here instead of pretending to work (AUDIT open item).
 struct PacketHeader {
     PacketType type = PacketType::Snapshot;
     uint16_t seq = 0;

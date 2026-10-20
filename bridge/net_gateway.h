@@ -44,6 +44,8 @@ public:
 private:
     bool join_impl(const std::string& host, int port, const sim::Ticket* resume,
                    std::string& error);
+    // Stops the listener/thread/hub after a partial host start.
+    void abort_host();
     static sim::ClientId make_client_id();
 
     std::unique_ptr<sim::NetServer> m_server;

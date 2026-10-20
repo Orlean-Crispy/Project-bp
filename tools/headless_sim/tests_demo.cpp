@@ -81,7 +81,7 @@ bool play_file(const std::string& demo_path, const std::string& params_path,
 
     out.header_reason = sim::demo_mismatch_reason(header, sim::kSimVersion, sim::kProtocolVersion,
                                                   world.params_hash,
-                                                  world.collision.geometry_hash());
+                                                  world.collision.geometry_hash(), sim::kBuildId);
     out.header_mismatch = !out.header_reason.empty();
 
     FILE* dump = nullptr;
@@ -196,7 +196,10 @@ int run_play(const Options& opt) {
     std::printf("demo       %s\n", opt.play_path.c_str());
     std::printf("ticks      %u\n", outcome.ticks);
     if (outcome.header_mismatch) {
-        std::printf("WARNING    header mismatch: %s\n", outcome.header_reason.c_str());
+        // docs/demo-format.md: replaying another build must not look like success,
+        // even when every stored hash happens to match.
+        std::printf("FAIL       header mismatch: %s\n", outcome.header_reason.c_str());
+        return 1;
     }
     if (outcome.mismatches != 0) {
         std::printf("MISMATCH   %d of %u ticks differ, first at tick %u\n", outcome.mismatches,
@@ -229,7 +232,18 @@ bool compare_dumps(const std::string& a_path, const std::string& b_path, double&
 
     rows = 0;
     max_deviation = 0.0;
-    while (std::fgets(line_a, sizeof(line_a), a) && std::fgets(line_b, sizeof(line_b), b)) {
+    // Both files must end together: "a ends early" used to mean "compared the
+    // rows that happened to be there", which made a truncated dump pass.
+    for (;;) {
+        const bool got_a = std::fgets(line_a, sizeof(line_a), a) != nullptr;
+        const bool got_b = std::fgets(line_b, sizeof(line_b), b) != nullptr;
+        if (!got_a && !got_b) break;
+        if (got_a != got_b) {
+            std::fclose(a);
+            std::fclose(b);
+            error = "dump files have different row counts";
+            return false;
+        }
         unsigned tick_a = 0;
         unsigned tick_b = 0;
         float ax = 0.0f, ay = 0.0f, az = 0.0f, avx = 0.0f, avy = 0.0f, avz = 0.0f;
@@ -251,6 +265,10 @@ bool compare_dumps(const std::string& a_path, const std::string& b_path, double&
     }
     std::fclose(a);
     std::fclose(b);
+    if (rows == 0) {
+        error = "dump files contain no rows";
+        return false;
+    }
     return true;
 }
 

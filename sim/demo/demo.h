@@ -50,16 +50,25 @@ public:
     const DemoHeader& header() const { return m_header; }
 
 private:
-    FILE* m_file = nullptr;
     DemoHeader m_header;
     std::vector<DemoTick> m_ticks;
     std::string m_path;
 };
 
+// Owns a FILE*: the previous version had neither a destructor nor a close(), so
+// every --play leaked a handle and kept the file locked on Windows.
 class DemoReader {
 public:
+    DemoReader() = default;
+    ~DemoReader();
+    DemoReader(const DemoReader&) = delete;
+    DemoReader& operator=(const DemoReader&) = delete;
+
     bool open(const std::string& path, DemoHeader& header, std::string& error);
+    // has_tick is false only at a clean end of file. A truncated record is an
+    // error: treating a short read as EOF let a damaged demo replay as PASS.
     bool next(DemoTick& tick, bool& has_tick, std::string& error);
+    void close();
 
 private:
     FILE* m_file = nullptr;
@@ -69,6 +78,6 @@ private:
 // Human readable summary used by --play and tests.
 std::string demo_mismatch_reason(const DemoHeader& demo, uint32_t sim_version,
                                  uint32_t protocol_version, uint64_t params_hash,
-                                 uint64_t geometry_hash);
+                                 uint64_t geometry_hash, const char* build_id);
 
 }  // namespace sim

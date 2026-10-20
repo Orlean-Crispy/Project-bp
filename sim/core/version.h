@@ -10,7 +10,8 @@
 #define BP_SIM_VERSION 1
 #endif
 #ifndef BP_PROTOCOL_VERSION
-#define BP_PROTOCOL_VERSION 4
+// 5: PlayerSnap carries every input edge and the charge/speed pair (2026-10-20).
+#define BP_PROTOCOL_VERSION 5
 #endif
 
 namespace sim {

@@ -1,36 +1,14 @@
 // headless_sim - the terminal runner that makes the simulation testable without
 // Godot, a GPU or a display (plan section 3.2).
 
-#include <algorithm>
-#include <chrono>
-#include <cmath>
+#include <cerrno>
 #include <cstdio>
 #include <cstdlib>
-#include <cstring>
 #include <new>
 #include <string>
-#include <thread>
 #include <vector>
 
-#include "sim/core/tick.h"
-#include "sim/core/version.h"
 #include "sim/core/world.h"
-#include "sim/demo/demo.h"
-#include "sim/input/bindings.h"
-#include "sim/game/combat.h"
-#include "sim/net/fragment.h"
-#include "sim/net/admission.h"
-#include "sim/net/handshake.h"
-#include "sim/net/matchmaking.h"
-#include "sim/net/netchan.h"
-#include "sim/net/reliable.h"
-#include "sim/net/reliable_transport.h"
-#include "sim/net/session.h"
-#include "sim/net/signaling.h"
-#include "sim/net/ticket.h"
-#include "sim/net/transport.h"
-#include "sim/net/udp_hub.h"
-#include "sim/net/udp_transport.h"
 
 // Allocation counter for the "steady state allocates nothing" rule (iron law E).
 // These replace the global operators for this test executable only.
@@ -67,17 +45,41 @@ unsigned long long allocation_count();
 
 namespace {
 
-using sim::CollisionWorld;
-using sim::MapData;
 using sim::MoveInput;
-using sim::MovementParams;
 using sim::PlayerState;
-using sim::SlideResult;
 using sim::World;
 
 constexpr float kDt = 1.0f / 64.0f;
 
+// A typo in a numeric flag used to be swallowed: atoi("abc") is 0, which gave an
+// empty --bench sample vector (out-of-bounds read) or a zero-tick run that still
+// exited 0. Every numeric option now has to parse completely and land in range.
+bool parse_int(const char* text, int min_value, int max_value, int& out) {
+    if (text == nullptr || *text == '\0') return false;
+    char* end = nullptr;
+    errno = 0;
+    const long value = std::strtol(text, &end, 10);
+    if (errno != 0 || end == text || *end != '\0') return false;
+    if (value < min_value || value > max_value) return false;
+    out = static_cast<int>(value);
+    return true;
+}
 
+bool parse_double(const char* text, double min_value, double& out) {
+    if (text == nullptr || *text == '\0') return false;
+    char* end = nullptr;
+    errno = 0;
+    const double value = std::strtod(text, &end);
+    if (errno != 0 || end == text || *end != '\0' || value < min_value) return false;
+    out = value;
+    return true;
+}
+
+// make_input() silently fell back to idle for an unknown name, so a typo tested
+// nothing and said nothing.
+bool valid_script(const std::string& name) {
+    return name == "idle" || name == "run" || name == "jump" || name == "strafe";
+}
 
 void usage() {
     std::printf(
@@ -101,6 +103,7 @@ void usage() {
         "  --play <file>     replay a demo and compare per-tick hashes\n"
         "  --dump <csv>      with --play: write per-tick positions\n"
         "  --compare <a> <b> compare two --dump files, report max deviation\n"
+        "  --tolerance <m>   with --compare: allowed deviation (default 0.01)\n"
         "  --test-demo       record, replay, and prove divergence detection works\n"
         "  --test-edge       jump onto a platform edge and keep walking (uses playground.map)\n"
         "  --test-stuck      start inside a brush and prove the player can get out\n"
@@ -140,10 +143,18 @@ int main(int argc, char** argv) {
         } else if (arg == "--ticks") {
             const char* v = need_value("--ticks");
             if (!v) return 2;
-            opt.ticks = std::atoi(v);
+            if (!parse_int(v, 1, 10000000, opt.ticks)) {
+                std::fprintf(stderr, "error: --ticks needs a positive integer, got '%s'\n", v);
+                return 2;
+            }
         } else if (arg == "--script") {
             const char* v = need_value("--script");
             if (!v) return 2;
+            if (!valid_script(v)) {
+                std::fprintf(stderr, "error: unknown --script '%s' (idle | run | jump | strafe)\n",
+                             v);
+                return 2;
+            }
             opt.script = v;
         } else if (arg == "--hash") {
             opt.print_hash = true;
@@ -191,7 +202,11 @@ int main(int argc, char** argv) {
         } else if (arg == "--tolerance") {
             const char* v = need_value("--tolerance");
             if (!v) return 2;
-            opt.tolerance = std::atof(v);
+            if (!parse_double(v, 0.0, opt.tolerance)) {
+                std::fprintf(stderr, "error: --tolerance needs a non-negative number, got '%s'\n",
+                             v);
+                return 2;
+            }
         } else if (arg == "--test-demo") {
             opt.test_demo = true;
         } else if (arg == "--test-edge") {
@@ -213,10 +228,20 @@ int main(int argc, char** argv) {
         } else if (arg == "--players") {
             const char* v = need_value("--players");
             if (!v) return 2;
-            opt.bench_players = std::atoi(v);
+            if (!parse_int(v, 1, 64, opt.bench_players)) {
+                std::fprintf(stderr, "error: --players needs 1..64, got '%s'\n", v);
+                return 2;
+            }
         } else if (arg == "--bench") {
             opt.bench = true;
-            if (i + 1 < argc && argv[i + 1][0] != '-') opt.bench_ticks = std::atoi(argv[++i]);
+            if (i + 1 < argc && argv[i + 1][0] != '-') {
+                const char* v = argv[++i];
+                if (!parse_int(v, 1, 10000000, opt.bench_ticks)) {
+                    std::fprintf(stderr, "error: --bench needs a positive tick count, got '%s'\n",
+                                 v);
+                    return 2;
+                }
+            }
         } else if (arg == "--help" || arg == "-h") {
             usage();
             return 0;
@@ -225,6 +250,17 @@ int main(int argc, char** argv) {
             usage();
             return 2;
         }
+    }
+
+    // A silent choice here would record one file while the user believes they
+    // are replaying another.
+    if (!opt.record_path.empty() && !opt.play_path.empty()) {
+        std::fprintf(stderr, "error: --record and --play are mutually exclusive\n");
+        return 2;
+    }
+    if (!opt.dump_path.empty() && opt.play_path.empty()) {
+        std::fprintf(stderr, "error: --dump is written by --play only\n");
+        return 2;
     }
 
     if (opt.test_hitbox) return run_hitbox_test(opt);
@@ -271,72 +307,4 @@ int main(int argc, char** argv) {
     return 0;
 }
 
-// R6 (iron law E): the network tick must not allocate in steady state. This runs
-// the existing loopback scenario and counts the two per-tick simulation calls,
-// where the server used to build an inputs vector and the client a one-element
-// vector. Packet serialisation and the loopback queue are outside the 4 ms sim
-// budget (and outside this audit item), so counting them would measure the test
-// transport instead of the session hot path.
-int run_net_alloc_check(const std::string& data_path) {
-    const std::string map_path = "sim/data/maps/metrics_flat.map";
-    std::string error;
-    sim::NetServer server;
-    if (!server.init(map_path, data_path, 1, error)) {
-        std::printf("FAIL: netalloc server init: %s\n", error.c_str());
-        return 1;
-    }
-    sim::NetConditions conditions;
-    sim::LoopbackTransport to_server(conditions, 1234);
-    sim::LoopbackTransport to_client(conditions, 5678);
-    server.add_client(&to_server, &to_client, 0);
 
-    sim::NetClient client;
-    if (!client.init(&to_server, &to_client, 0, map_path, data_path, error)) {
-        std::printf("FAIL: netalloc client init: %s\n", error.c_str());
-        return 1;
-    }
-
-    auto tick_once = [&](const sim::MoveInput& in) {
-        client.send_input(in);
-        client.step_local();
-        server.receive();
-        server.step();
-        server.send();
-        to_server.advance(0);
-        to_client.advance(0);
-        client.receive();
-    };
-
-    // Warm up past one-time growth: the 128-tick history, the 64-tick snapshot
-    // rings and the loopback queues.
-    sim::MoveInput in;
-    in.forward = 1.0f;
-    for (int i = 0; i < 200; ++i) tick_once(in);
-
-    constexpr int kTicks = 100;
-    unsigned long long allocs = 0;
-    for (int i = 0; i < kTicks; ++i) {
-        client.send_input(in);
-        const unsigned long long before_local = allocation_count();
-        client.step_local();
-        const unsigned long long after_local = allocation_count();
-        server.receive();
-        const unsigned long long before_server = allocation_count();
-        server.step();
-        const unsigned long long after_server = allocation_count();
-        server.send();
-        to_server.advance(0);
-        to_client.advance(0);
-        client.receive();
-        allocs += (after_local - before_local) + (after_server - before_server);
-    }
-
-    const double per_tick = static_cast<double>(allocs) / static_cast<double>(kTicks);
-    std::printf("  [netalloc] per_tick %g\n", per_tick);
-    if (per_tick > 1.0) {
-        std::printf("FAIL: the net tick still allocates %.2f times per tick (iron law E)\n",
-                    per_tick);
-        return 1;
-    }
-    return 0;
-}

@@ -31,7 +31,14 @@ public:
     }
     void advance(uint32_t tick) override { (void)tick; }
 
-    void deliver(std::vector<uint8_t> data) { m_inbox.push_back(std::move(data)); }
+    // A peer whose link the server dropped keeps sending until its own timeout.
+    // The hub removes the peer on that path, but the cap is the safety net: an
+    // uncapped queue grows for the rest of the match at packet rate.
+    void deliver(std::vector<uint8_t> data) {
+        constexpr std::size_t kMaxInbox = 64;
+        if (m_inbox.size() >= kMaxInbox) m_inbox.pop_front();
+        m_inbox.push_back(std::move(data));
+    }
     const std::string& host() const { return m_host; }
     uint16_t port() const { return m_port; }
 

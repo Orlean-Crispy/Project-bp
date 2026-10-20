@@ -27,6 +27,9 @@ struct MovementParams {
     // parkour resource (section 5.2 / 8.3)
     int max_impulses = 4;
     bool recharge_on_ground = true;
+    // Ground-contact ticks per impulse. One per tick refilled all four in 62 ms,
+    // which made the parkour resource meaningless (2026-10-20).
+    int recharge_ticks = 32;
 
     // slide
     float slide_min_speed = 5.08f;

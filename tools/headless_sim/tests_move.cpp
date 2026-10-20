@@ -66,6 +66,33 @@ int run_info(const Options& opt) {
             std::printf("entity    %-20s brushes=%zu\n", it->second.c_str(), e.brushes.size());
         }
     }
+
+    // AGENTS section 3 gate 1: "entities/brushes correct, bounds in metres". Until
+    // now this function only printed, so an empty map (or inches instead of
+    // metres) still exited 0 and smoke stayed green.
+    bool ok = !map.entities.empty() && brushes > 0;
+    if (!opt.map_explicit) {
+        // test_box.map is the fixture every other gate is tuned against; its
+        // shape is the contract.
+        ok = ok && map.entities.size() == 2 && brushes == 8 &&
+             std::fabs(map.bounds.mins.x + 10.5f) < 0.001f &&
+             std::fabs(map.bounds.mins.y + 10.5f) < 0.001f &&
+             std::fabs(map.bounds.mins.z + 0.5f) < 0.001f &&
+             std::fabs(map.bounds.maxs.x - 10.5f) < 0.001f &&
+             std::fabs(map.bounds.maxs.y - 10.5f) < 0.001f &&
+             std::fabs(map.bounds.maxs.z - 8.5f) < 0.001f;
+    }
+    // A double conversion (0.0254 applied twice) would shrink a 21 m room to
+    // 0.53 m; the metre-scale check catches that without pinning every map.
+    const float extent = map.bounds.maxs.x - map.bounds.mins.x;
+    ok = ok && extent > 1.0f && extent < 1000.0f;
+    if (!ok) {
+        std::printf("FAIL: map statistics are wrong (entities %zu, brushes %d, extent %.3f m)\n",
+                    map.entities.size(), brushes, static_cast<double>(extent));
+        return 1;
+    }
+    std::printf("PASS: %zu entities, %d brushes, %.1f m across\n", map.entities.size(), brushes,
+                static_cast<double>(extent));
     return 0;
 }
 
@@ -83,10 +110,8 @@ int run_selftest(const Options& opt) {
         return 1;
     }
 
-    if (a.params_hash != b.params_hash) {
-        std::fprintf(stderr, "FAIL: parameter hash differs between loads\n");
-        return 1;
-    }
+    // (a.params_hash != b.params_hash used to be checked here, but both worlds are
+    // loaded from the same file by a pure function: it could never fail.)
 
     std::vector<uint64_t> hash_a;
     std::vector<uint64_t> hash_b;
@@ -127,7 +152,7 @@ int run_selftest(const Options& opt) {
     // exactly one field of an otherwise identical world must change the hash;
     // yaw alone was invisible before the fix.
     int fields_hashed = 0;
-    bool yaw_hashed = false;
+    int fields_total = 0;
     {
         World probe;
         if (!load_world(opt, probe, error)) {
@@ -142,24 +167,40 @@ int run_selftest(const Options& opt) {
             probe.players[0] = saved;
             return changed;
         };
-        yaw_hashed = differs([](PlayerState& p) { p.yaw += 0.5f; });
-        fields_hashed += yaw_hashed ? 1 : 0;
-        fields_hashed += differs([](PlayerState& p) { p.state = sim::ParkourState::WallRun; }) ? 1 : 0;
-        fields_hashed += differs([](PlayerState& p) { p.state_ticks = 7; }) ? 1 : 0;
-        fields_hashed += differs([](PlayerState& p) { p.dash_cooldown = 5; }) ? 1 : 0;
-        fields_hashed += differs([](PlayerState& p) { p.jump_was_down = true; }) ? 1 : 0;
-        fields_hashed +=
-            differs([](PlayerState& p) { p.wall_normal = Vec3(0.0f, 0.0f, -1.0f); }) ? 1 : 0;
-        fields_hashed +=
-            differs([](PlayerState& p) { p.vault_dir = Vec3(0.0f, 1.0f, 0.0f); }) ? 1 : 0;
-        fields_hashed += differs([](PlayerState& p) { p.vault_rise = 0.9f; }) ? 1 : 0;
+        // Every field World::state_hash() claims to cover (audit R9), one probe
+        // each. The list used to stop at eight, so dropping slow_ticks or the
+        // slide/dash/vault edges from the hash would still print 8/8.
+        const auto probe_field = [&](auto mutate) {
+            ++fields_total;
+            fields_hashed += differs(mutate) ? 1 : 0;
+        };
+        probe_field([](PlayerState& p) { p.pos.x += 0.5f; });
+        probe_field([](PlayerState& p) { p.vel.z += 0.5f; });
+        probe_field([](PlayerState& p) { p.yaw += 0.5f; });
+        probe_field([](PlayerState& p) { p.active = false; });
+        probe_field([](PlayerState& p) { p.on_ground = true; });  // spawns airborne
+        probe_field([](PlayerState& p) { p.crouched = true; });
+        probe_field([](PlayerState& p) { p.impulses = 1; });
+        probe_field([](PlayerState& p) { p.recharge_progress = 3; });
+        probe_field([](PlayerState& p) { p.state = sim::ParkourState::WallRun; });
+        probe_field([](PlayerState& p) { p.state_ticks = 7; });
+        probe_field([](PlayerState& p) { p.dash_cooldown = 5; });
+        probe_field([](PlayerState& p) { p.slow_ticks = 9; });
+        probe_field([](PlayerState& p) { p.jump_was_down = true; });
+        probe_field([](PlayerState& p) { p.slide_was_down = true; });
+        probe_field([](PlayerState& p) { p.dash_was_down = true; });
+        probe_field([](PlayerState& p) { p.vault_was_down = true; });
+        probe_field([](PlayerState& p) { p.wall_normal = Vec3(0.0f, 0.0f, -1.0f); });
+        probe_field([](PlayerState& p) { p.vault_dir = Vec3(0.0f, 1.0f, 0.0f); });
+        probe_field([](PlayerState& p) { p.vault_rise = 0.9f; });
+        probe_field([](PlayerState& p) { p.speed_coefficient = 0.5f; });
+        probe_field([](PlayerState& p) { p.slow_factor = 0.85f; });
     }
-    std::printf("state_fields  %d/8\n", fields_hashed);
-    std::printf("yaw_hash      %d\n", yaw_hashed ? 1 : 0);
+    std::printf("state_fields  %d/%d\n", fields_hashed, fields_total);
 
-    if (mismatch != 0 || fields_hashed != 8) {
-        std::printf("FAIL: %zu of %d ticks differ, %d/8 state fields hashed\n", mismatch,
-                    opt.ticks, fields_hashed);
+    if (mismatch != 0 || fields_hashed != fields_total) {
+        std::printf("FAIL: %zu of %d ticks differ, %d/%d state fields hashed\n", mismatch,
+                    opt.ticks, fields_hashed, fields_total);
         return 1;
     }
     std::printf("PASS: %d ticks identical on both runs\n", opt.ticks);
@@ -191,7 +232,10 @@ int run_wall_test(const Options& opt) {
 
         for (int trial = 0; trial < 100; ++trial) {
             PlayerState p;
-            p.pos = sim::Vec3(-1.0f, 0.0f, 0.02f);
+            // Vary the start so the 100 trials are not the same test copied 100
+            // times: contact epsilon and bump order depend on where the box lands.
+            const float jitter = 0.002f * static_cast<float>(trial % 10);
+            p.pos = sim::Vec3(-1.0f - jitter, 0.001f * static_cast<float>(trial / 10), 0.02f);
             p.vel = sim::Vec3(speed, 0.0f, 0.0f);
             sim::Vec3 mins;
             sim::Vec3 maxs;
@@ -216,12 +260,18 @@ int run_wall_test(const Options& opt) {
         // failure here means the sweep regressed, not the test range.
         const bool contained = penetrations == 0;
         const bool steps_ok = max_step <= world.params.min_wall_thickness;
-        const bool ok = contained && steps_ok;
+        // A player that never moved also has zero penetrations: require that the
+        // box actually reached the wall before accepting "did not pass through".
+        const bool reached = worst_x >= contact_x - 0.01f;
+        const bool moved = worst_x > -0.9f;
+        const bool ok = contained && steps_ok && reached && moved;
         if (!ok) ++failures;
-        std::printf("  %5.2f m/s  penetrations=%3d  worst_x=%7.4f  max_step=%.4f m (limit %.3f)  %s\n",
+        std::printf("  %5.2f m/s  penetrations=%3d  worst_x=%7.4f  max_step=%.4f m (limit %.3f)"
+                    "  contact %d moved %d  %s\n",
                     static_cast<double>(speed), penetrations, static_cast<double>(worst_x),
                     static_cast<double>(max_step),
-                    static_cast<double>(world.params.min_wall_thickness), ok ? "ok" : "FAIL");
+                    static_cast<double>(world.params.min_wall_thickness), reached ? 1 : 0,
+                    moved ? 1 : 0, ok ? "ok" : "FAIL");
     }
 
     // Sliding must survive the contact-epsilon clamp: a player pressed into the
@@ -267,8 +317,13 @@ int run_ray_test(const Options& opt) {
     }
 
     int failures = 0;
-    auto expect_hit = [&](const char* label, bool hit, float fraction, bool want_hit) {
-        const bool ok = hit == want_hit;
+    // fraction is part of the judgement: a sweep that degenerates to "the start is
+    // already inside the wall" still reports a hit, but at fraction 0.
+    auto expect_hit = [&](const char* label, bool hit, float fraction, bool want_hit, float lo,
+                          float hi) {
+        bool ok = hit == want_hit;
+        if (ok && want_hit) ok = fraction >= lo && fraction <= hi;
+        if (ok && !want_hit) ok = fraction >= 1.0f;
         if (!ok) ++failures;
         std::printf("  %-28s hit=%s fraction=%.4f  %s\n", label, hit ? "yes" : "no",
                     static_cast<double>(fraction), ok ? "ok" : "FAIL");
@@ -277,16 +332,18 @@ int run_ray_test(const Options& opt) {
     const sim::Vec3 zero(0.0f, 0.0f, 0.0f);
     const sim::TraceResult point =
         world.collision.trace_box(sim::Vec3(-5.0f, 0.0f, 1.0f), sim::Vec3(5.0f, 0.0f, 1.0f), zero, zero);
-    expect_hit("point across 0.1 m wall", point.fraction < 1.0f, point.fraction, true);
+    expect_hit("point across 0.1 m wall", point.fraction < 1.0f, point.fraction, true, 0.3f,
+               0.7f);
 
     const sim::TraceResult point_miss =
         world.collision.trace_box(sim::Vec3(-5.0f, 5.0f, 1.0f), sim::Vec3(5.0f, 5.0f, 1.0f), zero, zero);
-    expect_hit("point beside the wall", point_miss.fraction < 1.0f, point_miss.fraction, false);
+    expect_hit("point beside the wall", point_miss.fraction < 1.0f, point_miss.fraction, false,
+               0.0f, 0.0f);
 
     // 7.8 m of travel in a single segment: the 500 m/s case.
     const sim::TraceResult fast =
         world.collision.trace_box(sim::Vec3(-5.0f, 0.0f, 1.0f), sim::Vec3(2.8f, 0.0f, 1.0f), zero, zero);
-    expect_hit("point, 7.8 m segment", fast.fraction < 1.0f, fast.fraction, true);
+    expect_hit("point, 7.8 m segment", fast.fraction < 1.0f, fast.fraction, true, 0.5f, 0.8f);
 
     PlayerState p;
     p.pos = sim::Vec3(-5.0f, 0.0f, 0.01f);
@@ -295,7 +352,8 @@ int run_ray_test(const Options& opt) {
     sim::player_hull(p, world.params, mins, maxs);
     const sim::TraceResult box =
         world.collision.trace_box(p.pos, sim::Vec3(5.0f, 0.0f, 0.01f), mins, maxs);
-    expect_hit("box across wall, one segment", box.fraction < 1.0f, box.fraction, true);
+    expect_hit("box across wall, one segment", box.fraction < 1.0f, box.fraction, true, 0.3f,
+               0.6f);
 
     std::printf("  box contact x = %.4f (expected %.4f)\n", static_cast<double>(box.end_pos.x),
                 static_cast<double>(-0.05f - world.params.player_radius));
@@ -359,7 +417,9 @@ int run_step_test(const Options& opt) {
     expect_z("three 0.15 m stairs", out.pos.z, 0.45f, 0.02f);
 
     scenario(-2.0f, 0.0f, 90, false, false, out);
-    const bool blocked = out.pos.z < 0.05f && out.pos.x < -0.4f;
+    // -2.0 is the start: a frozen player satisfies "x < -0.4" too, so require that
+    // it closed some distance before being stopped.
+    const bool blocked = out.pos.z < 0.05f && out.pos.x < -0.4f && out.pos.x > -1.5f;
     if (!blocked) ++failures;
     std::printf("  %-34s z=%.4f x=%.4f  %s\n", "0.55 m wall: blocked",
                 static_cast<double>(out.pos.z), static_cast<double>(out.pos.x),
@@ -415,7 +475,8 @@ int run_parkour_test(const Options& opt) {
     }
     {
         const PlayerState& p = world.players[0];
-        const bool blocked = p.pos.x < 0.1f && p.pos.z < 0.1f;
+        // Start is x = -5: require real progress before the ceiling stopped it.
+        const bool blocked = p.pos.x < 0.1f && p.pos.z < 0.1f && p.pos.x > -4.5f;
         if (!blocked) ++failures;
         std::printf("  %-34s x=%.3f z=%.3f  %s\n", "standing run blocked by low ceiling",
                     static_cast<double>(p.pos.x), static_cast<double>(p.pos.z), blocked ? "ok" : "FAIL");
@@ -615,6 +676,23 @@ int run_parkour_test(const Options& opt) {
                     slow_ok ? "ok" : "FAIL");
     }
 
+    // R7 follow-up: impulse recharge is one per recharge_ticks of ground contact,
+    // not one per tick. Returning all four in 62 ms made every parkour cost
+    // meaningless, and the old code had no gate at all for it.
+    {
+        reset(-10.0f, 7.0f);
+        world.players[0].impulses = 0;
+        MoveInput idle;
+        const int period = world.params.recharge_ticks;
+        for (int i = 0; i < period - 1; ++i) world.step({idle}, kDt);
+        const bool not_yet = world.players[0].impulses == 0;
+        world.step({idle}, kDt);
+        const bool after = world.players[0].impulses == 1;
+        if (!not_yet || !after) ++failures;
+        std::printf("  %-34s top-up after %d ticks=%d  %s\n", "impulse recharge interval", period,
+                    world.players[0].impulses, (not_yet && after) ? "ok" : "FAIL");
+    }
+
     if (failures != 0) {
         std::printf("FAIL: %d parkour checks failed\n", failures);
         return 1;
@@ -716,19 +794,6 @@ int run_keybind_test(const Options& opt) {
 }
 
 
-// The gate for M4: a demo must replay exactly on the same build, and a changed
-// movement.toml must be caught at the tick where it first matters.
-// Landing on the lip of a 1 m platform used to leave the box overlapping the
-// brush by a hair, which made every later horizontal trace report start_solid and
-// froze the player. This is the regression gate for that.
-// Reproduction of "camera moves but the player is frozen": the box is inside a
-// brush, so every trace starts solid and zeroes the velocity. pmove must push it
-// out and normal movement must resume.
-// Chaos soak: deterministic pseudo-random input mash. The failure this guards
-// against is "camera works, player does not move", i.e. the box wedged in a
-// brush, so it checks for solid states and for long stretches without movement.
-// Plan M5: unreliable UDP + delta snapshots + client prediction, over a link that
-// drops 30% of packets in both directions with 30 ms of latency and jitter.
 // M6 groundwork: HP 100 and the three armour types. Absorption and regen timing
 // are proposals (see combat.toml), so these checks pin the *rules*, not the tuning.
 int run_health_test(const Options& opt) {
@@ -736,7 +801,7 @@ int run_health_test(const Options& opt) {
     sim::CombatParams params;
     std::string error;
     std::vector<std::string> warnings;
-    if (!sim::load_combat_params("sim/data/combat.toml", params, warnings, error)) {
+    if (!sim::load_combat_beside(opt.data_path, params, error)) {
         std::fprintf(stderr, "error: %s\n", error.c_str());
         return 1;
     }
@@ -954,6 +1019,9 @@ int run_hitbox_test(const Options& opt) {
     check("head band", sim::hit_zone_at(stand, 1.30f) == sim::HitZone::Head);
     check("head multiplier is x5", sim::hit_multiplier(stand, 1.30f, params) == 5.0f);
     check("chest band", sim::hit_zone_at(stand, 0.90f) == sim::HitZone::Chest);
+    // The zone table was only checked for head and legs; a chest multiplier of 1.5
+    // would have passed the "x5 / x1 / x0.7" gate.
+    check("chest multiplier is x1", sim::hit_multiplier(stand, 0.90f, params) == 1.0f);
     check("leg band", sim::hit_zone_at(stand, 0.30f) == sim::HitZone::Legs);
     check("leg multiplier is x0.7", sim::hit_multiplier(stand, 0.30f, params) == 0.7f);
     check("just above the head line is head", sim::hit_zone_at(stand, 0.84f * 1.42f) ==
@@ -1095,7 +1163,11 @@ int run_soak_test(const Options& opt) {
 
     std::printf("  ticks 6000   max solid streak %d   max frozen streak %d\n", max_solid_streak,
                 max_frozen_streak);
-    if (max_solid_streak > 2 || max_frozen_streak > 120) {
+    // A real freeze (the box wedged in a brush) shows up as a solid streak; being
+    // pressed against a wall while holding forward is legitimate and lasts as long
+    // as the mash keeps pushing. 64 ticks (1 s) still catches "camera moves, player
+    // does not" without failing on wall contact (the mash reaches ~45).
+    if (max_solid_streak > 2 || max_frozen_streak > 64) {
         std::printf("FAIL: player was stuck (solid %d ticks, frozen %d ticks)\n", max_solid_streak,
                     max_frozen_streak);
         return 1;
@@ -1217,6 +1289,11 @@ int run_edge_test(const Options& opt) {
 
 
 int run_bench(const Options& opt) {
+    // The CLI already rejects these, but a gate should not depend on its caller.
+    if (opt.bench_ticks <= 0 || opt.bench_players <= 0) {
+        std::fprintf(stderr, "error: --bench needs positive tick and player counts\n");
+        return 2;
+    }
     std::string error;
     World world;
     if (!load_world(opt, world, error)) {
@@ -1249,14 +1326,27 @@ int run_bench(const Options& opt) {
     double sum = 0.0;
     for (double s : samples) sum += s;
     const size_t p99 = static_cast<size_t>(static_cast<double>(samples.size()) * 0.99);
+    const double p99_us = samples[std::min(p99, samples.size() - 1)];
+    const double max_us = samples.back();
+    const unsigned long long allocs = allocation_count() - alloc_before;
+    const double per_tick = static_cast<double>(allocs) / static_cast<double>(opt.bench_ticks);
     std::printf("ticks  %d   players %d\n", opt.bench_ticks, opt.bench_players);
     std::printf("mean   %.2f us\n", sum / static_cast<double>(samples.size()));
-    std::printf("p99    %.2f us  (budget 4000 us)\n",
-                samples[std::min(p99, samples.size() - 1)]);
-    std::printf("max    %.2f us\n", samples.back());
-    const unsigned long long allocs = allocation_count() - alloc_before;
-    std::printf("allocs %.2f / tick\n",
-                static_cast<double>(allocs) / static_cast<double>(opt.bench_ticks));
+    std::printf("p99    %.2f us  (budget 4000 us)\n", p99_us);
+    std::printf("max    %.2f us\n", max_us);
+    std::printf("allocs %.2f / tick\n", per_tick);
+
+    // Iron law E was never a gate: the numbers were printed and smoke only looked
+    // at the exit code, so a regression to 5 ms or to allocating per tick would
+    // still be ALL GREEN.
+    const bool budget_ok = p99_us <= 4000.0;
+    const bool alloc_ok = allocs == 0;
+    if (!budget_ok || !alloc_ok) {
+        std::printf("FAIL: p99 %.2f us (budget 4000) or %llu allocations (iron law E)\n", p99_us,
+                    allocs);
+        return 1;
+    }
+    std::printf("PASS: p99 within the 4 ms budget, zero allocations per tick\n");
     return 0;
 }
 

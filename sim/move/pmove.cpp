@@ -209,6 +209,17 @@ void player_hull(const PlayerState& player, const MovementParams& params, Vec3& 
 
 void pmove(PlayerState& player, const MoveInput& input, const CollisionWorld& world,
            const MovementParams& params, float dt) {
+    // A NaN in one replicated command would poison pos/vel and with them the whole
+    // world hash, so the network path can never be trusted to be finite. Drop the
+    // tick instead of propagating it (deterministic on both sides).
+    if (!(dt > 0.0f) || !std::isfinite(dt)) return;
+    if (!std::isfinite(input.forward) || !std::isfinite(input.right) ||
+        !std::isfinite(input.yaw)) {
+        return;
+    }
+    const float fwd = std::max(-1.0f, std::min(1.0f, input.forward));
+    const float side = std::max(-1.0f, std::min(1.0f, input.right));
+
     const float hz = 1.0f / dt;
 
     // One sin/cos pair per tick: yaw is constant for the whole tick, and the
@@ -219,8 +230,7 @@ void pmove(PlayerState& player, const MoveInput& input, const CollisionWorld& wo
     const Vec3 facing(yaw_cos, yaw_sin, 0.0f);
     // yaw 0 looks down +X; in a right-handed Z-up frame the right vector is
     // (sin yaw, -cos yaw), so the right input contributes with a MINUS on Y.
-    Vec3 wish(input.forward * yaw_cos + input.right * yaw_sin,
-              input.forward * yaw_sin - input.right * yaw_cos, 0.0f);
+    Vec3 wish(fwd * yaw_cos + side * yaw_sin, fwd * yaw_sin - side * yaw_cos, 0.0f);
     if (length(wish) > 1.0f) wish = normalized(wish);
 
     if (player.dash_cooldown > 0) --player.dash_cooldown;
@@ -272,17 +282,22 @@ void pmove(PlayerState& player, const MoveInput& input, const CollisionWorld& wo
         player.pos = resolve_penetration(world, player.pos, mins, maxs);
     }
 
-    const bool sliding = player.state == ParkourState::Slide;
+    const bool sliding_before_jump = player.state == ParkourState::Slide;
 
     // Jump is edge triggered: holding space must not bunny hop on its own.
     if (input.jump && !player.jump_was_down && player.on_ground) {
-        player.vel.z = params.jump_velocity * (sliding ? params.slide_jump_boost : 1.0f);
+        player.vel.z =
+            params.jump_velocity * (sliding_before_jump ? params.slide_jump_boost : 1.0f);
         player.on_ground = false;
-        if (sliding) {
+        if (sliding_before_jump) {
             player.state = ParkourState::Air;
             player.state_ticks = 0;
         }
     }
+    // Recompute after the jump: a slide-jump leaves the slide state in this very
+    // tick, and the movement block below used to apply slide friction (and skip
+    // air control) for that one tick.
+    const bool sliding = player.state == ParkourState::Slide;
 
     // ---- wall run -------------------------------------------------------
     if (player.state == ParkourState::WallRun) {
@@ -304,7 +319,10 @@ void pmove(PlayerState& player, const MoveInput& input, const CollisionWorld& wo
         ++player.state_ticks;
         const int max_ticks = static_cast<int>(params.wallclimb_max_duration * hz + 0.5f);
         const WallProbe wall = probe_wall(world, player.pos, facing, mins, maxs, params);
-        const bool keep = input.wallclimb && wall.hit && player.state_ticks <= max_ticks;
+        // The keep check needs the same brush test as the start check: climbing
+        // up to a non-climbable neighbour used to continue for the full 0.7 s.
+        const bool keep = input.wallclimb && wall.hit && wall.brush && wall.brush->climbable &&
+                          player.state_ticks <= max_ticks;
         if (!keep) {
             player.state = player.on_ground ? ParkourState::Ground : ParkourState::Air;
             player.state_ticks = 0;
@@ -413,16 +431,33 @@ void pmove(PlayerState& player, const MoveInput& input, const CollisionWorld& wo
         player.dash_cooldown = static_cast<int>(params.dash_cooldown * hz + 0.5f);
     }
 
-    const StepResult moved = step_slide_move(world, player.pos, player.vel, mins, maxs, dt, params);
-    player.pos = moved.moved.pos;
-    player.vel = moved.moved.vel;
+    if (player.on_ground) {
+        const StepResult moved =
+            step_slide_move(world, player.pos, player.vel, mins, maxs, dt, params);
+        player.pos = moved.moved.pos;
+        player.vel = moved.moved.vel;
+    } else {
+        // No step-up in the air: otherwise every jump against a 0.46 m ledge is a
+        // free mantle, and wall running climbs the stairs it only brushes past.
+        const SlideResult moved = slide_move(world, player.pos, player.vel, mins, maxs, dt, params);
+        player.pos = moved.pos;
+        player.vel = moved.vel;
+    }
 
     if (probe_ground(player, world, params, ground_z)) {
         player.pos.z = ground_z;
         player.on_ground = true;
         if (player.vel.z < 0.0f) player.vel.z = 0.0f;
+        // One impulse per recharge_ticks of ground contact. Refilling one per tick
+        // handed back all four impulses in 62 ms, which made the parkour resource
+        // (and every cost that spends it) meaningless.
         if (params.recharge_on_ground && player.impulses < params.max_impulses) {
-            ++player.impulses;
+            if (++player.recharge_progress >= params.recharge_ticks) {
+                player.recharge_progress = 0;
+                ++player.impulses;
+            }
+        } else {
+            player.recharge_progress = 0;
         }
     } else {
         player.on_ground = false;
@@ -446,7 +481,6 @@ void pmove(PlayerState& player, const MoveInput& input, const CollisionWorld& wo
     player.jump_was_down = input.jump;
     player.slide_was_down = input.slide;
     player.vault_was_down = input.vault;
-    ++player.tick;
 }
 
 }  // namespace sim

@@ -105,4 +105,32 @@ if ($clientText -notmatch 'reconnect ok') { Fail 'reconnect failed' }
 if ($clientText -notmatch 'reconnect double=0') { Fail 'a second reconnect was not refused (AUD-17)' }
 if ($hostText -notmatch 'signal slot 1 resumed 1') { Fail 'host did not resume the ticket' }
 Write-Host 'PASS: reconnect resumed the ticket and the second call was refused' -ForegroundColor Green
+
+# AUD-02: with the pause menu open the world must keep pumping the network. The
+# server drops a silent link after 5 s, so a 7 s paused run that still shows
+# "peers 1" and no SERVER SILENT is the gate. --force-paused used to be read but
+# never parsed, so this behaviour was never actually checked.
+Write-Host '== paused menu keeps the link =='
+$pausedLimit = 7
+$hostLog2 = $temp + '.host2'
+$clientLog2 = $temp + '.client2'
+$hostProcess = $null
+$clientProcess = $null
+try {
+    $hostProcess = Start-Process -FilePath $godot -PassThru -NoNewWindow -RedirectStandardOutput $hostLog2 -RedirectStandardError ($hostLog2 + '.err') -ArgumentList @('--headless', '--path', $project, '--', '--host', ('--port=' + $gatePort))
+    Start-Sleep -Milliseconds 2500
+    $clientProcess = Start-Process -FilePath $godot -PassThru -NoNewWindow -RedirectStandardOutput $clientLog2 -RedirectStandardError ($clientLog2 + '.err') -ArgumentList @('--headless', '--path', $project, '--', '--connect=127.0.0.1', ('--port=' + $gatePort), '--force-paused')
+    Start-Sleep -Seconds $pausedLimit
+} finally {
+    foreach ($proc in @($clientProcess, $hostProcess)) {
+        if ($proc -and -not $proc.HasExited) { Stop-Process -Id $proc.Id -Force }
+    }
+    Start-Sleep -Milliseconds 300
+}
+$pausedText = if (Test-Path $clientLog2) { Get-Content -LiteralPath $clientLog2 -Raw } else { '' }
+Remove-Item -LiteralPath $hostLog2, ($hostLog2 + '.err'), $clientLog2, ($clientLog2 + '.err') -Force -ErrorAction SilentlyContinue
+if ($pausedText -notmatch 'joined slot 1') { Fail 'the paused client never joined' }
+if ($pausedText -notmatch 'peers 1') { Fail 'the paused client never saw the host' }
+if ($pausedText -match 'server silent') { Fail 'the host dropped a paused client (AUD-02 regression)' }
+Write-Host 'PASS: the link survived 7 s with the menu open' -ForegroundColor Green
 exit 0

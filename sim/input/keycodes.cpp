@@ -50,7 +50,9 @@ bool key_from_name(const std::string& name, Key& out) {
     std::string n = upper(name);
     // Spaces are tolerated: "left shift" reads better in a hand edited file.
     n.erase(std::remove(n.begin(), n.end(), ' '), n.end());
-    if (n.empty()) {
+    if (n.empty() || n == "NONE") {
+        // Bindings::save writes the literal "NONE" for an unbound action, so the
+        // loader has to accept it or a saved file reloads with the old default.
         out = Key::None;
         return true;
     }

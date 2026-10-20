@@ -27,11 +27,14 @@ public:
 
     const std::vector<Brush>& brushes() const { return m_brushes; }
     const Bounds& bounds() const { return m_bounds; }
-    uint64_t geometry_hash() const;
+    // Cached: the hash used to walk every brush and plane on every state_hash()
+    // call, i.e. once per tick, while geometry changes only in build().
+    uint64_t geometry_hash() const { return m_geometry_hash; }
 
 private:
     std::vector<Brush> m_brushes;
     Bounds m_bounds;
+    uint64_t m_geometry_hash = 0;
 };
 
 struct SlideResult {

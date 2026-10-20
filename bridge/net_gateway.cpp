@@ -22,6 +22,19 @@ bool fail(const char* prefix, std::string& error) {
 
 }  // namespace
 
+void NetGateway::abort_host() {
+    // A failed host used to leave the TCP listener, its thread and the UDP port
+    // alive: the UI said "host failed" while a ghost host kept issuing tickets.
+    m_net_client.reset();
+    m_hub.reset();
+    if (m_match) {
+        m_match->stop();
+        m_match.reset();
+    }
+    m_server.reset();
+    m_hosting = false;
+}
+
 bool NetGateway::start_host(const std::string& map, const std::string& data, int port, int players,
                             std::string& error) {
     if (m_net_client) return false;
@@ -35,6 +48,7 @@ bool NetGateway::start_host(const std::string& map, const std::string& data, int
     // The listen server owns slot 0 itself, so clients start at slot 1.
     if (!m_match->start(static_cast<uint16_t>(port), static_cast<uint8_t>(players), map, 7u, 1,
                         error)) {
+        abort_host();
         return fail("breakpoint host: ", error);
     }
     {
@@ -48,6 +62,7 @@ bool NetGateway::start_host(const std::string& map, const std::string& data, int
     m_hub = std::make_unique<sim::UdpPeerHub>();
     const uint16_t game_port = sim::game_port_of(m_match->port());
     if (!m_hub->open(game_port, error) || m_hub->local_port() != game_port) {
+        abort_host();
         return fail("breakpoint host: ", error);
     }
     m_local_to_server = std::make_unique<sim::LoopbackTransport>(sim::NetConditions{}, 1);
@@ -56,7 +71,7 @@ bool NetGateway::start_host(const std::string& map, const std::string& data, int
     m_net_client = std::make_unique<sim::NetClient>();
     if (!m_net_client->init(m_local_to_server.get(), m_local_to_client.get(), 0, map, data,
                             error)) {
-        m_net_client.reset();
+        abort_host();
         return fail("breakpoint host: ", error);
     }
     m_hosting = true;
@@ -91,7 +106,11 @@ bool NetGateway::join(const std::string& host, int port, const std::string& map,
     m_has_ticket = false;
     m_map_path = map;
     m_data_path = data;
-    return join_impl(host, port, nullptr, error);
+    const bool ok = join_impl(host, port, nullptr, error);
+    // If nothing was built there is no session to be disconnected from: leaving
+    // the flag set froze solo play after a failed --connect.
+    if (!ok && !m_net_client) m_disconnected = false;
+    return ok;
 }
 
 // A5: a resume keeps the same client id and presents the ticket the host
@@ -123,20 +142,19 @@ bool NetGateway::join_impl(const std::string& host, int port, const sim::Ticket*
         m_ticket = reply.ticket;
         m_has_ticket = true;
     }
-    // Admitted: the old link (if any) can go before the new one is built.
-    m_net_client.reset();
-    m_udp.reset();
-    m_udp = std::make_unique<sim::UdpTransport>();
-    if (!m_udp->open(0, error) ||
-        !m_udp->connect_peer(host.c_str(), reply.game_port, error)) {
+    // Build the new link completely before touching the old one: destroying the
+    // live session first meant a transient socket error left the player connected
+    // to nothing at all.
+    auto udp = std::make_unique<sim::UdpTransport>();
+    if (!udp->open(0, error) || !udp->connect_peer(host.c_str(), reply.game_port, error)) {
         return fail("breakpoint join: ", error);
     }
-    m_net_client = std::make_unique<sim::NetClient>();
-    if (!m_net_client->init(m_udp.get(), m_udp.get(), reply.slot, m_map_path, m_data_path,
-                            error)) {
-        m_net_client.reset();
+    auto client = std::make_unique<sim::NetClient>();
+    if (!client->init(udp.get(), udp.get(), reply.slot, m_map_path, m_data_path, error)) {
         return fail("breakpoint join: ", error);
     }
+    m_net_client = std::move(client);
+    m_udp = std::move(udp);
     std::printf("breakpoint: signal slot %d game port %u\n", static_cast<int>(reply.slot),
                 static_cast<unsigned>(reply.game_port));
     m_udp->send(sim::make_hello(m_client_id));

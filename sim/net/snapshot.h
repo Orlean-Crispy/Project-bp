@@ -14,14 +14,21 @@ struct PlayerSnap {
     Vec3 pos;
     Vec3 vel;
     float yaw = 0.0f;
-    // bit0 on_ground, bit1 crouched, bit2 active, bit3 jump_was_down.
-    // jump_was_down rides in the flags because it is a one-bit input edge.
+    // bit0 on_ground, bit1 crouched, bit2 active, bit3 jump_was_down,
+    // bit4 slide_was_down, bit5 dash_was_down, bit6 vault_was_down.
+    // The four *_was_down bits are input edges from the previous tick: without
+    // them a rollback replays a held slide/dash/vault as a fresh press.
     uint8_t flags = 0;
     uint8_t impulses = 0;
     uint8_t state = 0;
     uint16_t state_ticks = 0;
     uint16_t dash_cooldown = 0;
     uint16_t slow_ticks = 0;  // remaining post-hit movement penalty (6.10)
+    // Both feed the next tick: recharge_progress decides when the next impulse
+    // comes back, speed_coefficient scales max speed. Leaving them out of the
+    // snapshot made a rollback replay at a different speed than the server.
+    uint8_t recharge = 0;
+    float speed_coefficient = 1.0f;
     // R9: these survive a tick and steer the next one (wall run direction,
     // scripted vault), so a reconciliation that cannot see them would accept a
     // divergent prediction. Sent as their own delta field group.

@@ -404,7 +404,7 @@ powershell -File tools\build.ps1
 powershell -File tools\smoke.ps1          # 17 闸门（含 Godot 桥）+ bench，必须 ALL GREEN
 powershell -File tools\net_selftest.ps1   # 两进程真实 UDP：joins=2 far=0 ports_ok=True
 powershell -File tools\build_bridge.ps1   # 改过 sim/ 或 bridge/ 之后必须重跑
-powershell -File tools\godot_check.ps1    # 只跑桥：--hud-check + 两进程重连（退出码 3 = 跳过）
+powershell -File tools\godot_check.ps1    # 只跑桥：--hud-check + 重连 + 暂停 7 s（退出码 3 = 跳过）
 ```
 
 第 17 项已经在 smoke 里，正常不用手敲。想手工看两个窗口：`tools\run_net_demo.ps1`（两边都走
@@ -412,21 +412,28 @@ ports.h 的默认端口，不用填数字），或 host `--host`、client `--con
 host 应打 `peer joined slot 1 / remote slot 1 visible`，client 打 `joined slot 1 / remote slot 0 visible`，
 两个 stderr 必须为空。重连验证加 `--reconnect-check`（host 应打 `signal slot 1 resumed 1`，
 client 应打 `reconnect ok` 与 `reconnect double=0`）。
+暂停验证：client 加 `--force-paused`，7 s 后仍应打 `peers 1` 且不出现 `SERVER SILENT`（AUD-02 真闸门）。
 
 **注意**：`--hud-check` 在扩展加载失败时**不会退出**，会一直挂着。所以别手敲裸命令等它，
 用 `godot_check.ps1`（带 60 s 超时）；改 DLL 前先确认没有 Godot 进程在跑，否则 ld 报 Permission denied。
 
 ### 8.6 明确未完成（交接必读）
 
-- **AUD-16**：`get_hp()/get_armor()` 仍是常量 100/0，M6 把 hp/armor 放进快照时一并解决。
-- R6 边界：只有 session 三步零分配；ByteWriter/编解码/回环队列仍约 40 次/tick，需单独立项。
-- 第 17 项在没装 Godot（或没建 DLL）的机器上打印 SKIP 并返回 3——smoke 视为跳过，
-  所以「换机后忘装 Godot」不会变红，只有 `godot_check.ps1` 会直说。
-- 跨机 demo 比对仍缺第二台机器。
+**协议 v5**：PlayerSnap 现在带四个按下沿、recharge_progress、speed_coefficient；
+旧 DLL/旧 EXE 不能混用（HELLO 版本号会拒）。改快照字段必须同时改 version.h 与本文。
 
-AUD-19/13/17/14/15 已清（2026-10-20，S58）：安装脚本不再依赖 7z 且版本全锁、桥与 CMake 同一套标志
-并带 build id、重连单次触发、端口只在 `sim/net/ports.h`、Godot 环境与检查脚本各一份。
-细节见 PROGRESS 最后一节与 AUDIT「已修批次（S58）」。
+- **AUD-16**：`get_hp()/get_armor()` 仍是常量 100/0，M6 把 hp/armor 放进快照时一并解决。
+- **AUD-20**：客户端落后不补 tick；**AUD-26**：UDP 不校验源地址；**AUD-27**：正常离开不释放组局槽位
+  —— M6 前清（都影响"两个人真打一局"）。
+- **AUD-21/22/23/24**：序列化分配、可靠流 u16 回绕、分片未接真实链路、admission 无 TTL。
+- **AUD-28/29**：手感常量仍是字面量（铁律 I）、combat 诊断与 max_health（M6 一起）。
+- **AUD-31..35**：信令主线程同步、HUD 每帧重拼、左右键侧别、trace 注释、主循环 5 tick 上限。
+- 第 17 项在没装 Godot（或没建 DLL）的机器上打印 SKIP 并返回 3——smoke 视为跳过；
+  跨机 demo 比对仍缺第二台机器。
+
+AUD-19/13/17/14/15 已清（S58）；S59 又修了 25 项（impulse 充能、空中 step-up、Jump 事件、geometry_hash 标志、快照 v5、
+幽灵链路超时、全零 id、demo 句柄/截断、桥的 solo 分配/眼高/失败清理、CLI 校验，
+以及一大批"只打印不断言"的闸门）。细节见 PROGRESS 最后一节与 AUDIT 第 6 节。
 
 ### 8.7 下一步
 

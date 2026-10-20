@@ -33,6 +33,18 @@ Bounds segment_bounds(const Vec3& a, const Vec3& b, const Vec3& mins, const Vec3
 void CollisionWorld::build(const MapData& map) {
     m_brushes = map.brushes;
     m_bounds = map.bounds;
+
+    // The hash decides whether two machines may play together, so it has to cover
+    // everything that changes movement: the planes *and* the parkour flags. Two
+    // maps that differ only in _climbable/_wallrunnable used to hash alike.
+    Hasher h;
+    h.u32(static_cast<uint32_t>(m_brushes.size()));
+    for (const Brush& b : m_brushes) {
+        h.u32(static_cast<uint32_t>(b.planes.size()));
+        h.u32((b.climbable ? 1u : 0u) | (b.wallrunnable ? 2u : 0u));
+        for (const Plane& p : b.planes) h.vec3(p.normal).f32(p.dist);
+    }
+    m_geometry_hash = h.value();
 }
 
 TraceResult CollisionWorld::trace_box(const Vec3& start, const Vec3& end,
@@ -111,16 +123,6 @@ TraceResult CollisionWorld::trace_box(const Vec3& start, const Vec3& end,
     return best;
 }
 
-uint64_t CollisionWorld::geometry_hash() const {
-    Hasher h;
-    h.u32(static_cast<uint32_t>(m_brushes.size()));
-    for (const Brush& b : m_brushes) {
-        h.u32(static_cast<uint32_t>(b.planes.size()));
-        for (const Plane& p : b.planes) h.vec3(p.normal).f32(p.dist);
-    }
-    return h.value();
-}
-
 SlideResult slide_move(const CollisionWorld& world, const Vec3& start, const Vec3& velocity,
                        const Vec3& mins, const Vec3& maxs, float dt, const MovementParams& params) {
     SlideResult result;
@@ -137,7 +139,9 @@ SlideResult slide_move(const CollisionWorld& world, const Vec3& start, const Vec
     float time_left = dt;
     int bumps = 0;
 
-    while (time_left > 1e-6f && bumps <= params.max_bumps) {
+    // Strictly less than: the old "<= max_bumps" allowed one bump *more* than the
+    // documented cap, because bumps is incremented inside the loop.
+    while (time_left > 1e-6f && bumps < params.max_bumps) {
         const float speed = length(vel);
         if (speed < kMinSpeed) {
             vel = Vec3();
