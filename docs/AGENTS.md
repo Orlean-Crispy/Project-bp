@@ -366,7 +366,7 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
   判据：[match] accepted 1 slot 0 ticket 1 resume 1 tamper 1 full 1 events 1。
   已接 net_loop：`--serve` 起信令（UDP = 信令端口 + 1），`--join` 先 match_request 再连 UDP，
   只放行信令通过过的 client_id。判据：tools/net_selftest.ps1 joins=2 accepted≈416 far=0 moved≈46.9。
-  尚未接 bridge/Godot（菜单仍走旧路径）。
+  也已接 bridge/Godot：菜单填的是信令端口，房主留 slot 0。
 - 掉线/复用：Link.last_rx_tick 记录最后收包 tick；step() 开头 320 tick（5 s）无包则 remove_client；
   add_client(..., -1) 复用第一个 inactive 槽位（满员返回 -1），重连回原槽。
   **重连早于超时**也安全：add_client 发现同槽已有 link 时用新 link 顶替（同槽不允许两个写者），
@@ -447,10 +447,10 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
 
 ## 11. 下一步（严格按计划书顺序，不要跳）
 
-1. **M5 收尾**：A1/A2/A5 接入组局（信令线程、单 socket 双队列、票据/重连状态机）+ 局内 UI。
-2. **M6 射击**：hitscan + 后坐力表 + 三段部位判定（hitbox 已就绪，×5 / ×1 / ×0.7）
+1. **M6 射击**：WeaponDef(toml) → 开火输入 → hitscan + hitbox 回溯 → 三段伤害
    + hp/armor 进快照 + 死亡/重生 + 穿透/衰减；TTK 用 100 HP / 三甲复算。
-3. **M7 / M8**：动画、视角模型、音频垂直定位（§9.2 的楼层低通）。
+2. **M7 / M8**：动画、视角模型、音频垂直定位（§9.2 的楼层低通）。
+3. **全量代码体检**：功能完好性 / 可优化点 / 死代码，按模块出清单再动手。
 4. 缺口与顺序详见 docs/GAPS.md。
 
 ---
