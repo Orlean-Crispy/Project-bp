@@ -451,12 +451,10 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
 
 ## 11. 下一步（严格按计划书顺序，不要跳）
 
-1. **全量代码体检**（M5 收尾之后立刻做）：按模块列「可疑点清单」——功能完好性、可优化点、
-   死代码，标严重度；清单确认后再动手，一项一 commit。
-2. **M6 射击**：WeaponDef(toml) → 开火输入 → hitscan + hitbox 回溯 → 三段伤害
+1. **M6 射击**：WeaponDef(toml) → 开火输入 → hitscan + hitbox 回溯 → 三段伤害
    + hp/armor 进快照 + 死亡/重生 + 穿透/衰减；TTK 用 100 HP / 三甲复算。
-3. **M7 / M8**：动画、视角模型、音频垂直定位（§9.2 的楼层低通）。
-4. 缺口与顺序详见 docs/GAPS.md。
+2. **M7 / M8**：动画、视角模型、音频垂直定位（§9.2 的楼层低通）。
+3. 代码体检已收口（AUDIT A1–A7 全部完成，A8 明确不改）；剩余债见 docs/GAPS.md。
 
 ---
 
