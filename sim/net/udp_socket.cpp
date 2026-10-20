@@ -68,6 +68,18 @@ bool UdpSocket::open(uint16_t local_port, std::string& error) {
     fcntl(static_cast<Socket>(m_socket), F_SETFL, flags | O_NONBLOCK);
 #endif
 
+    // docs/pitfalls/port-hijack.md: on Windows SO_REUSEADDR lets a second
+    // socket bind a port that is already in use, so the port can be taken over
+    // silently. The game port is ours or nobody's: make the conflict loud.
+    // POSIX SO_REUSEADDR only reuses TIME_WAIT, so it stays.
+    const int one = 1;
+#ifdef _WIN32
+    setsockopt(static_cast<Socket>(m_socket), SOL_SOCKET, SO_EXCLUSIVEADDRUSE,
+               reinterpret_cast<const char*>(&one), sizeof(one));
+#else
+    setsockopt(static_cast<Socket>(m_socket), SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
+#endif
+
     sockaddr_in local{};
     local.sin_family = AF_INET;
     local.sin_addr.s_addr = htonl(INADDR_ANY);
@@ -75,6 +87,8 @@ bool UdpSocket::open(uint16_t local_port, std::string& error) {
     if (::bind(static_cast<Socket>(m_socket), reinterpret_cast<sockaddr*>(&local),
                sizeof(local)) != 0) {
         error = "bind() failed";
+        close_socket(static_cast<Socket>(m_socket));
+        m_socket = kInvalid;
         return false;
     }
 

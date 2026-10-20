@@ -18,6 +18,7 @@
 #include "sim/net/ticket.h"
 #include "sim/net/transport.h"
 #include "sim/net/udp_hub.h"
+#include "sim/net/udp_socket.h"
 #include "sim/net/udp_transport.h"
 
 
@@ -318,6 +319,21 @@ int run_udp_check() {
                 adopted, pong_ok, large_ok, empty_ok);
     if (!hello_ok || !adopted || !pong_ok || !large_ok || !empty_ok) {
         std::printf("FAIL: UDP transport round-trip failed\n");
+        ++failures;
+    }
+
+    // R5 (docs/pitfalls/port-hijack.md): the game port must be exclusive. A
+    // second socket trying to bind the very port we just took has to fail, and
+    // the failed socket has to be closed again.
+    sim::UdpSocket owner;
+    sim::UdpSocket intruder;
+    bool exclusive = false;
+    if (owner.open(0, error) && owner.local_port() != 0) {
+        exclusive = !intruder.open(owner.local_port(), error) && !intruder.valid();
+    }
+    std::printf("  [udp] exclusive %d\n", exclusive ? 1 : 0);
+    if (!exclusive) {
+        std::printf("FAIL: a second socket bound the same UDP port\n");
         ++failures;
     }
     return failures;
