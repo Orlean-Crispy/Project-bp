@@ -5,12 +5,17 @@
 #include <string>
 #include <vector>
 
+#include "sim/net/ticket.h"
+
 namespace sim {
 
 // A1 control plane: a small length-prefixed binary protocol over TCP (27015),
 // deliberately separate from the UDP snapshot channel. v0.1 only needs the six
 // messages below; assets (maps/material tables) are listed here and fetched out
 // of band, never carried inline.
+// Bumped whenever the frame layout changes (v2 carries the 32-byte A5 ticket).
+constexpr uint16_t kSignalProtocol = 2;
+
 enum class SignalType : uint8_t {
     Hello = 1,
     HelloAck = 2,
@@ -29,8 +34,10 @@ struct SignalAsset {
 struct SignalMessage {
     SignalType type = SignalType::Hello;
     uint16_t protocol = 0;
-    uint64_t client_id = 0;
-    uint32_t ticket = 0;
+    ClientId client_id{};   // 16 bytes, same identity the ticket MACs over
+    bool has_ticket = false;
+    Ticket ticket{};        // A5: only meaningful when has_ticket
+    uint8_t slot = 0;
     bool accepted = false;
     uint8_t reason = 0;
     uint32_t server_tick = 0;
@@ -40,6 +47,7 @@ struct SignalMessage {
     std::string map;
     uint32_t seed = 0;
     uint8_t players = 0;
+    uint16_t game_port = 0;  // MATCH_START: the UDP port the client joins
     uint32_t tick = 0;
 };
 

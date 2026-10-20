@@ -20,6 +20,7 @@
 #include "sim/game/combat.h"
 #include "sim/net/fragment.h"
 #include "sim/net/handshake.h"
+#include "sim/net/matchmaking.h"
 #include "sim/net/reliable.h"
 #include "sim/net/session.h"
 #include "sim/net/signaling.h"
@@ -1798,6 +1799,76 @@ int run_reliable_test() {
     return 0;
 }
 
+int run_match_test() {
+    sim::MatchHost host;
+    std::string error;
+    if (!host.start(0, 2, "playground", 7, error)) {
+        std::printf("FAIL: match host start: %s\n", error.c_str());
+        return 1;
+    }
+    host.set_server_tick(900);
+
+    sim::ClientId a{};
+    a[0] = 0x01;
+    sim::ClientId b{};
+    b[0] = 0x02;
+    sim::ClientId c{};
+    c[0] = 0x03;
+
+    const uint16_t port = host.port();
+    sim::MatchReply ra;
+    const bool accepted = sim::match_request("127.0.0.1", port, a, nullptr, ra) && ra.ok &&
+                          ra.status == sim::MatchStatus::Accepted && ra.slot == 0 &&
+                          ra.has_ticket && ra.seed == 7 && ra.players == 2 &&
+                          ra.map == "playground" && ra.game_port == static_cast<uint16_t>(port + 1);
+
+    // A5: the same client id + ticket returns to its old slot.
+    sim::MatchReply rb;
+    const bool resume = sim::match_request("127.0.0.1", port, a, &ra.ticket, rb) && rb.ok &&
+                        rb.status == sim::MatchStatus::Accepted && rb.slot == 0;
+
+    // A tampered MAC is refused even though the id is known.
+    sim::Ticket tampered = ra.ticket;
+    tampered.mac[0] ^= 0xFF;
+    sim::MatchReply rc;
+    const bool tamper = sim::match_request("127.0.0.1", port, a, &tampered, rc) && rc.ok &&
+                        rc.status == sim::MatchStatus::BadTicket;
+
+    // A second identity takes slot 1; a third is turned away.
+    sim::MatchReply rd;
+    const bool second = sim::match_request("127.0.0.1", port, b, nullptr, rd) && rd.ok &&
+                        rd.status == sim::MatchStatus::Accepted && rd.slot == 1;
+    sim::MatchReply re;
+    const bool full = sim::match_request("127.0.0.1", port, c, nullptr, re) && re.ok &&
+                      re.status == sim::MatchStatus::RoomFull;
+
+    host.stop();
+    bool event_accepted = false;
+    bool event_resumed = false;
+    bool event_full = false;
+    for (const sim::MatchEvent& ev : host.drain()) {
+        if (ev.status == sim::MatchStatus::Accepted && ev.client_id == a && ev.slot == 0) {
+            if (ev.resumed) {
+                event_resumed = true;
+            } else {
+                event_accepted = true;
+            }
+        } else if (ev.status == sim::MatchStatus::RoomFull && ev.client_id == c) {
+            event_full = true;
+        }
+    }
+
+    std::printf("  [match] accepted %d slot 0 ticket %d resume %d tamper %d full %d events %d\n",
+                accepted, resume, resume, tamper, full,
+                event_accepted && event_resumed && event_full ? 1 : 0);
+    if (!accepted || !resume || !tamper || !second || !full || !event_accepted ||
+        !event_resumed || !event_full) {
+        std::printf("FAIL: A1/A5 matchmaking failed: %s\n", error.c_str());
+        return 1;
+    }
+    return 0;
+}
+
 int run_signal_test() {
     std::string error;
     sim::TcpListener listener;
@@ -1820,14 +1891,20 @@ int run_signal_test() {
     bool match_ok = false, full_ok = false;
     sim::SignalMessage in;
 
+    sim::ClientId id{};
+    for (std::size_t i = 0; i < id.size(); ++i) id[i] = static_cast<uint8_t>(0x40 + i);
     sim::SignalMessage hello;
     hello.type = sim::SignalType::Hello;
-    hello.protocol = 2;
-    hello.client_id = 0x1122334455667788ull;
-    hello.ticket = 0;
+    hello.protocol = sim::kSignalProtocol;
+    hello.client_id = id;
+    hello.has_ticket = true;
+    hello.ticket.client_id = id;
+    hello.ticket.expiry = 1119;
+    hello.ticket.mac[0] = 0xA0;
     hello_ok = client.send_message(hello, error) && peer->recv_message(in, 1000, error) &&
-               in.type == sim::SignalType::Hello && in.protocol == 2 &&
-               in.client_id == 0x1122334455667788ull;
+               in.type == sim::SignalType::Hello && in.protocol == sim::kSignalProtocol &&
+               in.client_id == id && in.has_ticket && in.ticket.expiry == 1119 &&
+               in.ticket.mac[0] == 0xA0;
 
     sim::SignalMessage ack;
     ack.type = sim::SignalType::HelloAck;
@@ -1835,9 +1912,14 @@ int run_signal_test() {
     ack.reason = 3;
     ack.server_tick = 120;
     ack.config_hash = 0xDEADBEEFu;
+    ack.slot = 1;
+    ack.has_ticket = true;
+    ack.ticket.client_id = id;
+    ack.ticket.expiry = 1239;
     ack_ok = peer->send_message(ack, error) && client.recv_message(in, 1000, error) &&
              in.type == sim::SignalType::HelloAck && in.accepted && in.reason == 3 &&
-             in.server_tick == 120 && in.config_hash == 0xDEADBEEFu;
+             in.server_tick == 120 && in.config_hash == 0xDEADBEEFu && in.slot == 1 &&
+             in.has_ticket && in.ticket.client_id == id && in.ticket.expiry == 1239;
 
     sim::SignalMessage manifest;
     manifest.type = sim::SignalType::AssetManifest;
@@ -1861,9 +1943,10 @@ int run_signal_test() {
     match.map = "playground";
     match.seed = 7;
     match.players = 2;
+    match.game_port = 27016;
     match_ok = peer->send_message(match, error) && client.recv_message(in, 1000, error) &&
                in.type == sim::SignalType::MatchStart && in.map == "playground" &&
-               in.seed == 7 && in.players == 2;
+               in.seed == 7 && in.players == 2 && in.game_port == 27016;
 
     sim::SignalMessage full;
     full.type = sim::SignalType::FullState;
@@ -1958,6 +2041,7 @@ int run_net_test(const Options& opt) {
     failures += run_udp_session_check(opt.data_path);
     failures += run_clock_check(opt.data_path);
     failures += run_signal_test();
+    failures += run_match_test();
     failures += run_reliable_test();
     failures += run_ticket_test();
     failures += run_timeout_test();

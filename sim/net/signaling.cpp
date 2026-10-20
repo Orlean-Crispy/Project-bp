@@ -152,6 +152,23 @@ void put_string(ByteWriter& w, const std::string& value) {
     w.raw(value.data(), n);
 }
 
+void put_ticket(ByteWriter& w, const Ticket& t) {
+    w.raw(t.client_id.data(), t.client_id.size());
+    w.u32(t.expiry);
+    w.raw(t.mac.data(), t.mac.size());
+}
+
+bool get_ticket(ByteReader& r, Ticket& t) {
+    const uint8_t* id = r.bytes(t.client_id.size());
+    if (id == nullptr) return false;
+    std::memcpy(t.client_id.data(), id, t.client_id.size());
+    t.expiry = r.u32();
+    const uint8_t* mac = r.bytes(t.mac.size());
+    if (mac == nullptr) return false;
+    std::memcpy(t.mac.data(), mac, t.mac.size());
+    return true;
+}
+
 std::string get_string(ByteReader& r) {
     const uint16_t n = r.u16();
     const uint8_t* p = r.bytes(n);
@@ -167,14 +184,18 @@ std::vector<uint8_t> encode_signal(const SignalMessage& message) {
     switch (message.type) {
         case SignalType::Hello:
             w.u16(message.protocol);
-            w.u64(message.client_id);
-            w.u32(message.ticket);
+            w.raw(message.client_id.data(), message.client_id.size());
+            w.u8(message.has_ticket ? 1 : 0);
+            if (message.has_ticket) put_ticket(w, message.ticket);
             break;
         case SignalType::HelloAck:
             w.u8(message.accepted ? 1 : 0);
             w.u8(message.reason);
             w.u32(message.server_tick);
             w.u32(message.config_hash);
+            w.u8(message.slot);
+            w.u8(message.has_ticket ? 1 : 0);
+            if (message.has_ticket) put_ticket(w, message.ticket);
             break;
         case SignalType::AssetManifest:
             w.u16(static_cast<uint16_t>(message.assets.size()));
@@ -192,6 +213,7 @@ std::vector<uint8_t> encode_signal(const SignalMessage& message) {
             put_string(w, message.map);
             w.u32(message.seed);
             w.u8(message.players);
+            w.u16(message.game_port);
             break;
         case SignalType::FullState:
             w.u32(message.tick);
@@ -205,16 +227,23 @@ bool decode_signal(const uint8_t* data, size_t size, SignalMessage& out, std::st
     SignalMessage m;
     m.type = static_cast<SignalType>(r.u8());
     switch (m.type) {
-        case SignalType::Hello:
+        case SignalType::Hello: {
             m.protocol = r.u16();
-            m.client_id = r.u64();
-            m.ticket = r.u32();
+            const uint8_t* id = r.bytes(m.client_id.size());
+            if (id == nullptr) break;
+            std::memcpy(m.client_id.data(), id, m.client_id.size());
+            m.has_ticket = r.u8() != 0;
+            if (m.has_ticket && !get_ticket(r, m.ticket)) break;
             break;
+        }
         case SignalType::HelloAck:
             m.accepted = r.u8() != 0;
             m.reason = r.u8();
             m.server_tick = r.u32();
             m.config_hash = r.u32();
+            m.slot = r.u8();
+            m.has_ticket = r.u8() != 0;
+            if (m.has_ticket) get_ticket(r, m.ticket);
             break;
         case SignalType::AssetManifest: {
             const uint16_t count = r.u16();
@@ -238,6 +267,7 @@ bool decode_signal(const uint8_t* data, size_t size, SignalMessage& out, std::st
             m.map = get_string(r);
             m.seed = r.u32();
             m.players = r.u8();
+            m.game_port = r.u16();
             break;
         case SignalType::FullState:
             m.tick = r.u32();

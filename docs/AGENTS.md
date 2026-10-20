@@ -141,7 +141,7 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 | 5 | 台阶/蹲下 | 0.20/0.35/0.45 可上、0.55 挡住、1.0 m 净高不能站 | --test-step |
 | 6 | 跳跃语义 | 按住 300 tick 只跳 1 次；点按 3 次跳 3 次 | --test-jump |
 | 7 | HP/护甲 | 规则与 TTK 落在 0.6–1.2 s | --test-health |
-| 8 | 网络收敛 + 去重 + 加入 + 插值 + UDP + 分片 + 双客户端 | 30% 丢包偏差 < 0.01 m、回滚 < 500；N3 修正 < 3；加入/重连 < 0.01 m；插值正确；UDP 往返；分片 0 损坏；2 客户端经 hub 加入且偏差 < 0.01 m | --test-net |
+| 8 | 网络收敛 + 去重 + 加入 + 插值 + UDP + 分片 + 双客户端 + 信令组局 | 30% 丢包偏差 < 0.01 m、回滚 < 500；N3 修正 < 3；加入/重连 < 0.01 m；插值正确；UDP 往返；分片 0 损坏；2 客户端经 hub 加入且偏差 < 0.01 m；组局握手按槽位/票据/满员拒绝正确 | --test-net |
 | 9 | 卡死恢复 | 从 brush 内部出生能自行脱困 | --test-stuck |
 | 10 | 乱按压力 | 6000 tick 乱按，最长连续实心 ≤ 2 | --test-soak |
 | 11 | 平台边缘 | 落到边缘后仍能继续走 | --test-edge |
@@ -329,7 +329,14 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
   判据：5000 B / 10 块 / 30% 丢包 → retrans 6、complete 1、same 1、corrupt 1。
   尚未与快照共用 socket。
 - A1 信令（sim/net/signaling.*）：TCP 27015、u16 长度前缀、六条消息、connect/accept 超时；
-  资产只传清单。判据：真 TCP 环回六条消息逐字段一致。尚未接入 Godot（菜单仍走 UDP HELLO）。
+  资产只传清单。判据：真 TCP 环回六条消息逐字段一致。
+  协议 v2：client_id 改为 16 B（与票据的 HMAC 输入一致），HELLO/HELLO_ACK 带 32 B 票据，
+  MATCH_START 带 game_port（约定 UDP = 信令端口 + 1）。
+- A1 组局（sim/net/matchmaking.*）：MatchHost 自起 TCP 线程（port 0 = 临时端口，闸门可并行）；
+  握手 HELLO→ACK→MANIFEST→READY→MATCH_START；新客户端领 32 B 票据（120 s），
+  同 id + 有效票据回原槽位（A5 恢复），票据被篡改或满员直接拒；sim 线程只 drain() 事件、不碰 socket。
+  判据：[match] accepted 1 slot 0 ticket 1 resume 1 tamper 1 full 1 events 1。
+  尚未接 bridge/Godot（菜单仍走 UDP HELLO）。
 - 掉线/复用：Link.last_rx_tick 记录最后收包 tick；step() 开头 320 tick（5 s）无包则 remove_client；
   add_client(..., -1) 复用第一个 inactive 槽位（满员返回 -1），重连回原槽。
   判据：[timeout] joined 1 dropped 1 reuse 1。

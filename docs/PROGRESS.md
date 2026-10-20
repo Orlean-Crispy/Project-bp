@@ -1169,6 +1169,18 @@ CMake 只在 WIN32 链接 ws2_32，不污染 sim 的其它目标。
 
 ---
 
+## 2026-10-20 · S33 · A1 组局握手 + A5 票据（M5 收尾第一步）
+
+- 新增 sim/net/matchmaking.*：MatchHost（自起 TCP 线程、事件队列、槽位/票据表）+ `match_request`（客户端）。
+- 信令协议升到 v2：`client_id` 改 16 B（与票据 HMAC 输入一致）、HELLO/HELLO_ACK 带 32 B 票据、
+  MATCH_START 带 `game_port`（约定 UDP = 信令端口 + 1）。
+- 握手六消息走完才发 MATCH_START；新客户端领 120 s 票据；同 id + 有效票据回原槽（A5）；
+  票据被篡改或房间满直接拒；sim 线程只 `drain()` 事件，不碰 socket。
+- 判据（并入 --test-net）：`[match] accepted 1 slot 0 ticket 1 resume 1 tamper 1 full 1 events 1`。
+- 未接 bridge/Godot：菜单仍走 UDP HELLO，下一步把 host/join 换成信令。
+
+---
+
 # 开发日志（详细）
 
 > 从 2026-10-20 起，在 PROGRESS 末尾追加详细日志；上面的 S 编号短条目保留，作为索引。
