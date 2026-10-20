@@ -752,6 +752,67 @@ int run_reconnect_test() {
     return 0;
 }
 
+int run_seqwrap_check(const std::string& data_path) {
+    const std::string map_path = "sim/data/maps/metrics_flat.map";
+    std::string error;
+    sim::NetServer server;
+    if (!server.init(map_path, data_path, 1, error)) {
+        std::printf("FAIL: seqwrap server init: %s\n", error.c_str());
+        return 1;
+    }
+    sim::LoopbackTransport to_server(sim::NetConditions{}, 71);
+    sim::LoopbackTransport to_client(sim::NetConditions{}, 72);
+    server.add_client(&to_server, &to_client, 0);
+
+    sim::NetClient client;
+    if (!client.init(&to_server, &to_client, 0, map_path, data_path, error)) {
+        std::printf("FAIL: seqwrap client init: %s\n", error.c_str());
+        return 1;
+    }
+
+    auto tick_once = [&](const sim::MoveInput& in) {
+        client.send_input(in);
+        client.step_local();
+        server.receive();
+        server.step();
+        server.send();
+        to_server.advance(0);
+        to_client.advance(0);
+        client.receive();
+    };
+
+    for (int i = 0; i < 120; ++i) tick_once(net_test_input(i));
+
+    // Park the sequence just below the wrap and run one full queue of sends
+    // (0xFFC0..0xFFFF), so the next snapshot is the first wrapped one. This is
+    // the state a real 17-minute session reaches: stale entries with high seqs.
+    const uint16_t jump =
+        static_cast<uint16_t>(0xFFC0u - static_cast<uint32_t>(server.debug_out_seq(0)));
+    server.debug_advance_seq(jump);
+    for (int i = 0; i < 64; ++i) tick_once(net_test_input(i + 120));
+
+    const int delta_before = server.delta_snapshots();
+    const int full_before = server.full_snapshots();
+
+    // Cross the wrap and keep playing. A seq-keyed map evicts every fresh entry
+    // here, so the acks stop matching and the server falls back to full forever.
+    for (int i = 0; i < 300; ++i) tick_once(net_test_input(i + 184));
+
+    const int delta_after = server.delta_snapshots();
+    const int full_after = server.full_snapshots();
+    const int delta_gain = delta_after - delta_before;
+    const int full_gain = full_after - full_before;
+    const bool ok = delta_gain > 250 && full_gain <= 2 && client.joined() &&
+                    !client.join_failed() && server.client_count() == 1;
+
+    std::printf("  [seqwrap] ok %d  delta +%d  full +%d\n", ok ? 1 : 0, delta_gain, full_gain);
+    if (!ok) {
+        std::printf("FAIL: snapshot acks stop matching across the u16 sequence wrap\n");
+        return 1;
+    }
+    return 0;
+}
+
 int run_config_test() {
     sim::NetConditions cond;
     cond.loss = 0.5f;  // high enough that a chunk is certain to need a retransmit
@@ -1075,6 +1136,7 @@ int run_net_test(const Options& opt) {
     failures += run_dual_channel_test();
     failures += run_config_test();
     failures += run_reconnect_test();
+    failures += run_seqwrap_check(opt.data_path);
     failures += run_reliable_test();
     failures += run_ticket_test();
     failures += run_timeout_test();

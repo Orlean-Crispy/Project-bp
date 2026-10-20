@@ -101,6 +101,13 @@ public:
         return m_hitboxes[static_cast<std::size_t>(player)];
     }
 
+    // Gate hooks: drive the outgoing snapshot sequence around the u16 wrap
+    // without simulating the 65536 ticks a real wrap needs.
+    uint16_t debug_out_seq(int link) const {
+        return m_links[static_cast<std::size_t>(link)].out_seq;
+    }
+    void debug_advance_seq(uint16_t delta);
+
 private:
     struct Link {
         Transport* rx = nullptr;
@@ -128,7 +135,14 @@ private:
         ReliableTransport* rel = nullptr;
         std::vector<std::vector<uint8_t>> config_chunks;
         std::size_t config_next = 0;
-        std::map<uint16_t, Snapshot> sent;  // seq -> snapshot, for ack lookup
+        // Acks carry the u16 snapshot seq, but the queue is ordered by send time,
+        // never by seq: after 65536 sends the seq wraps and a seq-keyed map would
+        // sort fresh entries below stale ones, evicting them and losing the ack.
+        struct SentSnapshot {
+            uint16_t seq = 0;
+            Snapshot snapshot;
+        };
+        std::deque<SentSnapshot> sent;
         uint32_t last_acked_snapshot = 0;
     };
 

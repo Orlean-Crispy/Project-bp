@@ -229,6 +229,10 @@ void NetServer::remove_client(int link_index) {
     m_links.erase(m_links.begin() + link_index);
 }
 
+void NetServer::debug_advance_seq(uint16_t delta) {
+    for (Link& link : m_links) link.out_seq = static_cast<uint16_t>(link.out_seq + delta);
+}
+
 void NetServer::receive() {
     for (Link& link : m_links) {
         std::vector<uint8_t> packet;
@@ -244,14 +248,18 @@ void NetServer::receive() {
             std::vector<InputCmd> cmds;
             if (!decode_commands(payload, size, cmds)) continue;
 
-            // Acknowledge the snapshot the client is using as its baseline.
+            // Acknowledge the snapshot the client is using as its baseline. The
+            // queue is ordered by send time and only ever holds the last 64
+            // sends, so at most one entry can carry this seq (an ack older than
+            // 64 snapshots is not queued at all) and the newest match is it.
             if (header.ack != 0) {
-                const auto it = link.sent.find(header.ack);
-                if (it != link.sent.end()) {
-                    link.baseline = it->second;
+                for (auto it = link.sent.rbegin(); it != link.sent.rend(); ++it) {
+                    if (it->seq != header.ack) continue;
+                    link.baseline = it->snapshot;
                     link.has_baseline = true;
                     link.unacked = 0;
                     link.last_acked_snapshot = header.ack;
+                    break;
                 }
             }
 
@@ -372,8 +380,8 @@ void NetServer::send() {
         header.ack_bits = 0;
         link.tx->send(wrap_packet(header, payload));
 
-        link.sent[header.seq] = snap;
-        if (link.sent.size() > 64) link.sent.erase(link.sent.begin());
+        link.sent.push_back(Link::SentSnapshot{header.seq, snap});
+        while (link.sent.size() > 64) link.sent.pop_front();
 
         ++link.unacked;
         if (use_delta) ++m_delta; else ++m_full;

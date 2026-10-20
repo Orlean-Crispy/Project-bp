@@ -14,6 +14,7 @@ int run_ticket_test();
 int run_reliable_test();
 int run_match_test();
 int run_reconnect_test();
+int run_seqwrap_check(const std::string& data_path);
 int run_config_test();
 int run_dual_channel_test();
 int run_signal_test();
