@@ -15,6 +15,7 @@
 #include <thread>
 #include <vector>
 
+#include "sim/net/admission.h"
 #include "sim/net/handshake.h"
 #include "sim/net/matchmaking.h"
 #include "sim/net/session.h"
@@ -66,7 +67,7 @@ int run_server(const Options& opt) {
     }
     std::printf("server signal=%u game=%u players=%d\n", matcher.port(), hub.local_port(),
                 opt.players);
-    std::vector<sim::MatchEvent> approved;
+    sim::Admission admission;
 
     int tick = 0;
     const auto start = std::chrono::steady_clock::now();
@@ -87,18 +88,13 @@ int run_server(const Options& opt) {
                 continue;
             }
             std::printf("signal ok slot=%u resumed=%d\n", ev.slot, ev.resumed ? 1 : 0);
-            approved.push_back(ev);
+            admission.approve(ev.client_id, ev.slot);
         }
         while (hub.next_unknown(host, port, packet)) {
             sim::ClientId who{};
             if (!sim::hello_id(packet, who)) continue;
-            const auto it = std::find_if(approved.begin(), approved.end(),
-                                         [&](const sim::MatchEvent& e) {
-                                             return e.client_id == who;
-                                         });
-            if (it == approved.end()) continue;  // never admitted over TCP
-            const int slot = it->slot;
-            approved.erase(it);
+            const int slot = admission.take(who);
+            if (slot < 0) continue;  // never admitted over TCP
             sim::PeerTransport* peer = hub.add_peer(host, port);
             if (server.add_client(peer, peer, slot) < 0) continue;
             std::printf("join slot=%d addr=%s:%u server_tick=%u\n", slot, host.c_str(), port,

@@ -24,6 +24,7 @@
 #include "sim/core/event.h"
 #include "sim/core/world.h"
 #include "sim/input/bindings.h"
+#include "sim/net/admission.h"
 #include "sim/net/configstring.h"
 #include "sim/net/handshake.h"
 #include "sim/net/matchmaking.h"
@@ -260,7 +261,7 @@ public:
                 if (ev.status != sim::MatchStatus::Accepted) continue;
                 std::printf("breakpoint: signal slot %u resumed %d\n", ev.slot, ev.resumed ? 1 : 0);
                 std::fflush(stdout);
-                m_approved.push_back(ev);
+                m_admission.approve(ev.client_id, ev.slot);
             }
             m_hub->poll();
             std::string peer_host;
@@ -269,13 +270,8 @@ public:
             while (m_hub->next_unknown(peer_host, peer_port, packet)) {
                 sim::ClientId who{};
                 if (!sim::hello_id(packet, who)) continue;
-                const auto it = std::find_if(m_approved.begin(), m_approved.end(),
-                                             [&](const sim::MatchEvent& e) {
-                                                 return e.client_id == who;
-                                             });
-                if (it == m_approved.end()) continue;  // never vetted over TCP
-                const int slot = it->slot;
-                m_approved.erase(it);
+                const int slot = m_admission.take(who);
+                if (slot < 0) continue;  // never vetted over TCP
                 sim::PeerTransport* peer = m_hub->add_peer(peer_host, peer_port);
                 if (m_server->add_client(peer, peer, slot) < 0) continue;  // all slots taken
                 std::printf("breakpoint: peer joined slot %d\n", slot);
@@ -487,7 +483,7 @@ private:
     std::string m_data_path;
     std::unique_ptr<sim::NetServer> m_server;
     std::unique_ptr<sim::MatchHost> m_match;
-    std::vector<sim::MatchEvent> m_approved;
+    sim::Admission m_admission;
     std::unique_ptr<sim::NetClient> m_net_client;
     std::unique_ptr<sim::UdpPeerHub> m_hub;
     std::unique_ptr<sim::UdpTransport> m_udp;

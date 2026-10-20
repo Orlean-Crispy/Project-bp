@@ -19,6 +19,7 @@
 #include "sim/input/bindings.h"
 #include "sim/game/combat.h"
 #include "sim/net/fragment.h"
+#include "sim/net/admission.h"
 #include "sim/net/handshake.h"
 #include "sim/net/matchmaking.h"
 #include "sim/net/netchan.h"
@@ -1858,7 +1859,8 @@ int run_match_test() {
     bool event_accepted = false;
     bool event_resumed = false;
     bool event_full = false;
-    for (const sim::MatchEvent& ev : host.drain()) {
+    const std::vector<sim::MatchEvent> events = host.drain();
+    for (const sim::MatchEvent& ev : events) {
         if (ev.status == sim::MatchStatus::Accepted && ev.client_id == a && ev.slot == 0) {
             if (ev.resumed) {
                 event_resumed = true;
@@ -1870,11 +1872,21 @@ int run_match_test() {
         }
     }
 
-    std::printf("  [match] accepted %d slot 0 ticket %d resume %d tamper %d full %d events %d\n",
+    // One admission rule for every UDP owner: approved ids are consumed once.
+    sim::Admission admission;
+    for (const sim::MatchEvent& ev : events) {
+        if (ev.status == sim::MatchStatus::Accepted) admission.approve(ev.client_id, ev.slot);
+    }
+    // A was approved twice (cold join + resume), B once; an unknown id gets -1.
+    const bool admit_ok = admission.take(a) == 0 && admission.take(a) == 0 &&
+                          admission.take(b) == 1 && admission.take(c) == -1 &&
+                          admission.pending() == 0;
+
+    std::printf("  [match] accepted %d slot 0 ticket %d resume %d tamper %d full %d events %d admit %d\n",
                 accepted, resume, resume, tamper, full,
-                event_accepted && event_resumed && event_full ? 1 : 0);
+                event_accepted && event_resumed && event_full ? 1 : 0, admit_ok ? 1 : 0);
     if (!accepted || !resume || !tamper || !second || !full || !event_accepted ||
-        !event_resumed || !event_full) {
+        !event_resumed || !event_full || !admit_ok) {
         std::printf("FAIL: A1/A5 matchmaking failed: %s\n", error.c_str());
         return 1;
     }

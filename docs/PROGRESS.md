@@ -1358,6 +1358,16 @@ wrapper，两个时钟不同步；`uint32` 减法回绕成几十亿，于是每�
 
 ---
 
+## 2026-10-20 · S45 · 体检：A7 admission 只有一份
+
+- 新增 `sim/net/admission.h`：`approve(id, slot)` / `take(id)`（取走即消费，未批过返回 -1）。
+- `tools/net_loop` 与 `bridge/sim_bridge.cpp` 都删掉各自的 approved 容器与 find_if，改用这一个类。
+  两份实现最容易出现「工具里能重连、游戏里不能」这种不对称 bug。
+- 判据：`[match] ... admit 1`（A 两次批准、B 一次、陌生 id 取不到、取空后 pending=0）；
+  16 项闸门 + bench 全绿；`net_selftest.ps1` joins=2 accepted=418 far=0 moved=47.04。
+
+---
+
 # 开发日志（详细）
 
 > 从 2026-10-20 起，在 PROGRESS 末尾追加详细日志；上面的 S 编号短条目保留，作为索引。
