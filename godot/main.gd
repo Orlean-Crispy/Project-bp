@@ -340,8 +340,9 @@ func _update_remote_players(players: Array) -> void:
 		if node == null:
 			node = MeshInstance3D.new()
 			var capsule := CapsuleMesh.new()
-			capsule.radius = 0.405
-			capsule.height = 1.42
+			# AUD-08: hull dimensions come from movement.toml via the bridge.
+			capsule.radius = sim.get_player_radius()
+			capsule.height = sim.get_stand_height()
 			node.mesh = capsule
 			var material := StandardMaterial3D.new()
 			material.albedo_color = Color(0.95, 0.35, 0.25)
@@ -362,8 +363,9 @@ func _update_remote_players(players: Array) -> void:
 			print("breakpoint: remote slot ", slot, " visible")
 		var feet: Vector3 = entry["pos"]
 		var crouched: bool = entry["crouched"]
-		var height := 0.91 if crouched else 1.42
-		node.scale = Vector3(1.0, height / 1.42, 1.0)
+		var stand_h: float = sim.get_stand_height()
+		var height: float = sim.get_crouch_height() if crouched else stand_h
+		node.scale = Vector3(1.0, height / stand_h, 1.0)
 		node.position = feet + Vector3(0.0, height * 0.5, 0.0)
 		var yaw: float = entry["yaw"]
 		node.rotation.y = atan2(-cos(yaw), sin(yaw))

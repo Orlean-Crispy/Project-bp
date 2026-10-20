@@ -253,6 +253,12 @@ public:
 
     float get_eye_height() const { return 1.55f; }
 
+    // AUD-08: the remote capsule has to match the collision hull, so it reads
+    // these from movement.toml through the bridge instead of hard-coding them.
+    float get_player_radius() const { return m_world.params.player_radius; }
+    float get_stand_height() const { return m_world.params.stand_height; }
+    float get_crouch_height() const { return m_world.params.crouch_height; }
+
     PackedVector3Array get_vertices() const { return m_vertices; }
     PackedVector3Array get_normals() const { return m_normals; }
     PackedColorArray get_colors() const { return m_colors; }
@@ -288,6 +294,9 @@ protected:
         ClassDB::bind_method(D_METHOD("get_hp"), &SimWorld::get_hp);
         ClassDB::bind_method(D_METHOD("get_armor"), &SimWorld::get_armor);
         ClassDB::bind_method(D_METHOD("get_eye_height"), &SimWorld::get_eye_height);
+        ClassDB::bind_method(D_METHOD("get_player_radius"), &SimWorld::get_player_radius);
+        ClassDB::bind_method(D_METHOD("get_stand_height"), &SimWorld::get_stand_height);
+        ClassDB::bind_method(D_METHOD("get_crouch_height"), &SimWorld::get_crouch_height);
         ClassDB::bind_method(D_METHOD("get_vertices"), &SimWorld::get_vertices);
         ClassDB::bind_method(D_METHOD("get_normals"), &SimWorld::get_normals);
         ClassDB::bind_method(D_METHOD("get_colors"), &SimWorld::get_colors);
