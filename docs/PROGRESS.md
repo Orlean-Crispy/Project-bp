@@ -1181,6 +1181,18 @@ CMake 只在 WIN32 链接 ws2_32，不污染 sim 的其它目标。
 
 ---
 
+## 2026-10-20 · S34 · 组局接进 net_loop：HELLO 带 client_id（协议 v3）
+
+- UDP HELLO 从 6 B 变 22 B：magic + 协议版本 + **16 B client_id**；`BP_PROTOCOL_VERSION` 升到 3。
+- `net_loop --serve` 起 MatchHost（TCP 信令），UDP = 信令端口 + 1；`--join` 先 `match_request` 拿槽位/票据再连 UDP。
+- 服务器只放行**信令通过过**的 id，槽位来自 matchmaking 事件；不再按「第一条 HELLO 给 0」猜。
+  没走过 TCP 的 id 直接忽略（陌生人包进不了房间）。
+- 判据：tools/net_selftest.ps1 → joins=2 accepted=416 far=0 moved=46.87 clients_ok=True；
+  16 项闸门 + bench 仍全绿（其中 --test-net 的 UDP 会话改为 id 映射槽位）。
+- 未接 bridge/Godot：菜单仍走旧路径，下一步把 host/join 换成信令（bridge 已带 client_id 发 HELLO）。
+
+---
+
 # 开发日志（详细）
 
 > 从 2026-10-20 起，在 PROGRESS 末尾追加详细日志；上面的 S 编号短条目保留，作为索引。

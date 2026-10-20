@@ -1583,12 +1583,15 @@ int run_udp_session_check(const std::string& data_path) {
         return 1;
     }
 
-    // Admit the two peers in a known order; the server assigns player slots.
-    transport.send(sim::make_hello());
+    // Each client announces the id the control plane vetted; the server maps it
+    // to a slot instead of guessing from arrival order.
+    sim::ClientId id0{};
+    id0[0] = 0x11;
+    sim::ClientId id1{};
+    id1[0] = 0x22;
+    transport.send(sim::make_hello(id0));
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
-    transport2.send(sim::make_hello());
-
-    int next_slot = 0;
+    transport2.send(sim::make_hello(id1));
     int ticks = 0;
     double accumulator = 0.0;
     auto last = std::chrono::steady_clock::now();
@@ -1600,10 +1603,14 @@ int run_udp_session_check(const std::string& data_path) {
         uint16_t port = 0;
         std::vector<uint8_t> packet;
         while (hub.next_unknown(host, port, packet)) {
-            if (next_slot < 2 && sim::is_hello(packet)) {
-                sim::PeerTransport* peer = hub.add_peer(host, port);
-                server.add_client(peer, peer, next_slot++);
-            }
+            sim::ClientId who{};
+            if (!sim::hello_id(packet, who)) continue;
+            int slot = -1;
+            if (who == id0) slot = 0;
+            if (who == id1) slot = 1;
+            if (slot < 0) continue;  // unknown id: never admitted
+            sim::PeerTransport* peer = hub.add_peer(host, port);
+            server.add_client(peer, peer, slot);
         }
         client.send_input(input);
         client.step_local();

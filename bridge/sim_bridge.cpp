@@ -161,9 +161,24 @@ public:
         return true;
     }
 
+    // The id the host vets over TCP (A5); the UDP hello repeats it. Until the
+    // bridge runs the control plane, this stands in for it.
+    static sim::ClientId make_client_id() {
+        static uint64_t counter = 0;
+        sim::ClientId id{};
+        const uint64_t seed = static_cast<uint64_t>(
+            std::chrono::steady_clock::now().time_since_epoch().count());
+        for (std::size_t i = 0; i < id.size(); ++i) {
+            id[i] = static_cast<uint8_t>((seed >> ((i % 8) * 8)) ^ (counter * 31u + i * 7u));
+        }
+        ++counter;
+        return id;
+    }
+
     bool join(const String& host, int port) {
         if (m_net_client) return false;
         std::string error;
+        m_client_id = make_client_id();
         m_udp = std::make_unique<sim::UdpTransport>();
         if (!m_udp->open(0, error) ||
             !m_udp->connect_peer(host.utf8().get_data(), static_cast<uint16_t>(port), error)) {
@@ -176,7 +191,7 @@ public:
             m_net_client.reset();
             return false;
         }
-        m_udp->send(sim::make_hello());
+        m_udp->send(sim::make_hello(m_client_id));
         m_last_hello = std::chrono::steady_clock::now();
         return true;
     }
@@ -208,7 +223,7 @@ public:
         } else {
             if (!m_net_client->joined() &&
                 std::chrono::duration<double>(now - m_last_hello).count() >= 0.25) {
-                m_udp->send(sim::make_hello());
+                m_udp->send(sim::make_hello(m_client_id));
                 m_last_hello = now;
             }
             m_net_client->send_input(m_input);
@@ -391,6 +406,7 @@ private:
     std::unique_ptr<sim::LoopbackTransport> m_local_to_server;
     std::unique_ptr<sim::LoopbackTransport> m_local_to_client;
     bool m_hosting = false;
+    sim::ClientId m_client_id{};
     std::chrono::steady_clock::time_point m_last_hello{};
     PackedVector3Array m_vertices;
     PackedVector3Array m_normals;

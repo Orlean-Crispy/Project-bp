@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "sim/net/handshake.h"
+#include "sim/net/matchmaking.h"
 #include "sim/net/session.h"
 #include "sim/net/udp_hub.h"
 #include "sim/net/udp_transport.h"
@@ -51,12 +52,21 @@ int run_server(const Options& opt) {
         std::fprintf(stderr, "server init: %s\n", error.c_str());
         return 1;
     }
+    // A1: the TCP control plane owns admission; UDP only carries the session.
+    sim::MatchHost matcher;
+    if (!matcher.start(opt.port, static_cast<uint8_t>(opt.players), opt.map, 7u, error)) {
+        std::fprintf(stderr, "signal listen: %s\n", error.c_str());
+        return 1;
+    }
     sim::UdpPeerHub hub;
-    if (!hub.open(opt.port, error)) {
+    const uint16_t game_port = matcher.port() + 1;
+    if (!hub.open(game_port, error) || hub.local_port() != game_port) {
         std::fprintf(stderr, "hub open: %s\n", error.c_str());
         return 1;
     }
-    std::printf("server port=%u players=%d\n", hub.local_port(), opt.players);
+    std::printf("server signal=%u game=%u players=%d\n", matcher.port(), hub.local_port(),
+                opt.players);
+    std::vector<sim::MatchEvent> approved;
 
     int tick = 0;
     const auto start = std::chrono::steady_clock::now();
@@ -71,11 +81,26 @@ int run_server(const Options& opt) {
         std::string host;
         uint16_t port = 0;
         std::vector<uint8_t> packet;
+        for (const sim::MatchEvent& ev : matcher.drain()) {
+            if (ev.status != sim::MatchStatus::Accepted) {
+                std::printf("signal rejected reason=%u\n", static_cast<unsigned>(ev.status));
+                continue;
+            }
+            std::printf("signal ok slot=%u resumed=%d\n", ev.slot, ev.resumed ? 1 : 0);
+            approved.push_back(ev);
+        }
         while (hub.next_unknown(host, port, packet)) {
-            if (!sim::is_hello(packet)) continue;
+            sim::ClientId who{};
+            if (!sim::hello_id(packet, who)) continue;
+            const auto it = std::find_if(approved.begin(), approved.end(),
+                                         [&](const sim::MatchEvent& e) {
+                                             return e.client_id == who;
+                                         });
+            if (it == approved.end()) continue;  // never admitted over TCP
+            const int slot = it->slot;
+            approved.erase(it);
             sim::PeerTransport* peer = hub.add_peer(host, port);
-            const int slot = server.add_client(peer, peer, -1);
-            if (slot < 0) continue;
+            if (server.add_client(peer, peer, slot) < 0) continue;
             std::printf("join slot=%d addr=%s:%u server_tick=%u\n", slot, host.c_str(), port,
                         server.tick());
             std::fflush(stdout);
@@ -114,21 +139,20 @@ int run_server(const Options& opt) {
 
 int run_client(const Options& opt) {
     sim::UdpTransport transport;
-    std::string error;
-    if (!transport.open(0, error) ||
-        !transport.connect_peer(opt.host, opt.port, error)) {
-        std::fprintf(stderr, "client socket: %s\n", error.c_str());
-        return 1;
-    }
     sim::NetClient client;
-    if (!client.init(&transport, &transport, opt.slot, opt.map, opt.data, error)) {
-        std::fprintf(stderr, "client init: %s\n", error.c_str());
-        return 1;
-    }
+    std::string error;
+    bool inited = false;
+    int slot = opt.slot;
+    uint16_t game_port = 0;
+    // The id is what the host vetted over TCP; the UDP hello repeats it.
+    sim::ClientId id{};
+    id[0] = 0x5A;
+    id[15] = static_cast<uint8_t>(opt.slot + 1);
 
     const auto start = std::chrono::steady_clock::now();
     auto next = start;
     auto last_hello = start - std::chrono::seconds(1);
+    auto last_try = start - std::chrono::seconds(1);
     auto last_report = start;
     int tick = 0;
 
@@ -137,12 +161,37 @@ int run_client(const Options& opt) {
         next += std::chrono::duration_cast<std::chrono::steady_clock::duration>(
             std::chrono::duration<double>(kDt));
         const auto now = std::chrono::steady_clock::now();
+        if (!inited && std::chrono::duration<double>(now - last_try).count() >= 0.25) {
+            last_try = now;
+            sim::MatchReply reply;
+            if (sim::match_request(opt.host, opt.port, id, nullptr, reply) && reply.ok &&
+                reply.status == sim::MatchStatus::Accepted) {
+                slot = reply.slot;
+                game_port = reply.game_port;
+                if (transport.open(0, error) &&
+                    transport.connect_peer(opt.host, game_port, error) &&
+                    client.init(&transport, &transport, slot, opt.map, opt.data, error)) {
+                    inited = true;
+                    std::printf("signal slot=%d game_port=%u\n", slot, game_port);
+                    std::fflush(stdout);
+                    transport.send(sim::make_hello(id));
+                    last_hello = now;
+                } else {
+                    std::fprintf(stderr, "client socket: %s\n", error.c_str());
+                }
+            }
+        }
+        if (!inited) {
+            ++tick;
+            std::this_thread::sleep_until(next);
+            continue;
+        }
         if (!client.joined() &&
             std::chrono::duration<double>(now - last_hello).count() >= 0.25) {
-            transport.send(sim::make_hello());
+            transport.send(sim::make_hello(id));
             last_hello = now;
         }
-        client.send_input(script_input(opt.slot, tick));
+        client.send_input(script_input(slot, tick));
         client.step_local();
         client.receive();
         ++tick;

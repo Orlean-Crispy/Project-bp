@@ -44,7 +44,7 @@ endif()
 target_compile_definitions(sim PUBLIC
   BP_BUILD_ID="${BP_BUILD_ID}"
   BP_SIM_VERSION=1
-  BP_PROTOCOL_VERSION=2)
+  BP_PROTOCOL_VERSION=3)
 
 add_executable(headless_sim tools/headless_sim/main.cpp)
 target_link_libraries(headless_sim PRIVATE sim)

@@ -10,7 +10,7 @@
 #define BP_SIM_VERSION 1
 #endif
 #ifndef BP_PROTOCOL_VERSION
-#define BP_PROTOCOL_VERSION 1
+#define BP_PROTOCOL_VERSION 3
 #endif
 
 namespace sim {
