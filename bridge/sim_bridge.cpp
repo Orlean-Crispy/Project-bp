@@ -14,6 +14,7 @@
 #include <godot_cpp/variant/vector3.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -21,6 +22,7 @@
 #include "mesh_builder.h"
 #include "mesh_common.h"
 #include "net_gateway.h"
+#include "remote_sampling.h"
 #include "sim/collision/map_parse.h"
 #include "sim/core/event.h"
 #include "sim/core/world.h"
@@ -136,7 +138,19 @@ public:
 
     bool reconnect() { return m_net.reconnect(); }
 
-    void step_network() { m_net.pump(m_input, &m_events); }
+    void step_network() {
+        m_net.pump(m_input, &m_events);
+        // AUD-05: remember when the newest snapshot arrived; get_remote_players()
+        // turns the elapsed time into the interpolation fraction.
+        const sim::NetClient* net = m_net.client();
+        const uint32_t newest = net == nullptr ? 0 : net->remote().newest_tick();
+        if (newest == 0) {
+            m_remote_newest = 0;
+        } else if (newest != m_remote_newest) {
+            m_remote_newest = newest;
+            m_remote_arrived = std::chrono::steady_clock::now();
+        }
+    }
 
     bool is_networked() const { return m_net.active(); }
     bool get_joined() const { return m_net.joined(); }
@@ -151,10 +165,16 @@ public:
         Array out;
         const sim::NetClient* net = m_net.client();
         if (net == nullptr) return out;
-        const uint32_t tick = net->tick();
-        if (tick <= 1) return out;
+        const sim::SnapshotInterpolator& interp = net->remote();
+        const double since_arrival = std::chrono::duration<double>(
+            std::chrono::steady_clock::now() - m_remote_arrived).count();
+        bridge::RemoteSample sample;
+        if (!bridge::remote_sample(interp.oldest_tick(), interp.newest_tick(), since_arrival,
+                                   sample)) {
+            return out;
+        }
         std::vector<sim::PlayerSnap> players;
-        if (!net->remote().sample(tick - 1, 0.0f, players)) return out;
+        if (!interp.sample(sample.tick, sample.frac, players)) return out;
         const int self = net->player_index();
         for (size_t i = 0; i < players.size(); ++i) {
             if (static_cast<int>(i) == self) continue;
@@ -284,6 +304,8 @@ private:
     std::string m_map_path;
     std::string m_data_path;
     bridge::NetGateway m_net;
+    uint32_t m_remote_newest = 0;
+    std::chrono::steady_clock::time_point m_remote_arrived{};
     PackedVector3Array m_vertices;
     PackedVector3Array m_normals;
     PackedColorArray m_colors;

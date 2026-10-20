@@ -33,6 +33,7 @@
 #include <thread>
 #include <vector>
 
+#include "bridge/remote_sampling.h"
 #include "sim/core/tick.h"
 #include "sim/core/version.h"
 #include "sim/core/world.h"
@@ -1445,10 +1446,43 @@ int run_net_test(const Options& opt) {
         duplicate.players = {a, b};
         interp.push(duplicate);
         const bool duplicate_ignored = interp.size() == before_dup;
+
+        // AUD-05: the bridge rule must pick a tick inside the buffered range and
+        // a real fraction, so sample() blends the two bracketing frames instead
+        // of falling back to nearest. One frame clamps to that frame.
+        bridge::RemoteSample rule;
+        const bool rule_ok = bridge::remote_sample(interp.oldest_tick(), interp.newest_tick(),
+                                                   0.5 * bridge::kTickSeconds, rule);
+        const bool rule_in_range = rule_ok && rule.tick >= interp.oldest_tick() &&
+                                   rule.tick <= interp.newest_tick();
+        std::vector<sim::PlayerSnap> bridged;
+        const bool rule_blends =
+            rule_in_range && interp.sample(rule.tick, rule.frac, bridged) &&
+            bridged.size() == 2 && bridged[0].pos.x > 1.0f && bridged[0].pos.x < 2.0f;
+
+        sim::SnapshotInterpolator single;
+        sim::Snapshot only;
+        only.tick = 10;
+        only.players = {a, b};
+        single.push(only);
+        bridge::RemoteSample one;
+        const bool single_clamped =
+            bridge::remote_sample(single.oldest_tick(), single.newest_tick(),
+                                  0.5 * bridge::kTickSeconds, one) &&
+            one.tick == 10;
+
         std::printf("  interp: midpoint %d exact %d clamp %d duplicate-ignored %d\n",
                     midpoint, exact, clamped, duplicate_ignored);
+        std::printf("  [remotesample] rule %d in-range %d blends %d single %d "
+                    "(tick %u frac %.2f)\n",
+                    rule_ok, rule_in_range, rule_blends, single_clamped, rule.tick,
+                    static_cast<double>(rule.frac));
         if (!midpoint || !exact || !clamped || !duplicate_ignored) {
             std::printf("FAIL: snapshot interpolation is wrong\n");
+            ++failures;
+        }
+        if (!rule_in_range || !rule_blends || !single_clamped) {
+            std::printf("FAIL: the bridge samples outside the snapshot axis (AUD-05)\n");
             ++failures;
         }
     }

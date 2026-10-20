@@ -33,6 +33,15 @@ void SnapshotInterpolator::reset() {
     m_newest = 0;
 }
 
+uint32_t SnapshotInterpolator::oldest_tick() const {
+    uint32_t oldest = 0;
+    for (const Entry& e : m_entries) {
+        if (!e.valid) continue;
+        if (oldest == 0 || e.tick < oldest) oldest = e.tick;
+    }
+    return oldest;
+}
+
 const SnapshotInterpolator::Entry* SnapshotInterpolator::find(uint32_t tick) const {
     const Entry& e = m_entries[tick % static_cast<uint32_t>(kCapacity)];
     return e.valid && e.tick == tick ? &e : nullptr;

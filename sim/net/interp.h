@@ -20,6 +20,9 @@ public:
 
     int size() const { return m_count; }
     uint32_t newest_tick() const { return m_count == 0 ? 0 : m_newest; }
+    // Oldest buffered tick (0 when empty). The presentation layer clamps its
+    // chosen sample tick into [oldest, newest] (AUD-05).
+    uint32_t oldest_tick() const;
 
     // tick + frac, frac in [0,1]. Outside the buffered range the nearest frame
     // is returned unchanged (no extrapolation).
