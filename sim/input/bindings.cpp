@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 
 #include "sim/data/config.h"
 
@@ -139,7 +140,9 @@ bool Bindings::load(const std::string& path, std::string& error,
 }
 
 bool Bindings::save(const std::string& path, std::string& error) const {
-    FILE* f = std::fopen(path.c_str(), "wb");
+    // AGENTS 2.5: fopen would decode this UTF-8 path as ANSI; u8path gives the
+    // native wide name that _wfopen needs.
+    FILE* f = _wfopen(std::filesystem::u8path(path).c_str(), L"wb");
     if (!f) {
         error = "cannot write " + path;
         return false;

@@ -1,6 +1,7 @@
 #include "sim/demo/demo.h"
 
 #include <cstring>
+#include <filesystem>
 
 #include "sim/core/version.h"
 
@@ -46,6 +47,13 @@ MoveInput decode_input(float forward, float right, float yaw, uint16_t flags) {
     return in;
 }
 
+// AGENTS 2.5: the C runtime decodes a path as ANSI, so a UTF-8 path (from
+// Godot, or from this non-ASCII workspace) opens the wrong file. u8path does the
+// one conversion to the native wide name that _wfopen expects.
+FILE* open_u8(const std::string& path, const wchar_t* mode) {
+    return _wfopen(std::filesystem::u8path(path).c_str(), mode);
+}
+
 bool put_u16(FILE* f, uint16_t v) { return std::fwrite(&v, sizeof(v), 1, f) == 1; }
 bool put_u32(FILE* f, uint32_t v) { return std::fwrite(&v, sizeof(v), 1, f) == 1; }
 bool put_u64(FILE* f, uint64_t v) { return std::fwrite(&v, sizeof(v), 1, f) == 1; }
@@ -79,7 +87,7 @@ DemoWriter::~DemoWriter() {
 }
 
 bool DemoWriter::open(const std::string& path, const DemoHeader& header, std::string& error) {
-    FILE* probe = std::fopen(path.c_str(), "wb");
+    FILE* probe = open_u8(path, L"wb");
     if (!probe) {
         error = "cannot write " + path;
         return false;
@@ -97,7 +105,7 @@ bool DemoWriter::add(const DemoTick& tick) {
 }
 
 bool DemoWriter::close(std::string& error) {
-    FILE* f = std::fopen(m_path.c_str(), "wb");
+    FILE* f = open_u8(m_path, L"wb");
     if (!f) {
         error = "cannot write " + m_path;
         return false;
@@ -145,7 +153,7 @@ bool DemoWriter::close(std::string& error) {
 }
 
 bool DemoReader::open(const std::string& path, DemoHeader& header, std::string& error) {
-    FILE* f = std::fopen(path.c_str(), "rb");
+    FILE* f = open_u8(path, L"rb");
     if (!f) {
         error = "cannot open " + path;
         return false;
