@@ -24,6 +24,7 @@
 #include "sim/core/event.h"
 #include "sim/core/world.h"
 #include "sim/input/bindings.h"
+#include "sim/net/configstring.h"
 #include "sim/net/handshake.h"
 #include "sim/net/matchmaking.h"
 #include "sim/net/session.h"
@@ -151,6 +152,14 @@ public:
                             7u, 1, error)) {
             ERR_PRINT(String("breakpoint host: ") + String(error.c_str()));
             return false;
+        }
+        {
+            // The join configstring now carries real identities: a client on a
+            // different movement set or map is refused instead of drifting away.
+            sim::ConfigBlob cfg;
+            cfg.params_hash = m_server->world().params_hash;
+            cfg.geometry_hash = m_server->world().collision.geometry_hash();
+            m_server->set_configstring(sim::encode_config(cfg));
         }
         m_hub = std::make_unique<sim::UdpPeerHub>();
         const uint16_t game_port = m_match->port() + 1;

@@ -45,11 +45,16 @@ void* operator new(std::size_t size, const std::nothrow_t&) noexcept {
     ++g_allocations;
     return std::malloc(size == 0 ? 1 : size);
 }
+// The counters deliberately pair malloc with free; GCC cannot see through the
+// replacement and would flag the sized forms when callers inline.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmismatched-new-delete"
 void operator delete(void* p) noexcept { std::free(p); }
 void operator delete[](void* p) noexcept { std::free(p); }
 void operator delete(void* p, std::size_t) noexcept { std::free(p); }
 void operator delete[](void* p, std::size_t) noexcept { std::free(p); }
 void operator delete(void* p, const std::nothrow_t&) noexcept { std::free(p); }
+#pragma GCC diagnostic pop
 
 namespace {
 
@@ -1923,10 +1928,10 @@ int run_config_test() {
         std::printf("FAIL: config server init: %s\n", error.c_str());
         return 1;
     }
-    std::vector<uint8_t> blob(4096);
-    for (std::size_t i = 0; i < blob.size(); ++i) {
-        blob[i] = static_cast<uint8_t>((i * 53u + 7u) & 0xFFu);
-    }
+    sim::ConfigBlob config;
+    config.params_hash = server.world().params_hash;
+    config.geometry_hash = server.world().collision.geometry_hash();
+    const std::vector<uint8_t> blob = sim::encode_config(config);
     server.set_configstring(blob);
     server.add_client(&srv, &srv, 0, &srv);
 
@@ -1950,13 +1955,39 @@ int run_config_test() {
 
     const bool ready = client.config_ready();
     const bool same = ready && client.config_string() == blob;
+    const bool matched = !client.config_mismatch();
     const bool joined = client.full_states() > 0;
 
     const bool retransmitted = srv.retransmits() > 0;
-    std::printf("  [config] chunks %u/8 same %d full_state %d ticks %d retrans %d\n",
-                static_cast<unsigned>(client.config_chunks()), same ? 1 : 0, joined ? 1 : 0,
-                ticks, srv.retransmits());
-    if (!ready || !same || !joined || !retransmitted) {
+
+    // Same pipeline, one hash bit flipped: the client must refuse the match.
+    sim::NetServer other;
+    other.init("sim/data/maps/test_box.map", "sim/data/movement.toml", 1, error);
+    sim::ConfigBlob wrong = config;
+    wrong.params_hash ^= 1u;
+    other.set_configstring(sim::encode_config(wrong));
+    sim::LoopbackTransport s2c2(cond, 51);
+    sim::LoopbackTransport c2s2(cond, 61);
+    sim::ReliableTransport srv2(&s2c2, &c2s2);
+    sim::ReliableTransport cli2(&c2s2, &s2c2);
+    other.add_client(&srv2, &srv2, 0, &srv2);
+    sim::NetClient client2;
+    client2.init(&cli2, &cli2, 0, "sim/data/maps/test_box.map", "sim/data/movement.toml",
+                 error, &cli2);
+    for (int t = 0; t < 200 && !client2.config_ready(); ++t) {
+        other.receive();
+        other.step();
+        other.send();
+        s2c2.advance(static_cast<uint32_t>(t));
+        c2s2.advance(static_cast<uint32_t>(t));
+        client2.receive();
+    }
+    const bool refused = client2.config_ready() && client2.config_mismatch();
+
+    std::printf("  [config] chunks %u same %d matched %d refused %d full_state %d ticks %d retrans %d\n",
+                static_cast<unsigned>(client.config_chunks()), same ? 1 : 0, matched ? 1 : 0,
+                refused ? 1 : 0, joined ? 1 : 0, ticks, srv.retransmits());
+    if (!ready || !same || !matched || !refused || !joined || !retransmitted) {
         std::printf("FAIL: A2 configstring over the reliable stream failed\n");
         return 1;
     }

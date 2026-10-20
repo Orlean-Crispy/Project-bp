@@ -20,7 +20,7 @@
 | A3 | ✅ 已抽 | sim/net/winsock.h | Winsock 初始化曾写两份，现在只剩一处 inline 实现 |
 | A4 | P2 | tools/headless_sim/main.cpp | 2916 行 / 34 个 `run_*`，一个文件装全部闸门 |
 | A5 | P1 | bridge/sim_bridge.cpp | 519 行里塞了网络、渲染、输入、HUD 数据 |
-| A6 | P1 | sim/net/* + bridge | configstring 只验了传输，内容是任意 blob（语义未接） |
+| A6 | ✅ 已接 | sim/net/configstring.h | configstring 现在有格式与校验：哈希不符客户端拒局 |
 | A7 | P2 | tools/net_loop 与 bridge | 加入逻辑（HELLO → 槽位映射）两份实现 |
 | A8 | P3 | godot/main.gd | 日志前缀仍是 `breakpoint:`（内部代号，已结案，不改） |
 
@@ -99,7 +99,7 @@ P0（可能算出错结果）：**本轮没有发现**。
 
 1. ~~A1 + A2（纯删除，一个 commit）~~ —— 已完成（S42）
 2. ~~A3（抽 winsock.h）~~ —— 已完成（S43）
-3. A6（configstring 语义，带新闸门）
+3. ~~A6（configstring 语义）~~ —— 已完成（S44）
 4. A7（admission 抽取，两进程都验）
 5. A4（拆闸门文件，一次一组）
 6. A5（拆桥，最后做）

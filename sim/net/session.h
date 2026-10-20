@@ -9,6 +9,7 @@
 
 #include "sim/core/world.h"
 #include "sim/game/hitbox.h"
+#include "sim/net/configstring.h"
 #include "sim/net/interp.h"
 #include "sim/net/reliable.h"
 #include "sim/net/snapshot.h"
@@ -180,6 +181,8 @@ public:
     const SnapshotInterpolator& remote() const { return m_remote; }
     const HitboxHistory& hitbox() const { return m_hitbox; }
     bool config_ready() const { return m_config.complete(); }
+    // True when the host's rules/map differ from ours: refuse to play.
+    bool config_mismatch() const { return m_config_bad; }
     uint16_t config_chunks() const { return m_config.total(); }
     std::vector<uint8_t> config_string() const { return m_config.assemble(); }
     void reset_stats();
@@ -227,6 +230,8 @@ private:
     HitboxHistory m_hitbox;
     ReliableTransport* m_rel = nullptr;
     ConfigAssembler m_config;
+    bool m_config_checked = false;
+    bool m_config_bad = false;
     SnapshotInterpolator m_remote;
     ServerClock m_clock;
 };

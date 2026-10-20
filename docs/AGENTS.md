@@ -350,7 +350,10 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
 - A2 接入会话：`NetServer::set_configstring(blob)` 切 512 B 块，`add_client(..., rel)` 后每 tick
   在 `send()` 里补投（窗口满就等下一 tick）；`NetClient::init(..., rel)` 收到即喂 `ConfigAssembler`，
   `config_ready()/config_chunks()/config_string()` 可查。
-  判据：[config] chunks 8/8 same 1 full_state 1 ticks 50 retrans 17（50% 丢包 + 20 ms）。
+  判据：[config] chunks 1 same 1 matched 1 refused 1 full_state 1 ticks 18 retrans 1。
+  内容语义（sim/net/configstring.h）：34 B（version + params_hash + geometry_hash）；
+  客户端收齐后比对，任一不符 → `config_mismatch()` 并 `join_failed`——宁可不进局，
+  也不带错规则进局。桥的 host 已按 world 的哈希生成并下发。
 - **可靠流的时钟只有一个来源**：wrapper 由会话用**自己的 tick** 推进（服务器 = world.tick，
   客户端 = local.tick），调用方不得再推进同一个 wrapper；`advance()` 内部取 max，
   因为回滚会让客户端 tick 倒退，`now - last_sent` 一旦回绕，所有包都会被判超时。

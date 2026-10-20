@@ -521,6 +521,18 @@ void NetClient::receive() {
             m_config.add(piece.data(), piece.size(), error);
         }
         m_rel->advance(m_local.tick);
+        if (!m_config_checked && m_config.complete()) {
+            m_config_checked = true;
+            ConfigBlob blob;
+            if (!decode_config(m_config.assemble(), blob) || blob.version != kConfigVersion ||
+                blob.params_hash != m_local.params_hash ||
+                blob.geometry_hash != m_local.collision.geometry_hash()) {
+                // v0.4 3.5: never run half a configuration, and never run a
+                // different one. Refusing beats a silent divergence.
+                m_config_bad = true;
+                m_join_failed = true;
+            }
+        }
     }
     std::vector<uint8_t> packet;
     while (m_rx->recv(packet)) {

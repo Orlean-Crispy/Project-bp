@@ -1340,6 +1340,24 @@ wrapper，两个时钟不同步；`uint32` 减法回绕成几十亿，于是每�
 
 ---
 
+## 2026-10-20 · S44 · 体检：A6 configstring 语义 + 校验
+
+- 新增 `sim/net/configstring.h`：34 字节 `ConfigBlob`（version + params_hash + geometry_hash），
+  手写小端编解码，不依赖任何库。
+- `NetClient`：配置块收齐后解码比对；版本/参数哈希/几何哈希任一不符 → `config_mismatch()`，
+  并且置 `join_failed`。**宁可不进局，也不带错规则进局**（v0.4 3.5）。
+- 桥的 host 现在真的发这个 blob（参数哈希 + 几何哈希取自 world）。
+- 判据（并入 --test-net）：`[config] chunks 1 same 1 matched 1 refused 1 full_state 1 ticks 18 retrans 1`——
+  正确配置接受；把 params_hash 翻一位后客户端拒局。
+- 16 项闸门 + bench 全绿；桥编译通过。
+
+### 顺带
+
+- `headless_sim` 的自定义 `operator delete` 与 `std::free` 被 GCC 的 `-Wmismatched-new-delete` 误报
+  （计数器本来就是 malloc/free 配对），在定义处加 pragma 抑制并写明原因。
+
+---
+
 # 开发日志（详细）
 
 > 从 2026-10-20 起，在 PROGRESS 末尾追加详细日志；上面的 S 编号短条目保留，作为索引。
