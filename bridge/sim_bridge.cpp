@@ -20,6 +20,7 @@
 #include <string>
 #include <vector>
 
+#include "mesh_builder.h"
 #include "mesh_common.h"
 #include "sim/collision/map_parse.h"
 #include "sim/core/event.h"
@@ -424,43 +425,7 @@ protected:
 
 private:
     void build_mesh() {
-        m_vertices.clear();
-        m_normals.clear();
-        m_colors.clear();
-        m_indices.clear();
-
-        for (const sim::Brush& brush : m_world.collision.brushes()) {
-            const int base = material_color(brush.material);
-            const float r = static_cast<float>((base >> 16) & 0xFF) / 255.0f;
-            const float g = static_cast<float>((base >> 8) & 0xFF) / 255.0f;
-            const float b = static_cast<float>(base & 0xFF) / 255.0f;
-
-            for (const sim::BrushSide& side : brush.sides) {
-                if (side.polygon.size() < 3) continue;
-
-                // Same cheap directional shade as the rest of the tooling, baked
-                // into vertex colours so the demo does not need a light rig.
-                const sim::Vec3 light(-0.45f, -0.35f, 0.82f);
-                const float len = std::sqrt(light.x * light.x + light.y * light.y + light.z * light.z);
-                const float lambert =
-                    std::max(0.0f, sim::dot(side.plane.normal, sim::Vec3(light.x / len, light.y / len, light.z / len)));
-                const float shade = 0.62f + 0.38f * lambert;
-                const Color color(r * shade, g * shade, b * shade);
-
-                const int32_t start = static_cast<int32_t>(m_vertices.size());
-                const Vector3 normal = to_godot(side.plane.normal);
-                for (const sim::Vec3& v : side.polygon) {
-                    m_vertices.push_back(to_godot(v));
-                    m_normals.push_back(normal);
-                    m_colors.push_back(color);
-                }
-                for (size_t i = 1; i + 1 < side.polygon.size(); ++i) {
-                    m_indices.push_back(start);
-                    m_indices.push_back(start + static_cast<int32_t>(i));
-                    m_indices.push_back(start + static_cast<int32_t>(i + 1));
-                }
-            }
-        }
+        bridge::build_map_mesh(m_world.collision, m_vertices, m_normals, m_colors, m_indices);
     }
 
     sim::World m_world;

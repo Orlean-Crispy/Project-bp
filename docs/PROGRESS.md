@@ -1426,6 +1426,17 @@ wrapper，两个时钟不同步；`uint32` 减法回绕成几十亿，于是每�
 
 ---
 
+## 2026-10-20 · S50 · A5 第二步：build_mesh 独立成 mesh_builder
+
+- 新增 `bridge/mesh_builder.h/.cpp`：`build_map_mesh(world.collision, verts, normals, colors, indices)`，
+  纯输入输出，读 brush、写 godot 数组，不碰网络与 SimWorld。
+- `SimWorld::build_mesh()` 现在只剩一行调用；`tools/build_bridge.ps1` 的源列表加了 mesh_builder.cpp。
+- 判据：桥编译通过；`--hud-check` 正常；两个 headless Godot 进程联机无错误、
+  client 打 `joined slot 1 / remote slot 0 visible`（地图与远端都还在）。
+- 剩余：网络网关（host/join/reconnect/drain）仍在 SimWorld 里，下一步才动。
+
+---
+
 # 开发日志（详细）
 
 > 从 2026-10-20 起，在 PROGRESS 末尾追加详细日志；上面的 S 编号短条目保留，作为索引。
