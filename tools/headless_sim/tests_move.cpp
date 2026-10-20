@@ -791,15 +791,16 @@ int run_health_test(const Options& opt) {
     check("regen armour: taking damage restarts the delay", regen.ticks_since_damage <= 100);
 
     // Sanity: does 25 damage per shot at 600 RPM land inside the 0.6-1.2 s TTK band?
+    // The shots go through the real apply_damage(), not a copy of its arithmetic:
+    // changing absorption in combat.cpp must move this number, not leave the gate
+    // measuring the formula it was written from (audit R13).
     int shots = 0;
-    int armour = 50;
-    int health = 100;
-    while (health > 0 && shots < 100) {
+    sim::PlayerVitals ttk_target;
+    ttk_target.health = params.max_health;
+    sim::equip_armor(ttk_target, sim::ArmorType::Heavy, params);
+    while (ttk_target.health > 0 && shots < 100) {
         ++shots;
-        int absorbed = 25 * 66 / 100;
-        if (absorbed > armour) absorbed = armour;
-        armour -= absorbed;
-        health -= (25 - absorbed);
+        sim::apply_damage(ttk_target, 25, params);
     }
     const float ttk = static_cast<float>(shots) / 10.0f;  // 600 RPM = 10 shots/s
     std::printf("  body TTK with heavy armour: %d shots = %.2f s\n", shots,

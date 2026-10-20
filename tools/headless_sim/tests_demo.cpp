@@ -121,22 +121,20 @@ bool play_file(const std::string& demo_path, const std::string& params_path,
     return true;
 }
 
-int run_record(const Options& opt) {
-    World world;
-    std::string error;
-    if (!load_world(opt, world, error)) {
-        std::fprintf(stderr, "error: %s\n", error.c_str());
-        return 1;
-    }
-
-    sim::DemoHeader header;
+// One definition of "write a demo": the header pins the build, the rule hashes,
+// the map and the initial state, then every tick stores the input and the world
+// hash. --record and --test-demo both go through here, so the recording path the
+// gate exercises can never drift from the one the tool uses (audit R13).
+bool record_demo(World& world, const std::string& map_path, const std::string& script, int ticks,
+                 const std::string& out_path, sim::DemoHeader& header, std::string& error) {
+    header = sim::DemoHeader{};
     header.build_id = sim::kBuildId;
     header.sim_version = sim::kSimVersion;
     header.protocol_version = sim::kProtocolVersion;
     header.tick_rate = sim::kDefaultTickRate;
     header.params_hash = world.params_hash;
     header.geometry_hash = world.collision.geometry_hash();
-    header.map = opt.map_path;
+    header.map = map_path;
     for (const PlayerState& p : world.players) {
         sim::DemoPlayerInit init;
         init.pos = p.pos;
@@ -149,13 +147,10 @@ int run_record(const Options& opt) {
     }
 
     sim::DemoWriter writer;
-    if (!writer.open(opt.record_path, header, error)) {
-        std::fprintf(stderr, "error: %s\n", error.c_str());
-        return 1;
-    }
+    if (!writer.open(out_path, header, error)) return false;
 
-    for (int i = 0; i < opt.ticks; ++i) {
-        const MoveInput in = make_input(opt.script, static_cast<uint32_t>(i));
+    for (int i = 0; i < ticks; ++i) {
+        const MoveInput in = make_input(script, static_cast<uint32_t>(i));
         world.step({in}, kDt);
         sim::DemoTick tick;
         tick.tick = static_cast<uint32_t>(i);
@@ -163,8 +158,19 @@ int run_record(const Options& opt) {
         tick.inputs.push_back(in);
         writer.add(tick);
     }
+    return writer.close(error);
+}
 
-    if (!writer.close(error)) {
+int run_record(const Options& opt) {
+    World world;
+    std::string error;
+    if (!load_world(opt, world, error)) {
+        std::fprintf(stderr, "error: %s\n", error.c_str());
+        return 1;
+    }
+
+    sim::DemoHeader header;
+    if (!record_demo(world, opt.map_path, opt.script, opt.ticks, opt.record_path, header, error)) {
         std::fprintf(stderr, "error: %s\n", error.c_str());
         return 1;
     }
@@ -299,38 +305,8 @@ int run_demo_test(const Options& opt) {
             return 1;
         }
         sim::DemoHeader header;
-        header.build_id = sim::kBuildId;
-        header.sim_version = sim::kSimVersion;
-        header.protocol_version = sim::kProtocolVersion;
-        header.tick_rate = sim::kDefaultTickRate;
-        header.params_hash = world.params_hash;
-        header.geometry_hash = world.collision.geometry_hash();
-        header.map = record.map_path;
-        for (const PlayerState& p : world.players) {
-            sim::DemoPlayerInit init;
-            init.pos = p.pos;
-            init.vel = p.vel;
-            init.speed_coefficient = p.speed_coefficient;
-            init.slow_factor = p.slow_factor;
-            init.crouched = p.crouched;
-            init.impulses = p.impulses;
-            header.players.push_back(init);
-        }
-        sim::DemoWriter writer;
-        if (!writer.open(demo_path, header, error)) {
-            std::fprintf(stderr, "error: %s\n", error.c_str());
-            return 1;
-        }
-        for (int i = 0; i < record.ticks; ++i) {
-            const MoveInput in = make_input(record.script, static_cast<uint32_t>(i));
-            world.step({in}, kDt);
-            sim::DemoTick tick;
-            tick.tick = static_cast<uint32_t>(i);
-            tick.state_hash = world.state_hash();
-            tick.inputs.push_back(in);
-            writer.add(tick);
-        }
-        if (!writer.close(error)) {
+        if (!record_demo(world, record.map_path, record.script, record.ticks, demo_path, header,
+                         error)) {
             std::fprintf(stderr, "error: %s\n", error.c_str());
             return 1;
         }
