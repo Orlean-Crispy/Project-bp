@@ -45,6 +45,8 @@ var hud_check := false
 var silent_printed := false
 var reconnect_check := false
 var reconnect_done := false
+var force_paused := false
+var menu_accumulator := 0.0
 
 func _ready() -> void:
 	RenderingServer.set_default_clear_color(Color(0.07, 0.08, 0.1))
@@ -123,6 +125,10 @@ func _ready() -> void:
 			sim.get_role(), sim.get_vertices().size()
 		])
 		get_tree().quit()
+	if force_paused:
+		# AUD-02: start with the in-game menu open so a headless run can prove the
+		# network pump keeps going while the world is paused.
+		_toggle_game_menu()
 
 func _update_hud() -> void:
 	if hud == null:
@@ -236,6 +242,17 @@ func _toggle_game_menu() -> void:
 		if not menu_open:
 			mouse_captured = true
 			Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+
+func _update_net_state() -> void:
+	if not sim.is_networked():
+		return
+	if sim.get_joined() and not joined_printed:
+		joined_printed = true
+		print("breakpoint: joined slot ", sim.get_player_slot())
+	if sim.get_peer_count() != last_peer_count:
+		last_peer_count = sim.get_peer_count()
+		print("breakpoint: peers ", last_peer_count)
+	_update_remote_players(sim.get_remote_players())
 
 func _pressed(action: String) -> bool:
 	return Input.is_action_pressed("bp_" + action)
@@ -367,7 +384,23 @@ func _process(delta: float) -> void:
 			var ok: bool = sim.reconnect()
 			print("breakpoint: reconnect %s" % ("ok" if ok else "failed"))
 	if menu_open or game_menu_open:
+		# AUD-02: a menu must not stop the network pump. The server drops a link
+		# after 320 ticks (5 s) without a packet, and a paused host would stop
+		# stepping its own server, so keep pumping at 64 Hz with a zero MoveInput
+		# (the pose is frozen because the camera update below still does not run).
 		accumulator = 0.0
+		if sim.is_networked():
+			sim.set_input(0.0, 0.0, yaw, false, false, false, false, false, false, false)
+			menu_accumulator += delta
+			var pumps := 0
+			while menu_accumulator >= TICK and pumps < 5:
+				sim.step_network()
+				menu_accumulator -= TICK
+				pumps += 1
+			if pumps == 5:
+				menu_accumulator = 0.0
+			_update_net_state()
+			_update_hud()
 		return
 
 	var forward := Input.get_action_strength("bp_MoveForward") - Input.get_action_strength("bp_MoveBack")
@@ -410,14 +443,7 @@ func _process(delta: float) -> void:
 	if ticks == 5:
 		accumulator = 0.0
 
-	if sim.is_networked():
-		if sim.get_joined() and not joined_printed:
-			joined_printed = true
-			print("breakpoint: joined slot ", sim.get_player_slot())
-		if sim.get_peer_count() != last_peer_count:
-			last_peer_count = sim.get_peer_count()
-			print("breakpoint: peers ", last_peer_count)
-		_update_remote_players(sim.get_remote_players())
+	_update_net_state()
 
 	var events: Array = sim.drain_events()
 	for event in events:
