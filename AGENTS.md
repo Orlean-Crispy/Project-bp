@@ -102,7 +102,7 @@ v0.1 定义：**两个人、局域网、1 张 40×40 图、对枪 10 分钟不�
 | 里程碑 | 状态 |
 |---|---|
 | M0–M4 | ✅（M4 跨机比对缺第二台机器） |
-| M5 | 🔶 不可靠通道/delta/预测回滚/时间对齐/输入去重/hitbox/full_state·加入·重连/远端插值/事件通道/真实 UDP/多 peer/两进程/**Godot --host·--connect·LAN 菜单/时钟漂移纠正/远端朝向 yaw/**掉线清理 5 s/槽位复用**已通；**A1 组局已接（信令 27115，host 占 slot 0，HELLO v3 带 client_id）、A5 票据进信令、A2 可靠流与快照共用 socket（configstring 已走可靠流）、重连顶替旧 link、**局内 HUD/impulse 条/Esc 暂停菜单/失联检测（快照年龄）/票据重连**已通；第三人称动画未做 |
+| M5 | ✅ 不可靠通道/delta/预测回滚/时间对齐/输入去重/hitbox/full_state·加入·重连/远端插值/事件通道/真实 UDP/多 peer/两进程/**Godot --host·--connect·LAN 菜单/时钟漂移纠正/远端朝向 yaw/**掉线清理 5 s/槽位复用**已通；**A1 组局已接（信令 27115，host 占 slot 0，HELLO v3 带 client_id）、A5 票据进信令、A2 可靠流与快照共用 socket（configstring 已走可靠流）、重连顶替旧 link、**局内 HUD/impulse 条/Esc 暂停菜单/失联检测（快照年龄）/票据重连**已通；**M5 收尾完成**（A5 网关已拆） |
 | M6 | 🔶 仅 HP/护甲规则（HP 100；甲 25/25 再生/50） |
 | M7/M8 | ❌ |
 
@@ -162,7 +162,7 @@ powershell -File tools\run_demo.ps1     # Godot demo
 | docs/HANDOFF.md | 本会话完整交接（S01–S31、每个坑的根因与证据） |
 | docs/PROGRESS.md | 进度日志（S 短条目 + 末尾**详细开发日志**） |
 | docs/GAPS.md | v0.1 缺口 + 技术债盘点（只分析） |
-| docs/AUDIT.md | **代码体检清单**（P0–P3、证据、建议动作、处理顺序；A1–A3、A6 已清） |
+| docs/AUDIT.md | **代码体检清单**（P0–P3、证据、建议动作、处理顺序；A1–A7 已清） |
 | docs/backup.md | GitHub / bundle / 恢复步骤 |
 | docs/pitfalls/ | 事故案例（4 篇） |
 | docs/decisions/ | ADR（护甲 / 网络时间轴） |

@@ -19,7 +19,7 @@
 | A2 | ✅ 已删 | sim/net/netchan.* | `AckTracker` 全仓无调用（约 30 行死代码） |
 | A3 | ✅ 已抽 | sim/net/winsock.h | Winsock 初始化曾写两份，现在只剩一处 inline 实现 |
 | A4 | ✅ 已拆 | tools/headless_sim/ | 2916 → 272 行；网络/演示/移动三组各自成文件，main 只剩参数与分发 |
-| A5 | 🔶 渲染已拆 | bridge/ | mesh_common.h + mesh_builder.*；网络网关仍在 SimWorld 里 |
+| A5 | ✅ 已拆 | bridge/ | mesh_common.h + mesh_builder.* + net_gateway.*；SimWorld 478→313 行 |
 | A6 | ✅ 已接 | sim/net/configstring.h | configstring 现在有格式与校验：哈希不符客户端拒局 |
 | A7 | ✅ 已抽 | sim/net/admission.h | 加入逻辑只有一份：approve/take，两个 UDP 宿主共用 |
 | A8 | P3 | godot/main.gd | 日志前缀仍是 `breakpoint:`（内部代号，已结案，不改） |

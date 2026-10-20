@@ -1446,6 +1446,22 @@ wrapper，两个时钟不同步；`uint32` 减法回绕成几十亿，于是每�
 
 ---
 
+## 2026-10-20 · S52 · M5 收尾（A5 第 3 步：NetGateway）
+
+- `bridge::NetGateway`（net_gateway.h/.cpp）接手全部网络状态：server / match / admission /
+  client / hub / udp / 两条 loopback / hosting / client_id / ticket / hello 计时器。
+  方法：`start_host / join / reconnect / pump(input) / active / hosting / joined / slot / peers / snapshot_age / client()`。
+- `SimWorld` 478 → **313 行**，host/join/reconnect/step_network 只做转发，成员全删，无死代码。
+  日志字符串逐字未改（`peer joined slot` 等）。
+- 验收（我自己重跑，不采信代理自述）：
+  `build_bridge.ps1` 通过；`--hud-check` → `hud ... vertices=360`；
+  `smoke.ps1` ALL GREEN；`net_selftest.ps1` two processes joined；
+  代理另跑 `--reconnect-check`：client `reconnect ok`、host `signal slot 1 resumed 1`。
+- **M5 关闭**：docs/AGENTS 与根 AGENTS 的 M5 状态改为 ✅；未结案第 1、2 条关闭。
+  第三人称动画与 5v5 选边按计划书归 M7，不计入 M5。
+
+---
+
 # 开发日志（详细）
 
 > 从 2026-10-20 起，在 PROGRESS 末尾追加详细日志；上面的 S 编号短条目保留，作为索引。
