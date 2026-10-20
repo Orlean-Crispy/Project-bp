@@ -1523,6 +1523,26 @@ wrapper，两个时钟不同步；`uint32` 减法回绕成几十亿，于是每�
 
 ---
 
+## 2026-10-20 · S56 · 体检 R1 / R6（sim 侧收口）
+
+- **R1**：`apply_snapshot` 在回放前把修正后的状态写回 `m_history[index]` 并重记该 tick 的 hitbox。
+  新闸门手工喂两份同 tick 快照：`[rollback] hitbox 1 dup 1 state 1`——
+  重复快照不再二次回滚、被修正 tick 的 hitbox 等于修正后位置（1e-4）。
+  把两行修复删掉，闸门打 `hitbox 1 dup 0 state 0` 并失败，证明它真能红。
+- **R6**：服务端 inputs 改成员缓冲；新增 `World::step_single`（客户端每 tick 不再造单元素 vector）；
+  `Link::sent` 与 `m_recent` 改成容量 64 的环形数组，稳态不再每 tick 分配。
+  新闸门：`[netalloc] per_tick 0`（200 tick 预热后统计 100 tick 的 session step）。
+  行为证明：stash 前后 `--test-net` 输出只差这一行新判据，其它统计逐字节相同。
+- 我复核：smoke ALL GREEN；`[rollback]` 与 `[netalloc]` 均在场；工作树干净。
+
+### 边界（不装作做完了）
+
+- R6 只覆盖 R6 列出的三处 session 热路径。回环测试里的 `ByteWriter`/快照编解码/LoopbackTransport` 队列
+  仍有约 40 次/tick 分配——那是序列化与测试传输的 API，不是本条的范畴，需要单独立项。
+- 桥侧审计仍有 3 条 P1（AUD-01 联机事件恒空、AUD-02 暂停停网泵、AUD-05 远端插值退化）与若干 P2 未处理。
+
+---
+
 # 开发日志（详细）
 
 > 从 2026-10-20 起，在 PROGRESS 末尾追加详细日志；上面的 S 编号短条目保留，作为索引。

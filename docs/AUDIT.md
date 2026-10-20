@@ -146,12 +146,12 @@ P0（可能算出错结果）：**本轮没有发现**。
 
 | id | sev | 位置 | 问题 | 状态 |
 |---|---|---|---|---|
-| R1 | P1 | session.cpp 回滚 | 回滚后未改写该 tick 的 history/hitbox，M6 读 hitbox 时会用到旧预测 | 待修 |
+| R1 | P1 | session.cpp 回滚 | 回滚后未改写该 tick 的 history/hitbox，M6 读 hitbox 时会用到旧预测 | ✅ 已修 |
 | R2 | P1 | pmove.cpp vault/climb | `busy` 只算一次，vault 起手后 wallclimb 仍可覆盖，白花一次 impulse | ✅ 已修 |
 | R3 | P1 | session.h Link::sent | 以 `out_seq`（u16）为键，17 分钟后回绕，ack 永远对不上→永久全量 | ✅ 已修 |
 | R4 | P1 | matchmaking.cpp 槽位 | 只 reserve 不 release，N 个不同 id 后房间永久 RoomFull | ✅ 已修 |
 | R5 | P1 | udp_socket.cpp | 游戏端口没设 `SO_EXCLUSIVEADDRUSE`，与教训 #11 矛盾 | ✅ 已修 |
-| R6 | P1 | session 热路径 | 每 tick 建 vector、`m_local.step({..})`、把快照拷进两个 map | 待修 |
+| R6 | P1 | session 热路径 | 每 tick 建 vector、`m_local.step({..})`、把快照拷进两个 map | ✅ 已修 |
 | R7 | P1 | config.h/config.cpp | 6 个参数被加载/哈希但 sim 从不读取（用字面量代替） | ✅ 已修 |
 | R8 | P1 | combat.cpp | `CombatParams::hash()` 无人调用，两套 combat.toml 也能互通 | ✅ 已修 |
 | R9 | P1 | world.cpp 哈希 | `state_hash` 漏掉 state/timer/yaw 等参与后续 tick 的字段 | ✅ 已修 |
