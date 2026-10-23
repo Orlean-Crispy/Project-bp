@@ -28,12 +28,16 @@ public:
 
     bool valid() const { return m_socket.valid(); }
     uint16_t local_port() const { return m_socket.local_port(); }
+    // Datagrams dropped because they did not come from connect_peer()'s address.
+    // A rising count on a quiet LAN means someone is injecting (AUD-26).
+    int rejected() const { return m_rejected; }
 
 private:
     UdpSocket m_socket;
-    std::string m_peer_host;
+    std::string m_peer_host;  // canonical dotted IPv4 (ipv4_canonical)
     uint16_t m_peer_port = 0;
     bool m_has_peer = false;
+    int m_rejected = 0;
 };
 
 }  // namespace sim

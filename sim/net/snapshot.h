@@ -14,11 +14,13 @@ struct PlayerSnap {
     Vec3 pos;
     Vec3 vel;
     float yaw = 0.0f;
-    // bit0 on_ground, bit1 crouched, bit2 active, bit3 jump_was_down,
-    // bit4 slide_was_down, bit5 dash_was_down, bit6 vault_was_down.
+    // Protocol v6: 16 bits, not 8. bit0 on_ground, bit1 crouched, bit2 active,
+    // bit3 jump_was_down, bit4 slide_was_down, bit5 dash_was_down,
+    // bit6 vault_was_down; bit7 firing, bit8 reloading, bit9 ads and bit10 alive
+    // are reserved for M6 combat and have no producer yet, so they stay clear.
     // The four *_was_down bits are input edges from the previous tick: without
     // them a rollback replays a held slide/dash/vault as a fresh press.
-    uint8_t flags = 0;
+    uint16_t flags = 0;
     uint8_t impulses = 0;
     uint8_t state = 0;
     uint16_t state_ticks = 0;
@@ -35,6 +37,17 @@ struct PlayerSnap {
     Vec3 wall_normal;
     Vec3 vault_dir;
     float vault_rise = 0.0f;
+    // Protocol v6 / kFieldVitals: hit points are server-authoritative. The client
+    // displays them but never predicts damage (v0.4 A4), so they ride in the
+    // snapshot and in the rollback state, not in the client's prediction inputs.
+    uint16_t hp = 100;
+    uint16_t armor = 0;
+    // Protocol v6 / kFieldWeapon: the wire format for M6 is fixed here so that
+    // adding a weapon cannot force another protocol bump. All three stay zero
+    // until M6 fills them, and a zero group costs one mask bit per snapshot.
+    uint8_t weapon_id = 0;
+    uint16_t ammo = 0;
+    uint16_t fire_cooldown = 0;
 };
 
 struct Snapshot {

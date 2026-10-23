@@ -391,6 +391,106 @@ int run_udp_check() {
         std::printf("FAIL: a second socket bound the same UDP port\n");
         ++failures;
     }
+
+    // AUD-26: the client must ignore datagrams from anyone but connect_peer's
+    // address, and say so. Two behaviours are checked, because either one alone
+    // is easy to fake: the injection is not delivered, and a legitimate packet
+    // sent right afterwards still is.
+    bool source_ok = false;
+    bool legit_after = false;
+    int rejected = 0;
+    sim::UdpSocket attacker;
+    if (attacker.open(0, error)) {
+        const std::vector<uint8_t> inject = {0xde, 0xad, 0xbe, 0xef};
+        std::vector<uint8_t> sink;
+        attacker.send_to(inject.data(), inject.size(), "127.0.0.1", client.local_port());
+        std::this_thread::sleep_for(std::chrono::milliseconds(30));
+        source_ok = !client.recv(sink);
+        rejected = client.rejected();
+        const std::vector<uint8_t> pong2 = {0x50, 0x49, 0x4e, 0x47, 0x32};
+        server.send(pong2);
+        legit_after = poll([&] { return client.recv(sink); }) && sink == pong2;
+    }
+    std::printf("  [udpsrc] rejected %d injection-drop %d legit-after %d\n", rejected,
+                source_ok ? 1 : 0, legit_after ? 1 : 0);
+    if (!source_ok || !legit_after || rejected != 1) {
+        std::printf("FAIL: the client accepts UDP datagrams from an unexpected source (AUD-26)\n");
+        ++failures;
+    }
+    return failures;
+}
+
+// AUD-23: the fragmenter must be on the real link, not only in a loopback gate.
+// Two checks in one, because either alone is misleading:
+//   * a 10-player full snapshot crosses a real socket intact and does NOT
+//     fragment (the counters must stay 0: fragmentation is insurance, not the
+//     normal path);
+//   * a 3000 B message does fragment and arrive byte-identical, with the
+//     counters proving the split happened.
+int run_udp_fragment_check() {
+    int failures = 0;
+    std::string error;
+    sim::UdpTransport a;
+    sim::UdpTransport b;
+    if (!a.open(0, error) || !b.open(0, error)) {
+        std::printf("FAIL: frag udp open: %s\n", error.c_str());
+        return 1;
+    }
+    if (!a.connect_peer("127.0.0.1", b.local_port(), error) ||
+        !b.connect_peer("127.0.0.1", a.local_port(), error)) {
+        std::printf("FAIL: frag udp connect: %s\n", error.c_str());
+        return 1;
+    }
+    sim::FragmentedTransport fa(a);
+    sim::FragmentedTransport fb(b);
+
+    auto poll = [](auto&& fn) {
+        for (int i = 0; i < 2000; ++i) {
+            if (fn()) return true;
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        return false;
+    };
+
+    sim::Snapshot ten;
+    ten.tick = 3;
+    for (int i = 0; i < 10; ++i) {
+        sim::PlayerState p;
+        p.pos = sim::Vec3(static_cast<float>(i) * 2.0f, -1.0f, 0.05f);
+        p.vitals.health = static_cast<int>(100 - i);
+        p.vitals.armor = 25;
+        ten.players.push_back(sim::to_snap(p));
+    }
+    const std::vector<uint8_t> bytes = sim::encode_snapshot(ten, nullptr);
+    fa.send(bytes);
+    std::vector<uint8_t> got;
+    const bool ten_arrived = poll([&] { return fb.recv(got); }) && got == bytes;
+    sim::Snapshot back;
+    const bool ten_decoded = ten_arrived &&
+                             sim::decode_snapshot(got.data(), got.size(), nullptr, back) &&
+                             back.players.size() == 10 && back.players[9].hp == 91;
+    const bool no_frag = fa.fragments_sent() == 0 && fb.reassembled() == 0;
+
+    std::vector<uint8_t> big(3000);
+    for (std::size_t i = 0; i < big.size(); ++i) {
+        big[i] = static_cast<uint8_t>((i * 13 + 7) & 0xFF);
+    }
+    fa.send(big);
+    const bool big_arrived = poll([&] { return fb.recv(got); }) && got == big;
+    const bool split = fa.fragments_sent() == 3 && fb.reassembled() == 1;
+
+    const std::vector<uint8_t> small = {1, 2, 3, 4};
+    fa.send(small);
+    const bool small_ok = poll([&] { return fb.recv(got); }) && got == small &&
+                          fa.fragments_sent() == 3 && fb.reassembled() == 1;
+
+    std::printf("  [frag] real-link 10p %zu B ten %d decode %d nofrag %d 3000B %d split %d small %d\n",
+                bytes.size(), ten_arrived ? 1 : 0, ten_decoded ? 1 : 0, no_frag ? 1 : 0,
+                big_arrived ? 1 : 0, split ? 1 : 0, small_ok ? 1 : 0);
+    if (!ten_arrived || !ten_decoded || !no_frag || !big_arrived || !split || !small_ok) {
+        std::printf("FAIL: the real link does not fragment correctly (AUD-23)\n");
+        ++failures;
+    }
     return failures;
 }
 
@@ -518,7 +618,7 @@ int run_udp_session_check(const std::string& data_path) {
             if (who == id0) slot = 0;
             if (who == id1) slot = 1;
             if (slot < 0) continue;  // unknown id: never admitted
-            sim::PeerTransport* peer = hub.add_peer(host, port);
+            sim::Transport* peer = hub.add_peer(host, port);
             server.add_client(peer, peer, slot);
         }
         client.send_input(input);
@@ -845,6 +945,106 @@ int run_match_test() {
         return 1;
     }
     return 0;
+}
+
+// AUD-27: on a two-slot room the second client used to be refused forever once
+// both ids had joined once, because a normal leave never released its slot. The
+// chain under test is the real one: the server drops the link, reports the id it
+// was admitted with, and the matchmaking host frees that slot for the next id.
+int run_slot_release_test() {
+    int failures = 0;
+    std::string error;
+    sim::MatchHost host;
+    // players 2, one reserved for the listen server: exactly one client slot.
+    if (!host.start(0, 2, "playground", 7, 1, error)) {
+        std::printf("FAIL: slot host start: %s\n", error.c_str());
+        return 1;
+    }
+    sim::NetServer server;
+    if (!server.init("sim/data/maps/metrics_flat.map", "sim/data/movement.toml", 2, error)) {
+        std::printf("FAIL: slot server init: %s\n", error.c_str());
+        host.stop();
+        return 1;
+    }
+    sim::LoopbackTransport down(sim::NetConditions{}, 21);
+    sim::LoopbackTransport up(sim::NetConditions{}, 22);
+
+    // The host's own slot 0 stays reserved: the first client must land on 1.
+    sim::ClientId first_id{};
+    first_id[0] = 0x31;
+    sim::MatchReply ra;
+    const bool first = sim::match_request("127.0.0.1", host.port(), first_id, nullptr, ra) &&
+                       ra.ok && ra.status == sim::MatchStatus::Accepted && ra.slot == 1;
+
+    sim::ClientId blocked{};
+    blocked[0] = 0x32;
+    sim::MatchReply rb;
+    const bool full = sim::match_request("127.0.0.1", host.port(), blocked, nullptr, rb) &&
+                      rb.ok && rb.status == sim::MatchStatus::RoomFull;
+
+    bool reported = false;
+    bool freed = false;
+    if (first) {
+        const int link = server.add_client(&down, &up, ra.slot, nullptr, &first_id);
+        if (link >= 0) {
+            server.remove_client(link);
+            std::vector<sim::ClientId> departed;
+            reported = server.drain_departed(departed) == 1 && departed.size() == 1 &&
+                       departed[0] == first_id;
+            for (const sim::ClientId& id : departed) host.release(id);
+        }
+        sim::MatchReply rc;
+        freed = sim::match_request("127.0.0.1", host.port(), blocked, nullptr, rc) && rc.ok &&
+                rc.status == sim::MatchStatus::Accepted && rc.slot == 1;
+    }
+
+    // The id that took the freed slot also leaves before the next round.
+    if (freed) host.release(blocked);
+
+    // Three full join/leave cycles with fresh ids: the second round is the one
+    // that used to fail.
+    bool cycles = true;
+    int rejoined = 0;
+    for (int i = 0; i < 3 && cycles; ++i) {
+        sim::ClientId fresh{};
+        fresh[0] = static_cast<uint8_t>(0x40 + i);
+        sim::MatchReply rr;
+        if (!(sim::match_request("127.0.0.1", host.port(), fresh, nullptr, rr) && rr.ok &&
+              rr.status == sim::MatchStatus::Accepted && rr.slot == 1)) {
+            cycles = false;
+            break;
+        }
+        const int link = server.add_client(&down, &up, rr.slot, nullptr, &fresh);
+        if (link < 0) {
+            cycles = false;
+            break;
+        }
+        ++rejoined;
+        server.remove_client(link);
+        std::vector<sim::ClientId> departed;
+        if (server.drain_departed(departed) != 1) {
+            cycles = false;
+            break;
+        }
+        for (const sim::ClientId& id : departed) host.release(id);
+    }
+
+    // A link with no id (the deterministic gates add those) must not enqueue a
+    // departure: releasing an empty id would free whichever slot holds zeros.
+    const int anonymous = server.add_client(&down, &up, 0);
+    if (anonymous >= 0) server.remove_client(anonymous);
+    std::vector<sim::ClientId> none;
+    const bool anonymous_silent = server.drain_departed(none) == 0;
+
+    host.stop();
+    std::printf("  [slots] first %d full %d reported %d freed %d cycles %d/%d anonymous %d\n",
+                first ? 1 : 0, full ? 1 : 0, reported ? 1 : 0, freed ? 1 : 0, rejoined,
+                cycles ? 1 : 0, anonymous_silent ? 1 : 0);
+    if (!first || !full || !reported || !freed || rejoined != 3 || !cycles || !anonymous_silent) {
+        std::printf("FAIL: a departed client does not release its room slot (AUD-27)\n");
+        ++failures;
+    }
+    return failures;
 }
 
 int run_reconnect_test() {
@@ -1272,6 +1472,95 @@ int run_clock_check(const std::string& data_path) {
 // replayed after it. Otherwise the hitbox history keeps the pre-correction
 // prediction (M6 would rewind into it) and a duplicate snapshot at the same tick
 // fails same_state and rolls back again, inflating the N3 counters.
+// AUD-20: a client that misses 300 ticks (4.7 s) used to stay behind forever:
+// its commands are stamped for ticks the server already executed, so they are all
+// Late and nothing ever moves the axis forward. The gate freezes the client, then
+// requires the late counter to settle and the player to keep moving - without a
+// rejoin (full_states must stay 1).
+int run_catch_up_check(const std::string& data_path) {
+    const std::string map_path = "sim/data/maps/metrics_flat.map";
+    std::string error;
+    sim::NetServer server;
+    if (!server.init(map_path, data_path, 1, error)) {
+        std::printf("FAIL: catch-up server init: %s\n", error.c_str());
+        return 1;
+    }
+    sim::NetConditions conditions;
+    conditions.latency_ms = 20.0f;
+    sim::LoopbackTransport to_server(conditions, 43);
+    sim::LoopbackTransport to_client(conditions, 44);
+    server.add_client(&to_server, &to_client, 0);
+    sim::NetClient client;
+    if (!client.init(&to_server, &to_client, 0, map_path, data_path, error)) {
+        std::printf("FAIL: catch-up client init: %s\n", error.c_str());
+        return 1;
+    }
+
+    sim::MoveInput in;
+    in.forward = 1.0f;
+    auto tick_once = [&](bool client_runs) {
+        if (client_runs) {
+            client.send_input(in);
+            client.step_local();
+        }
+        server.receive();
+        server.step();
+        server.send();
+        to_server.advance(0);
+        to_client.advance(0);
+        if (client_runs) client.receive();
+    };
+
+    for (int i = 0; i < 200; ++i) tick_once(true);
+    const int accepted_before = server.accepted_commands();
+    const uint32_t tick_before = client.tick();
+
+    // The freeze: the server keeps running, the client neither sends nor polls.
+    constexpr int kFreeze = 300;
+    for (int i = 0; i < kFreeze; ++i) tick_once(false);
+    const int late_frozen = server.late_commands();
+    // A real socket buffer does not hold 4.7 s of datagrams: the stale ones are
+    // gone by the time the client resumes. Draining here reproduces that, and it
+    // is exactly what makes the first fresh snapshot land far ahead of the
+    // client's own axis.
+    {
+        std::vector<uint8_t> stale;
+        while (to_client.recv(stale)) {
+        }
+    }
+
+    // Resume. The first snapshot has to re-anchor the axis; after that the
+    // commands must be accepted again and the late counter has to stop moving.
+    for (int i = 0; i < 8; ++i) tick_once(true);
+    const int late_early = server.late_commands();
+    const int accepted_early = server.accepted_commands();
+    for (int i = 0; i < 56; ++i) tick_once(true);
+    const int late_late = server.late_commands();
+    const int accepted_late = server.accepted_commands();
+
+    const bool caught = client.catch_ups() >= 1;
+    // The exact deficit depends on how many snapshots were still buffered, so
+    // the gate asks for "most of the freeze", not for a magic number.
+    const bool behind = client.max_behind() >= static_cast<uint32_t>(kFreeze) - 32;
+    const bool advanced = client.tick() > tick_before + static_cast<uint32_t>(kFreeze);
+    const bool resumed = accepted_late > accepted_early && accepted_early > accepted_before;
+    const bool settled = late_late == late_early;
+    const bool moving = client.predicted().pos.x > 0.5f;
+    const bool no_rejoin = client.full_states() == 1 && late_frozen >= 0;
+
+    std::printf("  [catchup] freeze %d behind %u catchups %d accepted %d->%d->%d late "
+                "%d->%d settled %d tick %u->%u moved %d\n",
+                kFreeze, client.max_behind(), client.catch_ups(), accepted_before, accepted_early,
+                accepted_late, late_early, late_late, settled ? 1 : 0, tick_before, client.tick(),
+                moving ? 1 : 0);
+    int failures = 0;
+    if (!caught || !behind || !advanced || !resumed || !settled || !moving || !no_rejoin) {
+        std::printf("FAIL: a client that fell behind never catches up (AUD-20)\n");
+        ++failures;
+    }
+    return failures;
+}
+
 int run_rollback_repair_check(const std::string& data_path) {
     int failures = 0;
     const std::string map_path = "sim/data/maps/metrics_flat.map";
@@ -1449,11 +1738,14 @@ int run_net_test(const Options& opt) {
     // The real transport is exercised first: the deterministic loopback tests
     // above it are meaningless if a datagram cannot leave the process.
     failures += run_udp_check();
+    failures += run_udp_fragment_check();
     failures += run_fragment_check();
     failures += run_udp_session_check(opt.data_path);
     failures += run_clock_check(opt.data_path);
+    failures += run_catch_up_check(opt.data_path);
     failures += run_signal_test();
     failures += run_match_test();
+    failures += run_slot_release_test();
     failures += run_dual_channel_test();
     failures += run_config_test();
     failures += run_reconnect_test();
@@ -1617,6 +1909,8 @@ int run_net_test(const Options& opt) {
         src.wall_normal = sim::Vec3(1.0f, 0.0f, 0.0f);
         src.vault_dir = sim::Vec3(0.0f, 1.0f, 0.0f);
         src.vault_rise = 0.4f;
+        src.vitals.health = 42;
+        src.vitals.armor = 25;
 
         sim::Snapshot one;
         one.tick = 42;
@@ -1640,10 +1934,11 @@ int run_net_test(const Options& opt) {
             round.state == src.state &&
             round.state_ticks == src.state_ticks && round.dash_cooldown == src.dash_cooldown &&
             round.wall_normal == src.wall_normal && round.vault_dir == src.vault_dir &&
-            round.vault_rise == src.vault_rise;
+            round.vault_rise == src.vault_rise &&
+            round.vitals.health == src.vitals.health && round.vitals.armor == src.vitals.armor;
         std::printf("  [snapfields] %d\n", fields_ok ? 1 : 0);
         if (!fields_ok) {
-            std::printf("FAIL: the snapshot loses a movement field (protocol 5)\n");
+            std::printf("FAIL: the snapshot loses a field (protocol 6)\n");
             ++failures;
         }
     }

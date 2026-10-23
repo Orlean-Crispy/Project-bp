@@ -3,12 +3,15 @@
 > 对外名 **IMPULSE** · 缩写 **IMP** · 内部代号 **Project Breakpoint**（`Project Bp` / `bp`）· 符号 **J / Δp**
 
 5v5、有爆破目标的 Apex 式自由移动 FPS。**移动按 Apex，判定按 CS。**
-Godot 4.7 宿主 + 自研 C++17 模拟层（零 Godot 依赖），64 tick，目标局域网。
+Godot **4.5** 宿主 + 自研 C++17 模拟层（零 Godot 依赖），64 tick，目标局域网。
+（计划书写 4.7；godot-cpp 目前最高 4.5，见 docs/DEBT.md 的 DEBT-15。）
 
 > 设计文档：`docs/计划书_v0.3.md`　命名：[docs/IMPULSE_命名方案.md](docs/IMPULSE_命名方案.md)
+> **现在是什么状态：[docs/STATE.md](docs/STATE.md)**（唯一一处，带命令与数字）
 > 约束：`docs/AGENTS.md`　进度：`docs/PROGRESS.md`　事故：`docs/pitfalls/`
 
-> 缺口盘点：[docs/GAPS.md](docs/GAPS.md)　网络设计：[docs/网络层深化_v0.4.md](docs/网络层深化_v0.4.md)
+> 缺口与债：[docs/DEBT.md](docs/DEBT.md)（未解决）+ [docs/BACKLOG.md](docs/BACKLOG.md)（待定/未做）
+> 网络设计：[docs/网络层深化_v0.4.md](docs/网络层深化_v0.4.md)
 
 ## 现在能做什么（M0–M5 网络部分 + Godot 组局）
 
@@ -18,8 +21,8 @@ Godot 4.7 宿主 + 自研 C++17 模拟层（零 Godot 依赖），64 tick，目�
 - 分步 `slide_move`：按最小墙厚切步，20 m/s 撞 0.1 m 墙 100 次 0 穿透
 - 基础 pmove：地面加速/摩擦、空中控制、跳跃、蹲、**step-up 上台阶**、蹲下空间检查
 - parkour 五件套：**滑铲 / 冲刺 / 墙跑 / 爬墙 / 翻越**，全部走整数 tick 状态机
-- **键位数据驱动**：`sim/data/keybinds.toml`，默认瓦洛兰特布局（C 翻越 / Q 墙跑 / E 爬墙 / X 冲刺），
-  运行时可改、存盘即生效；sim 内部看不到键名
+- **键位数据驱动**：`sim/data/keybinds.toml`，默认瓦洛兰特布局（C 翻越 / Q 墙跑 / V 爬墙 / X 冲刺，
+  **E 留给交互**），运行时可改、存盘即生效；sim 内部看不到键名
 - 无状态 RNG、逐 tick 世界哈希
 - **demo 录制 / 回放**：存输入 + 种子，回放时逐 tick 重算并比对哈希，分叉能定位到具体 tick
 - **跨机构建比对**：两台机器各导一份位置 CSV，`--compare` 报最大偏差（容差 0.01 m）
@@ -28,7 +31,7 @@ Godot 4.7 宿主 + 自研 C++17 模拟层（零 Godot 依赖），64 tick，目�
 - **Godot 组局**：`--host` / `--connect` 或启动菜单；远端玩家胶囊（yaw/蹲下）实时同步
 - **网络闸门**：30% 丢包回滚 51/2000、5% 丢包 60 s 修正 0 次、2 客户端 UDP、分片、时钟纠正、
   A1 信令（TCP）、A2 可靠流/CRC、A5 票据、5 s 掉线清理
-- 尚未做：射击、伤害联网、死亡/重生、40×40 图、A1/A2/A5 接入组局（见 GAPS）
+- 尚未做：射击、伤害联网、死亡/重生、40×40 图（见 docs/BACKLOG.md 的 FEAT 表）
 
 ## 快速开始
 
@@ -36,7 +39,7 @@ Godot 4.7 宿主 + 自研 C++17 模拟层（零 Godot 依赖），64 tick，目�
 powershell -File tools\setup_toolchain.ps1   # 只需一次，装到 C:\bp-toolchain
 powershell -File tools\run_demo.ps1          # 构建桥 + 启动 Godot demo
 powershell -File tools\build.ps1             # 配置 + 全量构建（-Werror）
-powershell -File tools\smoke.ps1             # 17 项行为闸门 + bench，必须全绿
+powershell -File tools\smoke.ps1             # 19 项闸门 + bench，退出码 0 才算过
 powershell -File tools\godot_check.ps1       # 只跑桥：--hud-check + 两进程重连
 powershell -File tools\run_net_demo.ps1      # 起 host + client 两个 Godot 窗口
 powershell -File tools\net_selftest.ps1      # 两进程真实 UDP 联机自检

@@ -23,6 +23,7 @@ struct Options {
     bool test_health = false;
     bool test_hitbox = false;
     bool test_events = false;
+    bool test_snapshot = false;
     bool test_bindings = false;
     bool print_keys = false;
     bool map_explicit = false;

@@ -5,3 +5,5 @@
 | 1 | [toolchain-nonascii.md](toolchain-nonascii.md) | MinGW ld 读不了中文路径，只能在物理 ASCII 路径下链接 |
 | 2 | [minkowski-support.md](minkowski-support.md) | 盒体扫掠的支撑距离用 max 而非 min，导致全部穿透 |
 | 3 | [contact-epsilon.md](contact-epsilon.md) | 进入分数被 epsilon 顶成负数 → 贴墙每 tick 挤入 19 mm |
+| 4 | [tick-deficit.md](tick-deficit.md) | 时钟纠正只做了"领先"，卡顿后客户端永远落后（AUD-20） |
+| 5 | [slot-leak.md](slot-leak.md) | 槽位只在握手中断时释放，正常离开后房间永久 RoomFull（AUD-27） |

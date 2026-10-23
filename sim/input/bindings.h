@@ -26,7 +26,9 @@ enum class Action : uint8_t {
     WallClimb,
     Vault,
     Reload,
-    Use,
+    // E is the interact key (CS/Valorant); wall climb moved to V so that the
+    // bomb/defuse key is free before M6/M8 need it.
+    Interact,
     Scoreboard,
     Count
 };

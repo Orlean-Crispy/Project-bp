@@ -38,6 +38,12 @@ try {
     & $exe --test-health
     if ($LASTEXITCODE -ne 0) { throw 'health test failed' }
 
+    Write-Host '== protocol wire ==' -ForegroundColor Cyan
+    # The snapshot format is the one thing both sides must agree on byte for byte;
+    # it gets its own step so a mask that narrows again fails here, not in a match.
+    & $exe --test-snapshot
+    if ($LASTEXITCODE -ne 0) { throw 'snapshot wire test failed' }
+
     Write-Host '== network ==' -ForegroundColor Cyan
     & $exe --test-net
     if ($LASTEXITCODE -ne 0) { throw 'network test failed' }
@@ -81,6 +87,13 @@ try {
     } elseif ($LASTEXITCODE -ne 0) {
         throw 'godot bridge check failed'
     }
+
+    Write-Host '== docs ==' -ForegroundColor Cyan
+    # Drift guard: protocol version, gate count, DEBT ledger conservation, dead
+    # paths, STATE quality. It reports in English on purpose (PowerShell 5.1
+    # mangles CJK output, and a gate nobody can read is a gate nobody trusts).
+    & python (Join-Path $PSScriptRoot 'doc_check.py') --root $root
+    if ($LASTEXITCODE -ne 0) { throw 'documentation drift detected' }
 
     Write-Host '== bench ==' -ForegroundColor Cyan
     & $exe --bench 1000

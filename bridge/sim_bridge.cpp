@@ -129,6 +129,7 @@ public:
         // when it is disconnected; only step() from solo play may advance it.
         if (m_net.active()) return;
         if (m_world.players.empty()) return;
+        remember_previous();
         // step_single exists exactly for this: step({input}) would build a
         // one-element vector 64 times a second (iron law E).
         m_world.step_single(m_input, static_cast<float>(sim::tick_seconds()), &m_events);
@@ -152,6 +153,7 @@ public:
     bool reconnect() { return m_net.reconnect(); }
 
     void step_network() {
+        remember_previous();
         m_net.pump(m_input, &m_events);
         // AUD-05: remember when the newest snapshot arrived; get_remote_players()
         // turns the elapsed time into the interpolation fraction.
@@ -254,19 +256,34 @@ public:
     // (plan 5.2 is "TBD", ADR 0005 open item 1).
     int get_max_impulses() const { return m_world.params.max_impulses; }
 
-    // Placeholder until hp/armor are networked (M6).
     int get_snapshot_age() const { return m_net.snapshot_age(); }
 
-    int get_hp() const { return 100; }
-    int get_armor() const { return 0; }
+    // Protocol v6: the real values now ride in PlayerState (and in the snapshot),
+    // so the HUD shows replica data instead of a constant. Nothing damages them
+    // yet; the weapon that does is M6 work.
+    int get_hp() const {
+        const sim::PlayerState* p = local_player();
+        return p == nullptr ? 0 : p->vitals.health;
+    }
+
+    // Render interpolation: the simulation advances 64 times a second, a display
+    // does not. The camera used to snap to the newest tick position and stay
+    // there for two or three frames, which reads as a staircase while strafing
+    // (and got louder once recoil started moving the view). These two give the
+    // presentation layer the tick before the newest one to blend from.
+    Vector3 get_prev_position() const { return m_prev_pos; }
+    float get_prev_eye_height() const { return m_prev_eye; }
+    int get_armor() const {
+        const sim::PlayerState* p = local_player();
+        return p == nullptr ? 0 : p->vitals.armor;
+    }
 
     // 90% of the hull height, so crouching lowers the camera with the body. The
     // old constant 1.55 m was above the 1.42 m standing hull and did not move when
     // crouched, which let a crouched player see over cover.
     float get_eye_height() const {
-        const bool crouched = !m_world.players.empty() && m_world.players[0].crouched;
-        const float height = crouched ? m_world.params.crouch_height : m_world.params.stand_height;
-        return height * 0.9f;
+        const sim::PlayerState* p = local_player();
+        return eye_height_for(p != nullptr && p->crouched);
     }
 
     // AUD-08: the remote capsule has to match the collision hull, so it reads
@@ -320,6 +337,8 @@ protected:
         ClassDB::bind_method(D_METHOD("get_hp"), &SimWorld::get_hp);
         ClassDB::bind_method(D_METHOD("get_armor"), &SimWorld::get_armor);
         ClassDB::bind_method(D_METHOD("get_eye_height"), &SimWorld::get_eye_height);
+    ClassDB::bind_method(D_METHOD("get_prev_position"), &SimWorld::get_prev_position);
+    ClassDB::bind_method(D_METHOD("get_prev_eye_height"), &SimWorld::get_prev_eye_height);
         ClassDB::bind_method(D_METHOD("get_player_radius"), &SimWorld::get_player_radius);
         ClassDB::bind_method(D_METHOD("get_stand_height"), &SimWorld::get_stand_height);
         ClassDB::bind_method(D_METHOD("get_crouch_height"), &SimWorld::get_crouch_height);
@@ -333,6 +352,21 @@ protected:
     }
 
 private:
+    // 90% of the hull height, so crouching lowers the camera with the body.
+    float eye_height_for(bool crouched) const {
+        const float height = crouched ? m_world.params.crouch_height : m_world.params.stand_height;
+        return height * 0.9f;
+    }
+
+    // Called before every step: the tick that is about to be simulated becomes
+    // the "previous" one for interpolation.
+    void remember_previous() {
+        const sim::PlayerState* p = local_player();
+        if (p == nullptr) return;
+        m_prev_pos = bridge::to_godot(p->pos);
+        m_prev_eye = eye_height_for(p->crouched);
+    }
+
     void build_mesh() {
         bridge::build_map_mesh(m_world.collision, m_vertices, m_normals, m_colors, m_indices);
     }
@@ -345,6 +379,8 @@ private:
     std::string m_map_path;
     std::string m_data_path;
     bridge::NetGateway m_net;
+    Vector3 m_prev_pos;
+    float m_prev_eye = 0.0f;
     uint32_t m_remote_newest = 0;
     std::chrono::steady_clock::time_point m_remote_arrived{};
     PackedVector3Array m_vertices;

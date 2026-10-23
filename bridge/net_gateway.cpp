@@ -26,6 +26,7 @@ void NetGateway::abort_host() {
     // A failed host used to leave the TCP listener, its thread and the UDP port
     // alive: the UI said "host failed" while a ghost host kept issuing tickets.
     m_net_client.reset();
+    m_frag.reset();
     m_hub.reset();
     if (m_match) {
         m_match->stop();
@@ -149,11 +150,16 @@ bool NetGateway::join_impl(const std::string& host, int port, const sim::Ticket*
     if (!udp->open(0, error) || !udp->connect_peer(host.c_str(), reply.game_port, error)) {
         return fail("breakpoint join: ", error);
     }
+    // AUD-23: the session talks through the fragmenter, the HELLO below still
+    // goes out on the raw socket (it is 22 B and must not need a reassembly
+    // buffer on a host that has not admitted us yet).
+    auto frag = std::make_unique<sim::FragmentedTransport>(*udp);
     auto client = std::make_unique<sim::NetClient>();
-    if (!client->init(udp.get(), udp.get(), reply.slot, m_map_path, m_data_path, error)) {
+    if (!client->init(frag.get(), frag.get(), reply.slot, m_map_path, m_data_path, error)) {
         return fail("breakpoint join: ", error);
     }
     m_net_client = std::move(client);
+    m_frag = std::move(frag);
     m_udp = std::move(udp);
     std::printf("breakpoint: signal slot %d game port %u\n", static_cast<int>(reply.slot),
                 static_cast<unsigned>(reply.game_port));
@@ -183,8 +189,14 @@ void NetGateway::pump(const sim::MoveInput& input, sim::EventQueue* events) {
             if (!sim::hello_id(packet, who)) continue;
             const int slot = m_admission.take(who);
             if (slot < 0) continue;  // never vetted over TCP
-            sim::PeerTransport* peer = m_hub->add_peer(peer_host, peer_port);
-            if (m_server->add_client(peer, peer, slot) < 0) continue;  // all slots taken
+            sim::Transport* peer = m_hub->add_peer(peer_host, peer_port);
+            // AUD-27: hand the id to the server so a later removal can free the
+            // matchmaking slot. A failed add means the room has no player slot
+            // left, so give the reservation straight back instead of leaking it.
+            if (m_server->add_client(peer, peer, slot, nullptr, &who) < 0) {
+                m_match->release(who);
+                continue;
+            }
             std::printf("breakpoint: peer joined slot %d\n", slot);
             std::fflush(stdout);
         }
@@ -193,6 +205,17 @@ void NetGateway::pump(const sim::MoveInput& input, sim::EventQueue* events) {
         m_server->receive();
         m_server->step();
         m_server->send();
+        // AUD-27: a client that left (or timed out) must give its room slot back,
+        // otherwise the second match on a two-slot room is refused with RoomFull
+        // and only a host restart clears it.
+        std::vector<sim::ClientId> departed;
+        if (m_server->drain_departed(departed) > 0) {
+            for (const sim::ClientId& id : departed) {
+                m_match->release(id);
+                std::printf("breakpoint: slot released for a departed client\n");
+            }
+            std::fflush(stdout);
+        }
         m_local_to_server->advance(1);
         m_local_to_client->advance(1);
         m_net_client->receive();

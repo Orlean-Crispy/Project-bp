@@ -447,7 +447,7 @@ C:\bp-toolchain\godot\Godot_v4.5-stable_win64.exe --path godot
 | 文档 | 落位 |
 |---|---|
 | docs/网络层深化_v0.4.md | §7 扩张：A1 信令 / A2 可靠流 / A3 打洞 / A4 去重 / A5 恢复 / B1 分片 / B2 带宽 / D 反向利用 / C1–C3 裁决 / N1–N8 判据 |
-| docs/8.3候选B_v0.4.md | §8.3 选定方案：可破坏入口（0.5 m 四档、每图 3 面、每队 2 次/回合、加固 1 处、C4 3.5 s） |
+| docs/archive/8.3候选B_v0.4.md | §8.3 选定方案：可破坏入口（0.5 m 四档、每图 3 面、每队 2 次/回合、加固 1 处、C4 3.5 s）。2026-10-23 归档，只读 |
 
 裁决（已写进 AGENTS 摘要与铁律 D）：
 
@@ -1676,7 +1676,7 @@ bench（10 玩家）：mean 2.04 µs、p99 3.40 µs、max 4.30 µs、0 allocs/ti
 5. 输入窗口（更早）：客户端领先 7 tick，窗口 8 / 队列 4，丢的正是下一 tick 要执行的命令；
    进程内测试因为两条循环同步而完全没发现。两进程测试是必要手段。
 
-### 7. v0.1 缺口（详见 docs/GAPS.md）
+### 7. v0.1 缺口（原 GAPS 文档，2026-10-23 归档到 docs/archive/GAPS.md）
 
 P0：射击（无武器/hitscan/开火输入/准星）、伤害联网（快照无 hp/armor）、死亡与重生、
 开火键位、40×40 地图、A1/A2/A5 接入组局。P1：局内/断线 UI、5v5 槽位、音频、第三人称动画。
@@ -2076,3 +2076,54 @@ AUD-20/26/27 在 M6 前清（都影响"两个人真打一局"）。
 
 
 ---
+
+## S60 · 2026-10-23 · M6 入口条件（审计 7 条）+ 治理迁移
+
+### 1. 做了什么
+
+**代码**（一条 checklist，七个独立缺口）：
+1. **协议 v6**：mask/flags 8→16 位，`kFieldAll=0x01FF`，新增 Vitals 组（hp/armor，接 PlayerState 真值）
+   与 Weapon 组（预留，恒 0）；四条 static_assert；demo 头、session 的 same_state、桥的 get_hp 全部跟上。
+2. **AUD-23**：分片接进真实链路——`UdpPeerHub::add_peer` 返回 fragmenting view，客户端 join 也包一层。
+3. **AUD-26**：`UdpTransport::connect_peer` 规范化地址，`recv` 只收对端 (host,port)，其余丢弃计数。
+4. **AUD-27**：`NetServer::add_client(..., ClientId*)` → `remove_client` 进 departure 队列 →
+   网关 drain 后 `MatchHost::release`。
+5. **AUD-20**：`NetClient::catch_up()`（落后 >4 tick 重锚时间轴）；`main.gd` 不再清零累加器。
+6. **本地渲染插值**：桥暴露 `get_prev_position/get_prev_eye_height`，相机在两 tick 间混合。
+7. **E 键让位交互**：WallClimb → V，`Action::Use` 改名 `Interact` 绑 E；腿倍率进 `movement.toml`。
+
+**治理**：`docs/STATE.md`（≤120 行，唯一"现在"）、`docs/budgets.md`（资源台账）、
+`docs/contracts/M6.md`（契约，入口条件已勾）、`docs/BACKLOG.md`（设计待定/功能缺口拆出）、
+`tools/doc_check.py`（8 条检查 + `--selftest`，已进 smoke）；HANDOFF/GAPS/AUDIT/8.3 归档到
+`docs/archive/` 与 `docs/audits/`，AGENTS 只留指针（"17 项闸门"从五个文件收到一处）。
+
+### 2. 判据（命令 + 实际输出）
+
+- `--test-snapshot`：`[wire] full 1 vitals 1 flags 0x7FF 1 idle delta 15 B；10 players 833 B, 82 B/player`
+- `--test-net`：`[udpsrc] rejected 1 injection-drop 1 legit-after 1`；
+  `[frag] real-link 10p 833 B ten 1 decode 1 nofrag 1 3000B 1 split 1 small 1`；
+  `[slots] first 1 full 1 reported 1 freed 1 cycles 3/1 anonymous 1`；
+  `[catchup] freeze 300 behind 293 catchups 1 accepted 196->203->259 late 0->0 settled 1`
+- `--test-bindings`：`wall climb on V` / `interact on E` / `E is reserved for interact` 全 ok
+- `--test-hitbox`：`leg multiplier reads movement.toml` ok（`hitbox.cpp` 里没有 0.7 了）
+- `godot_check.ps1`：`hud … protocol=6 port=27115` + `interp prev=-16.0000 cur=-15.9877 gap=0.0123`
+- `--bench 1000 --players 10`：p99 **2.40 µs** / max 4.20 µs / 0 allocs
+- `python tools\doc_check.py`：9 ok / 2 warn（都是"契约里还没建的文件"）/ 0 fail；`--selftest` 6 fail
+
+### 3. 失败与修正
+
+1. 协议 v6 第一次跑闸门就红：encode 里 `w.u8(now.flags)` 忘了改成 u16，flags 0x7FF 被截成 0xFF；
+   idle delta 的期望长度也多算了一个 count 字节。两条都是新闸门当场抓的。
+2. `[slots]` 第一版 `cycles 0/0`：测试自己忘了释放"第二个被拒绝后又被放进来"的那个 id，
+   不是产品 bug；把每轮释放写全才过。
+3. `[catchup]` 第一版 `behind 5`：冻住客户端时 LoopbackTransport 把 300 份快照都排队了，
+   恢复时逐份解完就追上了。真实 UDP 缓冲区不会留 4.7 秒——补了"丢积压"这一步才复现出 `behind 293`。
+4. E 键改到 V 之后 `--test-bindings` 失败：测试把 jump 重绑到 V 与新的爬墙键冲突。
+   换到 Z，并顺手加了"E 不许被任何移动动作占用"的检查。
+5. doc_check 抓到六处真实漂移：AGENTS 指向已归档的 HANDOFF/GAPS、README 的 4.7/4.5 自相矛盾、
+   STATE 的 `2.40 / 4.20` 被当成闸门计数（正则改成认 `smoke … N 项`）。
+
+### 4. 下一步
+
+拍 D1（穿透模型）/ D2（护甲 66% 与再生）/ D3（movement.toml 热重载）→ 签 M6 契约 →
+W1 `sim/data/weapons.toml`（待建）+ WeaponDef。射击功能本身一行没写，不要把它算成"M6 已完成"。

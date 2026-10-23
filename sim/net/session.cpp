@@ -48,6 +48,12 @@ MoveInput decode_flags(uint16_t f) {
 // not turn into a lost tick on the server.
 constexpr size_t kInputRedundancy = 4;
 
+// AUD-20: how far behind the server's snapshot the local axis may fall before it
+// is re-anchored. The join slack is 3 and the lead is 4, so anything under 4 is
+// ordinary latency jitter; past that the client's commands are stamped for ticks
+// the server already executed and are dropped forever.
+constexpr uint32_t kCatchUpTicks = 4;
+
 std::vector<uint8_t> encode_commands(const std::deque<InputCmd>& cmds) {
     ByteWriter w;
     w.u8(static_cast<uint8_t>(cmds.size()));
@@ -95,6 +101,8 @@ bool same_state(const PlayerSnap& a, const PlayerState& b) {
            a.impulses == bs.impulses && a.state == bs.state && a.state_ticks == bs.state_ticks &&
            a.dash_cooldown == bs.dash_cooldown && a.slow_ticks == bs.slow_ticks &&
            a.recharge == bs.recharge && a.speed_coefficient == bs.speed_coefficient &&
+           a.hp == bs.hp && a.armor == bs.armor && a.weapon_id == bs.weapon_id &&
+           a.ammo == bs.ammo && a.fire_cooldown == bs.fire_cooldown &&
            a.wall_normal == bs.wall_normal &&
            a.vault_dir == bs.vault_dir && a.vault_rise == bs.vault_rise;
 }
@@ -195,7 +203,7 @@ void NetServer::set_configstring(std::vector<uint8_t> blob) {
 }
 
 int NetServer::add_client(Transport* incoming, Transport* outgoing, int player_index,
-                          ReliableTransport* reliable) {
+                          ReliableTransport* reliable, const ClientId* who) {
     if (player_index < 0) {
         // Reuse the first free slot: after a timeout a reconnect must land on
         // the same player the server kept in the world.
@@ -222,6 +230,10 @@ int NetServer::add_client(Transport* incoming, Transport* outgoing, int player_i
     link.tx = outgoing;
     link.player = player_index;
     link.rel = reliable;
+    if (who != nullptr) {
+        link.has_id = true;
+        link.id = *who;
+    }
     link.sent.init();
     if (reliable != nullptr) link.config_chunks = m_config_chunks;
     link.join_id = m_next_join_id++;
@@ -238,6 +250,13 @@ int NetServer::add_client(Transport* incoming, Transport* outgoing, int player_i
 
 void NetServer::remove_client(int link_index) {
     if (link_index < 0 || link_index >= static_cast<int>(m_links.size())) return;
+    // AUD-27: the matchmaking layer owns the room slot, and only this link knows
+    // which client id the slot was reserved for. Queue a departure instead of
+    // calling back into MatchHost from here: this runs inside step(), and the
+    // host thread must not touch the match state under the server's tick.
+    if (m_links[static_cast<std::size_t>(link_index)].has_id) {
+        m_departed.push_back(m_links[static_cast<std::size_t>(link_index)].id);
+    }
     // The player stays in the world; a reconnect re-attaches a link to it and
     // receives the full state again (plan 7.7). Until then it is not rendered
     // by anyone (active=false).
@@ -247,6 +266,13 @@ void NetServer::remove_client(int link_index) {
             m_links[static_cast<std::size_t>(link_index)].player)].active = false;
     }
     m_links.erase(m_links.begin() + link_index);
+}
+
+int NetServer::drain_departed(std::vector<ClientId>& out) {
+    const int count = static_cast<int>(m_departed.size());
+    for (const ClientId& id : m_departed) out.push_back(id);
+    m_departed.clear();
+    return count;
 }
 
 void NetServer::debug_advance_seq(uint16_t delta) {
@@ -454,6 +480,8 @@ void NetClient::reset_stats() {
     m_stale = 0;
     m_corrections = 0;
     m_max_correction = 0.0f;
+    m_catch_ups = 0;
+    m_behind_max = 0;
 }
 
 void NetClient::apply_full_state(const Snapshot& snap) {
@@ -542,6 +570,29 @@ void NetClient::step_local(EventQueue* events) {
     m_history.push_back(entry);
     m_hitbox.record(m_local.players[0], m_local.params, m_local.tick);
     if (m_history.size() > 128) m_history.erase(m_history.begin());
+}
+
+void NetClient::catch_up(uint32_t server_tick) {
+    // Same slack a fresh join uses: the snapshot is a couple of ticks old by the
+    // time it arrives, so aim slightly ahead of it instead of exactly at it.
+    constexpr uint32_t kJoinSlack = 3;
+    m_clock.align(server_tick + kJoinSlack);
+    // Commands queued for the ticks we are skipping are all Late on arrival.
+    m_pending.clear();
+    while (m_local.tick < m_clock.command_tick()) {
+        const MoveInput none;
+        m_local.step_single(none, kDt, m_events);
+        HistoryEntry entry;
+        entry.tick = m_local.tick;
+        entry.state = m_local.players[0];
+        entry.input = none;
+        m_history.push_back(entry);
+        m_hitbox.record(m_local.players[0], m_local.params, m_local.tick);
+    }
+    if (m_history.size() > 128) {
+        m_history.erase(m_history.begin(), m_history.end() - 128);
+    }
+    ++m_catch_ups;
 }
 
 void NetClient::receive() {
@@ -640,10 +691,17 @@ void NetClient::receive() {
                 m_skip_cooldown = 32;
                 ++m_clock_skips;
             }
+        } else if (snap.tick > m_local.tick && snap.tick - m_local.tick > m_behind_max) {
+            m_behind_max = snap.tick - m_local.tick;
         }
 
         if (m_player < 0 || m_player >= static_cast<int>(snap.players.size())) continue;
         apply_snapshot(snap);
+        // AUD-20: the opposite drift. A hitch that costs more than the input
+        // lead leaves the axis behind the server's executed tick; from then on
+        // every command is Late and the skip logic (which only handles being
+        // ahead) can never fix it, so the only way out was a reconnect.
+        if (snap.tick > m_local.tick + kCatchUpTicks) catch_up(snap.tick);
     }
 }
 

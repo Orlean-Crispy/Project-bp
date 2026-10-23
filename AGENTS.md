@@ -8,17 +8,16 @@
 
 ## 0. 开工前必须做的事（不能跳）
 
-1. 完整读 **docs/计划书_v0.3.md**（2159 行，设计定稿、技术待验证）。不要只读本摘要。
-2. 完整读 **docs/网络层深化_v0.4.md** 与 **docs/8.3候选B_v0.4.md**（v0.4 的两个专章，
-   前者是 §7 的扩张与冲突裁决，后者是 §8.3 的选定方案）。
-3. 完整读 **docs/AGENTS.md**（铁律 / 判据清单 / 未结案 / 环境事实 / 文件地图）。
-4. 读 **docs/PROGRESS.md** 最后一节，再读 **docs/HANDOFF.md**，并扫一眼 **docs/DEBT.md**
-   （未解决问题与技术债的单一入口；开工前先知道"哪些是已知的"）。
-5. 跑 tools\build.ps1，再跑 tools\smoke.ps1，确认 **17 项行为闸门 + bench 全绿**（第 17 项是 Godot 桥）。
-6. 只改一个文件集；改完立刻 commit；更新 PROGRESS。
+1. 读 **docs/STATE.md** 全文（≤120 行，唯一的"现在"：里程碑、WIP、闸门数字、预算余量、阻塞）。
+2. 读 **docs/AGENTS.md**（铁律 / 判据清单 / 实现速查 / 环境事实）与 **docs/DEBT.md**（已知问题，先知道哪些是已知的）。
+3. 跑 `tools\build.ps1`，再跑 `tools\smoke.ps1`：**红的那一项就是今天的战场**（数字抄自 STATE §3）。
+4. 从 STATE §2 的 Top5 取第一条 → 在 DEBT 里标 `wip` → 写进 STATE §1 → **先写今天的判据再动代码**。
+5. 只改一个关注点；越界发现的问题**记一行进 DEBT**，不顺手修；改完立刻 commit。
+6. 收工：跑闸门写数字进 STATE、PROGRESS 加四段条目、DEBT 改状态、`python tools\doc_check.py` 退出码 0。
 
-> 为什么摘要不能替代原文：计划书里**被否决的方案与理由**（§2.2）、参数出处（§5.6/§6.2）、
-> 风险登记册（§13）都不在摘要里，而它们恰恰是防止重蹈覆辙的部分。
+> 设计原文（`docs/计划书_v0.3.md`、`docs/网络层深化_v0.4.md`）只在**要改设计**时用 grep 定位读那 50 行，
+> 不要通读：它们的价值是"被否决的方案与理由"（§2.2）和参数出处，不是日常状态。
+> 数值以 `sim/data/*.toml` 为准，协议位与预算以 `docs/budgets.md` 为准——摘要写错时以它们为准。
 
 ---
 
@@ -98,29 +97,24 @@ v0.1 定义：**两个人、局域网、1 张 40×40 图、对枪 10 分钟不�
 
 ---
 
-## 2. 当前真实状态（摘要，细节在 docs/AGENTS.md §0.2）
+## 2. 当前真实状态
 
-| 里程碑 | 状态 |
-|---|---|
-| M0–M4 | ✅（M4 跨机比对缺第二台机器） |
-| M5 | ✅ 不可靠通道/delta/预测回滚/时间对齐/输入去重/hitbox/full_state·加入·重连/远端插值/事件通道/真实 UDP/多 peer/两进程/**Godot --host·--connect·LAN 菜单/时钟漂移纠正/远端朝向 yaw/**掉线清理 5 s/槽位复用**已通；**A1 组局已接（信令 27115，host 占 slot 0，HELLO 22 B、协议 v5 带 client_id）、A5 票据进信令、A2 可靠流与快照共用 socket（configstring 已走可靠流）、重连顶替旧 link、**局内 HUD/impulse 条/Esc 暂停菜单/失联检测（快照年龄）/票据重连**已通；**M5 收尾完成**（A5 网关已拆） |
-| M6 | 🔶 仅 HP/护甲规则（HP 100；甲 25/25 再生/50） |
-| M7/M8 | ❌ |
+**只在 `docs/STATE.md` 有一份**（覆盖式更新，带命令与数字）。这里不复制，只给三句定位：
 
-- 宿主实际是 **Godot 4.5**（godot-cpp 最高只有 4.5；计划书目标 4.7，记为未结案）。
-- 存档：GitHub 私有（SSH 443）+ 本地 bundle；远端与恢复步骤见 docs/backup.md。
-- 17 项行为闸门 + bench 全绿（第 17 项 = Godot 桥加载/HUD/重连）；Godot demo 可运行（demo.bat）。
-- --test-net：30% 丢包回滚 1428 → **51/2000**；5% 丢包 60 s 修正 0 次；
-  中途加入/重连偏差 **0.00000 m**（加入走 FULL_STATE）。
+- 里程碑：M0–M5 已关闭，M6 的 7 条入口条件已在 S60 清掉，射击功能未开工。
+- 宿主实际是 **Godot 4.5**（godot-cpp 上限；计划书目标 4.7 = DEBT-15，M7 前必须有结论）。
+- 闸门数量、p99、丢包回滚、协议版本一律看 STATE §3 / §0——那里的数字有命令可复现。
+
+> 曾经在这里贴过一张"里程碑状态表"，它和 docs/AGENTS.md §0.2、HANDOFF、PROGRESS 各写一遍，
+> 四处互相矛盾（"17 项闸门"出现在五个文件里）。2026-10-23 起只保留 STATE 一处。
 
 ---
 
 ## 3. 下一步（严格按计划书顺序，禁止跳步）
 
-1. M6 射击：WeaponDef、开火输入、hitscan + hitbox 回溯、三段判定、hp/armor 进快照、
-   死亡/重生、穿透/衰减。
+1. **M6 射击**（契约 `docs/contracts/M6.md`）：先拍 D1/D2/D3 三个决策，再从 W1 `weapons.toml` 开始。
 2. M7/M8：音频、第三人称动画、第一人称视角模型。
-3. 代码体检已收口（AUDIT A1–A7、AUD-01…19；只剩 AUD-16 留到 M6）；**未解决项与债看 docs/DEBT.md**。
+3. 未解决项与债只看 `docs/DEBT.md`（31 条）；设计待定与功能缺口看 `docs/BACKLOG.md`。
 
 ---
 
@@ -131,7 +125,8 @@ v0.1 定义：**两个人、局域网、1 张 40×40 图、对枪 10 分钟不�
 - **边界**：跨 GDExtension 只有状态流 + 事件通道。
 - **网络**：只走不可靠通道；baseline = 最近 ack；连丢 3 个退全量；
   cmd.tick 必须对齐服务器时钟（lead 4），迟到输入**丢弃快进**，重复输入**绝不重放**。
-- **MTU**：1200 B；快照分片丢一片整包丢弃，等下一 tick；可靠流用 512 B 分块。
+- **MTU**：1200 B 上限，**1100 B 是分片阈值**（FragmentedTransport 已在真实链路两侧启用）；
+  可靠流用 512 B 分块。
 - **键位**：只在 sim/input 与 keybinds.toml；sim 只认 MoveInput。
 - **路径**：工具链在 C:\bp-toolchain（ASCII）；ld 输出必须相对路径；文件用 u8path。
 - **命名**：对外 IMPULSE / IMP，对内 Project Bp / `bp` 前缀；代码里只有一个东西叫 impulse（移动资源），破坏叫 breach。
@@ -143,7 +138,7 @@ v0.1 定义：**两个人、局域网、1 张 40×40 图、对枪 10 分钟不�
 
 ~~~powershell
 powershell -File tools\build.ps1        # 全量构建（-Werror）
-powershell -File tools\smoke.ps1        # 17 项行为闸门 + bench，必须 ALL GREEN
+powershell -File tools\smoke.ps1        # 19 项闸门 + bench，退出码 0 才算过
 powershell -File tools\build_bridge.ps1 # GDExtension DLL（与 CMake 同一套标志）
 powershell -File tools\godot_check.ps1  # 只跑桥：--hud-check + 两进程重连（3 = SKIP）
 powershell -File tools\run_demo.ps1     # Godot demo
@@ -158,14 +153,16 @@ powershell -File tools\run_demo.ps1     # Godot demo
 | docs/计划书_v0.3.md | **设计原文（必读）** |
 | docs/IMPULSE_命名方案.md | 命名体系（IMPULSE / IMP / bp）、术语分层、符号；决议见 decisions/0005 |
 | docs/网络层深化_v0.4.md | §7 网络专章：A1–A5 / B1–B3 / 冲突裁决 C1–C3 / N1–N8 判据 |
-| docs/8.3候选B_v0.4.md | §8.3 选定方案：可破坏入口、0.5 m 四档、时间预算 |
-| docs/AGENTS.md | 详细约束、判据、未结案、环境、文件地图 |
-| docs/HANDOFF.md | 本会话完整交接（S01–S31、每个坑的根因与证据） |
-| docs/PROGRESS.md | 进度日志（S 短条目 + 末尾**详细开发日志**） |
-| docs/GAPS.md | v0.1 缺口 + 技术债盘点（只分析） |
-| docs/AUDIT.md | **代码体检清单**（P0–P3、证据、建议动作、处理顺序；A1–A7 已清） |
-| docs/DEBT.md | **未解决问题与技术债的单一入口**（34 条 + 设计待定 + 功能缺口 + 已接受边界） |
+| docs/STATE.md | **唯一的"现在"**（≤120 行，覆盖写；开工先读它） |
+| docs/contracts/M6.md | M6 里程碑契约：进入条件（已达成）、范围、退出判据、预算 |
+| docs/budgets.md | 有限资源台账（协议位 / MTU / tick / 闸门 / 文档体积，80% 报警） |
+| docs/AGENTS.md | 铁律、判据清单、实现速查（§8）、环境事实、文件地图 |
+| docs/DEBT.md | **未解决问题与技术债的唯一入口**（31 条，状态四值 + verify 命令） |
+| docs/BACKLOG.md | 设计待定（DESIGN-01…08）与功能缺口（FEAT-01…11） |
+| docs/PROGRESS.md | 进度日志（S 短条目 + 末尾详细开发日志） |
+| docs/AUDIT.md | 审计**索引**（每轮一个文件，证据在 docs/audits/） |
 | docs/backup.md | GitHub / bundle / 恢复步骤 |
-| docs/pitfalls/ | 事故案例（4 篇） |
-| docs/decisions/ | ADR（护甲 / 网络时间轴） |
+| docs/pitfalls/ | 事故案例（5 篇） |
+| docs/decisions/ | ADR（护甲 / 网络时间轴 / 命名） |
 | docs/keymap.md / docs/demo-format.md | 键位 / demo 格式 |
+| docs/archive/ | 只读历史（HANDOFF、GAPS、8.3 专章）；**不再维护，别当现状读** |

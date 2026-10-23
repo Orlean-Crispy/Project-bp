@@ -12,6 +12,7 @@
 #include "sim/net/interp.h"
 #include "sim/net/reliable.h"
 #include "sim/net/snapshot.h"
+#include "sim/net/ticket.h"
 #include "sim/net/transport.h"
 
 namespace sim {
@@ -79,10 +80,17 @@ public:
 
     // A2: pass the shared-socket wrapper to deliver the join configstring over the
     // reliable stream; nullptr keeps the plain unreliable-only path (gates).
+    // who (AUD-27): the client id the matchmaking layer reserved this slot for.
+    // It is optional so the deterministic gates can add anonymous links, but when
+    // present the server reports it back on removal so the host can release the
+    // slot instead of leaving the room permanently full.
     int add_client(Transport* incoming, Transport* outgoing, int player_index,
-                   ReliableTransport* reliable = nullptr);
+                   ReliableTransport* reliable = nullptr, const ClientId* who = nullptr);
     void set_configstring(std::vector<uint8_t> blob);
     void remove_client(int link_index);
+    // Moves the ids of every link removed since the last call into out and
+    // returns how many. Empty is the common case and allocates nothing.
+    int drain_departed(std::vector<ClientId>& out);
     void receive();
     void step();
     void send();
@@ -151,6 +159,8 @@ private:
         Snapshot baseline;
         bool has_baseline = false;
         ReliableTransport* rel = nullptr;
+        bool has_id = false;
+        ClientId id{};
         std::vector<std::vector<uint8_t>> config_chunks;
         std::size_t config_next = 0;
         // Acks carry the u16 snapshot seq, but the queue is ordered by send time,
@@ -213,6 +223,7 @@ private:
     int m_accepted_cmds = 0;
     int m_timed_out = 0;
     uint32_t m_next_join_id = 1;
+    std::vector<ClientId> m_departed;
     std::vector<HitboxHistory> m_hitboxes;
     std::vector<std::vector<uint8_t>> m_config_chunks;
 };
@@ -242,6 +253,10 @@ public:
     int snapshot_age() const;
     int corrections() const { return m_corrections; }
     int clock_skips() const { return m_clock_skips; }
+    // AUD-20: how many times the local tick axis was jumped forward because it
+    // had fallen behind the server's (a frame hitch longer than the input lead).
+    int catch_ups() const { return m_catch_ups; }
+    uint32_t max_behind() const { return m_behind_max; }
     float max_correction() const { return m_max_correction; }
     bool joined() const { return m_joined; }
     int player_index() const { return m_player; }
@@ -324,6 +339,9 @@ private:
 
     void apply_snapshot(const Snapshot& snap);
     void apply_full_state(const Snapshot& snap);
+    // Re-anchors the tick axis ahead of server_tick and fills the skipped ticks
+    // with empty input. Used only when the client fell behind (AUD-20).
+    void catch_up(uint32_t server_tick);
 
     Transport* m_tx = nullptr;
     Transport* m_rx = nullptr;
@@ -354,6 +372,8 @@ private:
     int m_skip_cooldown = 0;
     bool m_skip_next = false;
     int m_clock_skips = 0;
+    int m_catch_ups = 0;
+    uint32_t m_behind_max = 0;
     int m_full_states = 0;
     uint32_t m_join_tick = 0;
     uint32_t m_join_id = 0;

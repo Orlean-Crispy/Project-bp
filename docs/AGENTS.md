@@ -22,22 +22,17 @@ Godot 4.5（窗口 / 渲染 / 输入；只做表现）
 sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 ```
 
-### 0.2 里程碑状态（对照计划书 §12.2）
+### 0.2 里程碑状态
 
-| 里程碑 | 状态 | 说明 |
-|---|---|---|
-| M0 环境验证 | ✅ | 工具链、Godot、godot-cpp 全部可用；tick 探针以 bench 代替 |
-| M1 地图/碰撞/哈希/度量 | ✅ | .map 解析、brush 扫掠、--selftest、move_metrics |
-| M2 基础 pmove | ✅ | 走/跑/跳/蹲、step-up、蹲下空间、Q3 对标数值 |
-| M3 parkour | ✅ 首版 | slide / dash / wallrun / wallclimb / vault，全部有 headless 闸门 |
-| M4 demo 与跨机比对 | ✅ 同机 / ⏸ 跨机 | 录制回放、逐 tick 哈希、dump 比对工具就绪；**跨机需要第二台机器** |
-| M5 网络 | ✅ 完成 | 不可靠通道 + delta + 预测回滚 + 时间对齐 + 去重 + hitbox + 加入/重连 + 远端插值 + 事件通道 + 真实 UDP + B1 分片 + 多 peer 会话 + 两进程 + Godot --host/--connect + 远端渲染 + LAN 菜单 + 时钟纠正 + 远端 yaw/掉线清理 5 s/槽位复用已通；**A1 组局（信令 27115）、A5 票据/重连（resume 回原槽）、A2 可靠流共 socket、局内 HUD/暂停菜单/失联检测已通；第三人称动画未做**；**M5 收尾完成（A5 网络网关已拆出，2026-10-20）**，第三人称动画与 5v5 选边归 M7 |
-| M6 射击 | 🔶 起步 | HP/护甲规则已实现；hitscan、后坐力表、三段判定、穿透未做 |
-| M7 打磨 / M8 视角模型 | ❌ | 未开始 |
+**状态只在 `docs/STATE.md`**（覆盖写、带命令与数字）。本节曾有一张按里程碑逐条列的完成度表，
+它和根目录 AGENTS.md §2、HANDOFF、PROGRESS 各写一遍，四处互相矛盾。2026-10-23 起删掉，只留结论：
+
+- M0–M5 已关闭（M4 的跨机比对仍缺第二台机器 = DEBT-14）。
+- M6 的 7 条入口条件在 S60 清完；**射击功能本身一行没写**。
 
 ### 0.3 现在能跑什么
 
-- `headless_sim` 与 Godot 桥检查合计 **17 项行为闸门** + bench 全绿（第 17 项是桥，见 §3）
+- `headless_sim` 与 Godot 桥检查合计 **19 项闸门** + bench（数量与数字见 STATE §3，清单见 §3）
 - Godot demo：`demo.bat` 或 `powershell -File tools/run_demo.ps1`，可走跑跳滑铲墙跑爬墙翻越
 - 手感数值可改 sim/data/movement.toml 后重跑，不用改代码
 
@@ -130,7 +125,7 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 
 ---
 
-## 3. 判据清单（tools/smoke.ps1 串起 17 项行为闸门 + bench）
+## 3. 判据清单（tools/smoke.ps1 串起 19 项闸门 + bench）
 
 | # | 判据 | 阈值 | 命令 |
 |---|---|---|---|
@@ -142,18 +137,21 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 | 6 | 跳跃语义 | 按住 300 tick 只跳 1 次；点按 3 次跳 3 次 | --test-jump |
 | 7 | HP/护甲 | 规则与 TTK 落在 0.6–1.2 s | --test-health |
 | 8 | 网络收敛 + 去重 + 加入 + 插值 + UDP + 分片 + 双客户端 + 信令组局 + 快照字段 | 30% 丢包偏差 < 0.01 m、回滚 < 500；N3 修正 < 3；加入/重连 < 0.01 m；插值正确；UDP 往返；分片 0 损坏且至少 5 个送达；2 客户端经 hub 加入且偏差 < 0.01 m；组局握手按槽位/票据/满员拒绝正确；`[snapfields] 1` | --test-net |
-| 9 | 卡死恢复 | 从 brush 内部出生能自行脱困 | --test-stuck |
-| 10 | 乱按压力 | 6000 tick 乱按，最长连续实心 ≤ 2 | --test-soak |
-| 11 | 平台边缘 | 落到边缘后仍能继续走 | --test-edge |
-| 12 | parkour | slide/dash/wallrun/wallclimb/vault 全部生效；impulse 按 recharge_ticks 充能 | --test-parkour |
-| 13 | 键位 | 加载/改键/保存/重载 + 冲突检测 | --test-bindings |
-| 14 | demo | 同构建逐 tick 一致；改动参数必被检出 | --test-demo |
-| 15 | hitbox 历史 | 64 tick 环形、帧间插值、三段 ×5/×1/×0.7、蹲下自动跟随 | --test-hitbox |
-| 16 | 事件通道 | 跳跃/落地事件带 tick、可复现、环形溢出丢最旧 | --test-events |
-| 17 | Godot 桥加载 | 扩展真的加载、HUD 打印 vertices>0 与 ports.h 的默认端口、两进程重连回原槽且第二次调用被拒、暂停菜单 7 s 不掉线 | tools/godot_check.ps1 |
+| 9 | 协议往返 | 16 位 mask/flags、vitals 组存活、空 delta 15 B、10 人满编 ≤1100 B | --test-snapshot |
+| 10 | 卡死恢复 | 从 brush 内部出生能自行脱困 | --test-stuck |
+| 11 | 乱按压力 | 6000 tick 乱按，最长连续实心 ≤ 2 | --test-soak |
+| 12 | 平台边缘 | 落到边缘后仍能继续走 | --test-edge |
+| 13 | parkour | slide/dash/wallrun/wallclimb/vault 全部生效；impulse 按 recharge_ticks 充能 | --test-parkour |
+| 14 | 键位 | 加载/改键/保存/重载 + 冲突检测 + E 留给交互 | --test-bindings |
+| 15 | demo | 同构建逐 tick 一致；改动参数必被检出 | --test-demo |
+| 16 | hitbox 历史 | 64 tick 环形、帧间插值、三段 ×5/×1/×0.7（腿倍率来自 toml）、蹲下自动跟随 | --test-hitbox |
+| 17 | 事件通道 | 跳跃/落地事件带 tick、可复现、环形溢出丢最旧 | --test-events |
+| 18 | Godot 桥加载 | 扩展真的加载、HUD 打印 vertices>0 与 ports.h 的默认端口、上一 tick 位置可读、两进程重连回原槽且第二次调用被拒、暂停菜单 7 s 不掉线 | tools/godot_check.ps1 |
+| 19 | 文档一致性 | 协议版本、闸门数、DEBT 守恒、路径、STATE 质量 0 fail；`--selftest` 能红 | python tools/doc_check.py |
 
-当前全部 PASS（第 17 项在没装 Godot 或桥 DLL 未构建时打印 SKIP 并返回 3，smoke 视为跳过而不是绿）。
+当前全部 PASS（第 18 项在没装 Godot 或桥 DLL 未构建时打印 SKIP 并返回 3，smoke 视为跳过而不是绿 = DEBT-10）。
 **bench 也是判据**：p99 > 4 ms 或出现任何分配，`--bench` 返回 1（S59 之前它只打印）。
+**doc_check 也是判据**：1 个 FAIL 就是退出码 1；它的 `--selftest` 在故意写坏的树上必须报错，否则它就是装饰（教训 15）。
 `--compare`（跨机 dump 比对）需要第二台机器，尚未执行。
 
 ---
@@ -168,13 +166,13 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
    按计划书属于 M7，不在此条。
 2. **v0.4 的 M5 增量** — A1/A2/A5 全部接入并实测；configstring 带真实哈希且失配拒局。**已关闭**。
 3. **M6 射击** — hitscan、后坐力表、三段部位判定（hitbox 已就绪）、穿透、伤害衰减、
-   hitmarker 全未做。护甲的**吸收比例 66%** 与**再生 5 s / 10 s** 是提案值，需要确认。
+   hitmarker 全未做。护甲的**吸收比例 66%** 与**再生 5 s / 10 s** 是提案值，需要确认（契约 D2）。
 4. **Godot 版本** — 计划书写 4.7 Mono，但 godot-cpp 最高只有 4.5，现用 4.5。
    lead：M7（Godot-Locomotion 绑定 4.7.2）之前必须解决。
 5. **跨机 demo 比对** — 工具与流程就绪（docs/demo-format.md），缺第二台机器。
 6. **游戏内改键 UI** — 键位系统已数据驱动，UI 未做。lead：M5 之后。
 7. **穿透两套模型** — .map 的 _penetrable 与武器 penetration_count 谁优先未定。lead：M6。
-8. **movement.toml 热重载** — 铁律 I 只做了哈希，没有 reload 路径。lead：M6 前。
+8. **movement.toml 热重载** — 铁律 I 只做了哈希，没有 reload 路径（契约 D3，DESIGN-07）。lead：M6 前。
 9. **impulse 上限** — 计划书 §5.2 仍标「待定」，sim 现值 4（movement.toml 的 max_impulses），
    命名方案画 6 格；HUD 必须读参数、不许写死。lead：M3 手感验收。
 
@@ -220,7 +218,7 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 ```powershell
 powershell -File tools\setup_toolchain.ps1   # 仅首次：下载 GCC/CMake/Ninja（无 7z 依赖，版本已锁）
 powershell -File tools\build.ps1             # 配置 + 全量构建（headless_sim, move_metrics）
-powershell -File tools\smoke.ps1             # 17 项行为闸门 + bench，必须全绿
+powershell -File tools\smoke.ps1             # 19 项闸门 + bench，退出码 0 才算过
 powershell -File tools\build_bridge.ps1      # 重建 GDExtension DLL（与 CMake 同一套标志）
 powershell -File tools\godot_check.ps1       # 只跑桥：--hud-check + 两进程重连
 powershell -File tools\run_demo.ps1          # 构建桥 + 启动 Godot demo
@@ -259,7 +257,7 @@ sim/data/        movement.toml、combat.toml、keybinds.toml、maps/*.map
 bridge/          GDExtension 桥（唯一跨边界层）
 godot/           project.godot / main.tscn / main.gd / breakpoint.gdextension
 tools/           headless_sim（所有闸门）、move_metrics、net_loop（两进程联机）、run_net_demo（双实例）、build/smoke/build_bridge/run_demo/setup 脚本
-docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/、decisions/、keymap.md、demo-format.md、计划书_v0.3.md、IMPULSE_命名方案.md、GAPS.md（历史）、AUDIT.md（审计记录）、DEBT.md（未解决问题单一入口）
+docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、contracts/、budgets.md、DEBT.md、BACKLOG.md、PROGRESS.md、AUDIT.md（索引）+ audits/、pitfalls/、decisions/、keymap.md、demo-format.md、计划书_v0.3.md、IMPULSE_命名方案.md、archive/（HANDOFF、GAPS、8.3 专章）
 ```
 
 ### 7.1 地图
@@ -305,14 +303,19 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
 
 ### 8.3 键位（sim/input/*）
 
-- 默认瓦洛兰特布局：C 翻越 / Q 墙跑 / E 爬墙 / X 冲刺；Shift 滑铲、Ctrl 蹲。
+- 默认布局：C 翻越 / Q 墙跑 / **V 爬墙** / X 冲刺 / **E 交互**；Shift 滑铲、Ctrl 蹲。
+  E 原本是爬墙，S60 让给交互（下包/拆包/门）；改动越晚越贵（要重录 parkour 基线、改教程）。
+  闸门：`--test-bindings` 的 `E is reserved for interact`。动作名 `Interact` ↔ toml `actions.interact`。
 - 改 sim/data/keybinds.toml 即可；Bindings 支持运行时 set_key/save。
 - Godot 侧从 sim.get_bindings() 生成 InputMap（单一数据源）。
 
 ### 8.4 网络（sim/net/*）
 
 - 包头：type/seq/ack/ack_bits（ack_bits 在 v0.1 **恒为 0**，只做累积 ack；见 netchan.h 注释）。
-- 快照 delta 以「客户端最近 ack 的快照」为 baseline；协议 v5 的 PlayerSnap 带全部四个按下沿、`recharge_progress`、`speed_coefficient`。
+- 快照 delta 以「客户端最近 ack 的快照」为 baseline。**协议 v6**（S60）：mask 与 flags 都是 16 位，
+  PlayerSnap 带全部四个按下沿、`recharge_progress`、`speed_coefficient`，以及 Vitals 组
+  （hp/armor，真值）与 Weapon 组（weapon_id/ammo/cooldown，**恒 0，M6 W5 才填**）。
+  mask 的第 8 组与 flags 的 7–10 位（firing/reloading/ads/alive）已经在协议里，M6 加字段不用再升版本。
 - 客户端：本地预测 + 128 tick 历史 + 回滚重放；命令包带最近 4 个输入。
 - 时间轴：客户端 = 服务器 tick + 4（单程 30 ms ≈ 2 tick + 2 tick 前瞻）；初始化时
   预跑 4 个空 tick，复刻服务器在首个命令到达前的状态。
@@ -326,8 +329,16 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
   在相邻两帧间插值 pos/vel；超出范围夹到最近帧、不外推；客户端每收一份快照就 push。
 - 传输：LoopbackTransport 用于确定性闸门；UdpTransport（非阻塞 Winsock，客户端 connect_peer、
   服务端 recv_from→adopt_peer）用于真实局域网；一个对象一个 peer。
-- 分片（v0.4 B1）：FragmentedTransport 包住任意 Transport；≤1100 B 透传，以上切成
-  5 B 头（marker/id/index/total）的片；接收端按 id 重组，半包绝不交付，新 id 丢弃旧包。
+- **源地址校验（AUD-26，S60）**：客户端以前把源地址丢掉，同网段任何人都能往它的临时端口注入
+  快照/命令。现在 `connect_peer` 用 inet_pton/inet_ntop 规范化地址，`recv` 只接受
+  (host, port) 完全相同的那一个，其余丢弃并计数（`rejected()`），并且继续排空队列
+  ——否则一个垃圾包会挡住后面真正的包。判据：`[udpsrc] rejected 1 injection-drop 1 legit-after 1`。
+- 分片（v0.4 B1，**S60 起接进真实链路**）：FragmentedTransport 包住任意 Transport；≤1100 B 透传，
+  以上切成 5 B 头（marker/id/index/total）的片；接收端按 id 重组，半包绝不交付，新 id 丢弃旧包。
+  真实路径：桥的 host 给每个 peer 一个 wrapper（`UdpPeerHub::add_peer` 返回 fragmenting view），
+  客户端 `NetGateway::join_impl` 把 NetClient 接到 wrapper 上；HELLO 仍走裸 socket（22 B）。
+  判据：`[frag] real-link 10p 833 B ten 1 decode 1 nofrag 1 3000B 1 split 1 small 1`
+  ——满编快照不触发分片、3000 B 才触发，两条都验才算过。
 - 多 peer：UdpSocket 共享 + UdpPeerHub 按源地址 demux；PeerTransport 每 peer 一个收件队列；
   未知来源进有界队列（64），HELLO（22 B，magic “BPH0” + 协议版本 + 16 B client_id）通过才 add_peer。
   协议 v5：HELLO 必须带**信令已签发**的 client_id，槽位由 matchmaking 事件给出，不按到达顺序猜；
@@ -339,12 +350,13 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
   远端取 SnapshotInterpolator，GDScript 画胶囊。菜单端口语义 = **信令端口**。
   判据：host 打 signal slot 1 resumed 0 / peer joined slot 1 / peers 2 / remote slot 1 visible，
   client 打 joined slot 1 / remote slot 0 visible（两个 headless Godot 进程实测）。
-- 局内 HUD（godot/main.gd）：HP/护甲（桥里是占位 100/0，等 M6 联网）、impulse 条
+- 局内 HUD（godot/main.gd）：HP/护甲（v6 起读 PlayerState 的真值，不再是常量；伤害来源在 M6）、impulse 条
   用 `get_max_impulses()` 画格（**不写死**），状态行显示 role/slot/peers/waiting；
   Esc 开合暂停菜单（Resume / Reconnect（仅客户端）/ Leave）。
   判据：`--hud-check` 打 `hud hp=100 armor=0 impulse=4/4 role=solo vertices=360
-  build=<hash> protocol=5 port=27115`——vertices > 0 证明 mesh_builder 还在产出几何，
-  port 证明默认端口来自 ports.h 而不是脚本。这条检查已并入 tools/godot_check.ps1。
+  build=<hash> protocol=6 port=27115`——vertices > 0 证明 mesh_builder 还在产出几何，
+  port 证明默认端口来自 ports.h 而不是脚本；hp/armor 现在是 PlayerState 里的真值（v6），
+  不再是常量（伤害来源仍缺 = AUD-16）。这条检查已并入 tools/godot_check.ps1。
 - 失联检测（`NetClient::snapshot_age()`）：客户端用**最后一次收到快照的 tick 差**判断，
   > 64 tick（1 s）显示 `SERVER SILENT x.xs`。世界仍在本地推进也能看出来——
   「tick 停走」只能发现模拟卡死，发现不了服务器没了。
@@ -363,6 +375,12 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
   下构建用于脚本检查；菜单打开时暂停 tick。
 - 时钟纠正（§7.0）：客户端按快照 ahead 的最小值检测漂移；超过 min+3 且冷却结束时跳过
   一次 send+step（世界冻结 ~15.6 ms），领先量永久减 1；无 tick 空洞、不改历史。
+- **落后补 tick（AUD-20，S60）**：反过来的一侧以前没人管——一次 >110 ms 的卡顿吃掉 lead+slack 后，
+  命令全部 Late 且永远不会自愈（跳过逻辑只处理"领先"）。现在 `receive()` 发现快照比本地轴超前
+  >4 tick 就 `catch_up()`：重锚时钟到 snap+3、清掉会变 Late 的 pending 命令、用空输入补跑缺的
+  tick 并记进 history/hitbox。判据：`[catchup] freeze 300 behind 293 catchups 1
+  accepted 196->203->259 late 0->0 settled 1`。
+  main.gd 同时不再把累加器清零（保留亚 tick 余量并打印丢弃的 tick 数），否则相位每卡一次就偏一点。
 - A5 票据（sim/net/ticket.*）：32 B（client_id 16 + expiry 4 + HMAC-SHA256/12），
   密钥只在房主内存；now >= expiry 即失效。判据：valid 1 expired 1 tamper 1 wrongkey 1。
 - A2 可靠流（sim/net/reliable.*）：独立 rel_seq（1 起）、窗口 32、累积 ACK + 32 位位图、
@@ -409,7 +427,14 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
   判据：[timeout] joined 1 dropped 1 reuse 1；[reconnect] first 0 links 1 active 1。
 - 槽位激活：PlayerState.active → 快照 flags bit2；服务器 init 全 false、add_client true、
   remove_client false；桥接层跳过未激活槽位（否则 host 会看到没加入的幽灵）。
-- 远端朝向：PlayerState.yaw 由 pmove 写入；PlayerSnap 的 kFieldYaw 独立字段组；协议版本 **5**（R9 起快照带 wall_normal/vault_dir/vault_rise/slow_ticks；v5 起还带 slide/dash/vault 三个按下沿、recharge_progress 与 speed_coefficient）。
+- **槽位释放（AUD-27，S60）**：MatchHost 的槽位以前只在握手中断时释放，正常离开后没人还，
+  2 槽房两个人各进一次就永久 RoomFull。现在 `add_client(..., const ClientId*)` 记住 id，
+  `remove_client` 把它放进 `m_departed`，网关每 tick `drain_departed` 后调
+  `MatchHost::release`（server 不在 step 里回调 match，避免两个状态机互踩）。
+  判据：`[slots] first 1 full 1 reported 1 freed 1 cycles 3/1 anonymous 1`。
+- 远端朝向：PlayerState.yaw 由 pmove 写入；PlayerSnap 的 kFieldYaw 独立字段组；协议版本 **6**
+  （R9 起带 wall_normal/vault_dir/vault_rise/slow_ticks；v5 起带 slide/dash/vault 三个按下沿、
+  recharge_progress 与 speed_coefficient；v6 起 mask/flags 16 位并带 hp/armor）。
   GDScript 用 rotation.y = atan2(-cos(yaw), sin(yaw))，插值器取前一帧 yaw。
   判据：[yaw] full 1 delta 1；host 看到 remote yaw 0.0→0.9。
 - 判据：30% 丢包 2000 tick 回滚 51（曾 1428）；5% 丢包 60 s 位置修正 0 次；
@@ -431,7 +456,8 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
 ### 8.7 hitbox 历史（sim/game/hitbox.*）
 
 - 每 tick 一条 HitboxSample（脚点 / 高 / 半径 / 蹲），64 帧环形；服务器与客户端都记。
-- 三段按高度比例：>0.82 头 ×5、>0.45 胸 ×1、其余腿 ×0.7；蹲下高度变，分档自动跟随。
+- 三段按高度比例：>0.82 头 ×5、>0.45 胸 ×1、其余腿 ×`movement.toml [damage] legshot_mult`
+  （默认 0.7，S60 从字面量挪进数据）；蹲下高度变，分档自动跟随。
 - 回溯取相邻两帧按 frac 插值（v0.4 §9.2），不取整帧；没有下一帧就不外推。
 - 判据：--test-hitbox（25 项）；--test-net 顺带断言服务器每 tick 一条、newest == tick。
 
@@ -452,13 +478,13 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
   会让 DLL 与 exe 的浮点结果悄悄分叉（教训 12）。
 - **版本号唯一来源是 sim/core/version.h**。CMake 只注入 BP_BUILD_ID（git short hash），
   桥用同一条命令注入同一个值；桥暴露 `get_build_id()/get_protocol_version()`，Godot 启动打
-  `breakpoint: build <id> protocol 5`——两台机器的日志一比就知道是不是同一个构建。
+  `breakpoint: build <id> protocol 6`——两台机器的日志一比就知道是不是同一个构建。
 - **breakpoint.gdextension 必须同时有 `windows.editor.x86_64`**：我们用的是 release 编辑器
   二进制跑 headless，它只认 editor key；只写 `windows.debug.*` 时扩展根本不加载，
   报错还会说是「找不到 windows.x86_64 的库」（教训 13）。
 - 工具链目录用无版本名（mingw64/、cmake/、ninja/），只有 setup_toolchain.ps1 知道下载地址与
   版本；它用 Expand-Archive，不依赖 7z（教训 14）。
-- Godot 可执行文件路径与首跑导入只在 tools/godot_env.ps1；桥的加载检查是第 17 项闸门
+- Godot 可执行文件路径与首跑导入只在 tools/godot_env.ps1；桥的加载检查是第 18 项闸门
   （tools/godot_check.ps1，退出码 3 = 跳过）。
 
 ---
@@ -468,12 +494,12 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
 **开场（每次新会话）**
 
 ```
-1. 读 docs/AGENTS.md（本文件）
-2. 读 docs/PROGRESS.md 最后一节 + docs/HANDOFF.md（若存在）+ docs/DEBT.md 的未解决表
-3. 跑 tools\build.ps1，再跑 tools\smoke.ps1，确认 17 项行为闸门 + bench 全绿
-4. 只改一个文件集；大文件只做精确 edit
+1. 读 docs/STATE.md（唯一的"现在"）+ docs/AGENTS.md（本文件）
+2. 读 docs/DEBT.md 的未解决表；PROGRESS 最后一节按需
+3. 跑 tools\build.ps1，再跑 tools\smoke.ps1，确认 19 项闸门 + bench 全绿（数字抄 STATE §3）
+4. 只改一个关注点；大文件只做精确 edit；越界问题记一行进 DEBT
 5. 改完立刻 commit（一个功能一个 commit）
-6. 更新 docs/PROGRESS.md（做了什么/结论/下一步）
+6. 更新 STATE（WIP/数字）+ PROGRESS（四段）+ DEBT 状态 + `python tools\doc_check.py` 退出码 0
 ```
 
 **收尾（会话结束前）**
@@ -500,11 +526,11 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
 
 ## 11. 下一步（严格按计划书顺序，不要跳）
 
-1. **M6 射击**：WeaponDef(toml) → 开火输入 → hitscan + hitbox 回溯 → 三段伤害
-   + hp/armor 进快照 + 死亡/重生 + 穿透/衰减；TTK 用 100 HP / 三甲复算。
+1. **M6 射击**：先拍 D1/D2/D3，再 WeaponDef(toml) → 开火输入 → hitscan + hitbox 回溯 →
+   三段伤害 + 伤害通路 + 死亡/重生 + 穿透/衰减；TTK 用 100 HP / 三甲复算。契约见 docs/contracts/M6.md。
 2. **M7 / M8**：动画、视角模型、音频垂直定位（§9.2 的楼层低通）。
-3. 代码体检：A1–A7、AUD-01…19（AUD-16 除外）、R1–R19 已完成；S59 全量审计的
-   AUD-20…35 与三条设计待定见 docs/AUDIT.md 第 6 节（AUD-20/26/27 要在 M6 前清）。
+3. 代码体检：A1–A7、AUD-01…19、R1–R19 已完成；S60 关掉了 AUD-20/23/26/27，
+   其余见 docs/DEBT.md（31 条）与 docs/BACKLOG.md（设计待定/功能缺口）。
 
 ---
 
@@ -513,5 +539,5 @@ docs/            AGENTS.md（本文件）、PROGRESS.md、HANDOFF.md、pitfalls/
 1. `git log --oneline -5` 看最后几个提交。
 2. `git status` 看有没有未提交的半成品。
 3. 跑 smoke；**红的那一项就是当前战场**。
-4. 读 PROGRESS 末尾的**详细开发日志**（2026-10-20 起）与 HANDOFF.md。
-5. 不要从头重做已完成的东西；本文件 §0.2 就是进度表。
+4. 读 PROGRESS 末尾的**详细开发日志**（2026-10-20 起）；历史交接在 docs/archive/HANDOFF_S01-S59.md。
+5. 不要从头重做已完成的东西；进度只看 docs/STATE.md，别信任何摘要。

@@ -1,20 +1,55 @@
 #include "sim/net/snapshot.h"
 
+#include <algorithm>
+
 #include "sim/net/bytes.h"
 
 namespace sim {
 namespace {
 
-enum FieldMask : uint8_t {
+// Protocol v6: a uint16 mask. bits 0..6 are the v5 groups, bits 7 and 8 are the
+// combat groups M6 needs, 9..15 stay free. The assertions at the bottom of this
+// block turn "the mask is full" into a compile error instead of a mid-milestone
+// protocol change (the M5 -> M6 audit's P0-1).
+enum FieldMask : uint16_t {
     kFieldPos = 1u << 0,
     kFieldVel = 1u << 1,
     kFieldStatus = 1u << 2,   // flags, impulses, state
-    kFieldTimers = 1u << 3,   // state_ticks, dash_cooldown
+    kFieldTimers = 1u << 3,   // state_ticks, dash_cooldown, slow_ticks
     kFieldYaw = 1u << 4,      // view yaw (remote orientation)
     kFieldExtra = 1u << 5,    // wall_normal, vault_dir, vault_rise (R9)
     kFieldCharge = 1u << 6,   // recharge progress, speed_coefficient
-    kFieldAll = 0x7F,
+    kFieldVitals = 1u << 7,   // hp, armor
+    kFieldWeapon = 1u << 8,   // weapon_id, ammo, fire_cooldown (reserved for M6)
+    kFieldAll = 0x01FF,
 };
+
+// Same split for the flags word. Only bits 0..6 have a producer today; 7..10 are
+// reserved by protocol v6 so M6 can set them without changing the wire format.
+enum FlagBit : uint16_t {
+    kFlagOnGround = 1u << 0,
+    kFlagCrouched = 1u << 1,
+    kFlagActive = 1u << 2,
+    kFlagJumpWasDown = 1u << 3,
+    kFlagSlideWasDown = 1u << 4,
+    kFlagDashWasDown = 1u << 5,
+    kFlagVaultWasDown = 1u << 6,
+    kFlagFiring = 1u << 7,
+    kFlagReloading = 1u << 8,
+    kFlagAds = 1u << 9,
+    kFlagAlive = 1u << 10,
+    kFlagsAll = 0x07FF,
+};
+
+constexpr uint16_t kFieldsUsed = kFieldPos | kFieldVel | kFieldStatus | kFieldTimers |
+                                 kFieldYaw | kFieldExtra | kFieldCharge | kFieldVitals |
+                                 kFieldWeapon;
+constexpr uint16_t kFlagsUsed = kFlagOnGround | kFlagCrouched | kFlagActive | kFlagJumpWasDown |
+                                kFlagSlideWasDown | kFlagDashWasDown | kFlagVaultWasDown;
+static_assert((kFieldsUsed & ~kFieldAll) == 0, "kFieldAll does not cover every field group");
+static_assert(kFieldAll != 0xFFFF, "field mask is full: widen it to uint32");
+static_assert((kFlagsUsed & ~kFlagsAll) == 0, "kFlagsAll does not cover every used flag bit");
+static_assert(kFlagsAll != 0xFFFF, "flags word is full: widen it to uint32");
 
 bool same_pos(const PlayerSnap& a, const PlayerSnap& b) { return a.pos == b.pos; }
 bool same_vel(const PlayerSnap& a, const PlayerSnap& b) { return a.vel == b.vel; }
@@ -33,6 +68,12 @@ bool same_extra(const PlayerSnap& a, const PlayerSnap& b) {
 bool same_charge(const PlayerSnap& a, const PlayerSnap& b) {
     return a.recharge == b.recharge && a.speed_coefficient == b.speed_coefficient;
 }
+bool same_vitals(const PlayerSnap& a, const PlayerSnap& b) {
+    return a.hp == b.hp && a.armor == b.armor;
+}
+bool same_weapon(const PlayerSnap& a, const PlayerSnap& b) {
+    return a.weapon_id == b.weapon_id && a.ammo == b.ammo && a.fire_cooldown == b.fire_cooldown;
+}
 
 }  // namespace
 
@@ -41,10 +82,13 @@ PlayerSnap to_snap(const PlayerState& p) {
     s.pos = p.pos;
     s.vel = p.vel;
     s.yaw = p.yaw;
-    s.flags = static_cast<uint8_t>((p.on_ground ? 1 : 0) | (p.crouched ? 2 : 0) |
-                                   (p.active ? 4 : 0) | (p.jump_was_down ? 8 : 0) |
-                                   (p.slide_was_down ? 16 : 0) | (p.dash_was_down ? 32 : 0) |
-                                   (p.vault_was_down ? 64 : 0));
+    s.flags = static_cast<uint16_t>((p.on_ground ? kFlagOnGround : 0) |
+                                    (p.crouched ? kFlagCrouched : 0) |
+                                    (p.active ? kFlagActive : 0) |
+                                    (p.jump_was_down ? kFlagJumpWasDown : 0) |
+                                    (p.slide_was_down ? kFlagSlideWasDown : 0) |
+                                    (p.dash_was_down ? kFlagDashWasDown : 0) |
+                                    (p.vault_was_down ? kFlagVaultWasDown : 0));
     s.impulses = static_cast<uint8_t>(p.impulses);
     s.state = static_cast<uint8_t>(p.state);
     s.state_ticks = static_cast<uint16_t>(p.state_ticks);
@@ -55,6 +99,9 @@ PlayerSnap to_snap(const PlayerState& p) {
     s.wall_normal = p.wall_normal;
     s.vault_dir = p.vault_dir;
     s.vault_rise = p.vault_rise;
+    s.hp = static_cast<uint16_t>(std::min(65535, std::max(0, p.vitals.health)));
+    s.armor = static_cast<uint16_t>(std::min(65535, std::max(0, p.vitals.armor)));
+    // weapon_id / ammo / fire_cooldown stay zero until M6 gives them a producer.
     return s;
 }
 
@@ -62,23 +109,25 @@ void from_snap(const PlayerSnap& s, PlayerState& p) {
     p.pos = s.pos;
     p.vel = s.vel;
     p.yaw = s.yaw;
-    p.on_ground = (s.flags & 1) != 0;
-    p.crouched = (s.flags & 2) != 0;
-    p.active = (s.flags & 4) != 0;
+    p.on_ground = (s.flags & kFlagOnGround) != 0;
+    p.crouched = (s.flags & kFlagCrouched) != 0;
+    p.active = (s.flags & kFlagActive) != 0;
     p.impulses = s.impulses;
     p.state = static_cast<ParkourState>(s.state);
     p.state_ticks = s.state_ticks;
     p.dash_cooldown = s.dash_cooldown;
     p.slow_ticks = s.slow_ticks;
-    p.jump_was_down = (s.flags & 8) != 0;
-    p.slide_was_down = (s.flags & 16) != 0;
-    p.dash_was_down = (s.flags & 32) != 0;
-    p.vault_was_down = (s.flags & 64) != 0;
+    p.jump_was_down = (s.flags & kFlagJumpWasDown) != 0;
+    p.slide_was_down = (s.flags & kFlagSlideWasDown) != 0;
+    p.dash_was_down = (s.flags & kFlagDashWasDown) != 0;
+    p.vault_was_down = (s.flags & kFlagVaultWasDown) != 0;
     p.recharge_progress = s.recharge;
     p.speed_coefficient = s.speed_coefficient;
     p.wall_normal = s.wall_normal;
     p.vault_dir = s.vault_dir;
     p.vault_rise = s.vault_rise;
+    p.vitals.health = s.hp;
+    p.vitals.armor = s.armor;
 }
 
 std::vector<uint8_t> encode_snapshot(const Snapshot& current, const Snapshot* baseline) {
@@ -92,7 +141,7 @@ std::vector<uint8_t> encode_snapshot(const Snapshot& current, const Snapshot* ba
 
     for (size_t i = 0; i < current.players.size(); ++i) {
         const PlayerSnap& now = current.players[i];
-        uint8_t mask = kFieldAll;
+        uint16_t mask = kFieldAll;
         if (use_delta) {
             const PlayerSnap& before = baseline->players[i];
             mask = 0;
@@ -103,12 +152,14 @@ std::vector<uint8_t> encode_snapshot(const Snapshot& current, const Snapshot* ba
             if (!same_yaw(now, before)) mask |= kFieldYaw;
             if (!same_extra(now, before)) mask |= kFieldExtra;
             if (!same_charge(now, before)) mask |= kFieldCharge;
+            if (!same_vitals(now, before)) mask |= kFieldVitals;
+            if (!same_weapon(now, before)) mask |= kFieldWeapon;
         }
-        w.u8(mask);
+        w.u16(mask);
         if (mask & kFieldPos) w.vec3(now.pos);
         if (mask & kFieldVel) w.vec3(now.vel);
         if (mask & kFieldStatus) {
-            w.u8(now.flags);
+            w.u16(now.flags);
             w.u8(now.impulses);
             w.u8(now.state);
         }
@@ -126,6 +177,15 @@ std::vector<uint8_t> encode_snapshot(const Snapshot& current, const Snapshot* ba
         if (mask & kFieldCharge) {
             w.u8(now.recharge);
             w.f32(now.speed_coefficient);
+        }
+        if (mask & kFieldVitals) {
+            w.u16(now.hp);
+            w.u16(now.armor);
+        }
+        if (mask & kFieldWeapon) {
+            w.u8(now.weapon_id);
+            w.u16(now.ammo);
+            w.u16(now.fire_cooldown);
         }
     }
     return w.data();
@@ -160,11 +220,11 @@ bool decode_snapshot(const uint8_t* data, size_t size, const Snapshot* baseline,
         PlayerSnap& p = s.players[i];
         if (have_baseline) p = baseline->players[i];
 
-        const uint8_t mask = r.u8();
+        const uint16_t mask = r.u16();
         if (mask & kFieldPos) p.pos = r.vec3();
         if (mask & kFieldVel) p.vel = r.vec3();
         if (mask & kFieldStatus) {
-            p.flags = r.u8();
+            p.flags = r.u16();
             p.impulses = r.u8();
             p.state = r.u8();
         }
@@ -182,6 +242,15 @@ bool decode_snapshot(const uint8_t* data, size_t size, const Snapshot* baseline,
         if (mask & kFieldCharge) {
             p.recharge = r.u8();
             p.speed_coefficient = r.f32();
+        }
+        if (mask & kFieldVitals) {
+            p.hp = r.u16();
+            p.armor = r.u16();
+        }
+        if (mask & kFieldWeapon) {
+            p.weapon_id = r.u8();
+            p.ammo = r.u16();
+            p.fire_cooldown = r.u16();
         }
         if (!r.ok()) return false;
     }

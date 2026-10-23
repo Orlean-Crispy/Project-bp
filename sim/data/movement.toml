@@ -55,3 +55,4 @@ max_bumps          = 4
 slow_factor = 0.85          # -15% movement while hit (section 6.10)
 slow_ticks  = 96            # 1.5 s at 64 tick
 headshot_mult = 5.0
+legshot_mult  = 0.7

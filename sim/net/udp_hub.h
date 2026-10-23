@@ -8,6 +8,7 @@
 #include <utility>
 #include <vector>
 
+#include "sim/net/fragment.h"
 #include "sim/net/transport.h"
 #include "sim/net/udp_socket.h"
 
@@ -58,7 +59,10 @@ public:
 
     void poll();
     bool next_unknown(std::string& host, uint16_t& port, std::vector<uint8_t>& data);
-    PeerTransport* add_peer(const std::string& host, uint16_t port);
+    // Returns the fragmenting view of this peer (AUD-23): a snapshot that grows
+    // past 1100 B is split here instead of becoming an IP fragment stream, where
+    // one lost fragment costs the whole frame. Small packets pass through.
+    Transport* add_peer(const std::string& host, uint16_t port);
     void remove_peer(const std::string& host, uint16_t port);
 
 private:
@@ -72,6 +76,8 @@ private:
 
     UdpSocket m_socket;
     std::map<std::string, std::unique_ptr<PeerTransport>> m_peers;
+    // One reassembly buffer per peer: two clients must never share fragment state.
+    std::map<std::string, std::unique_ptr<FragmentedTransport>> m_links;
     std::deque<Unknown> m_unknown;
 };
 

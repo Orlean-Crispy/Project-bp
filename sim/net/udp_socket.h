@@ -7,6 +7,11 @@
 
 namespace sim {
 
+// AUD-26: a peer address has to compare equal to the address datagrams actually
+// arrive from, and the socket layer only ever deals in dotted IPv4. Both sides
+// therefore normalise through the same inet_pton/inet_ntop pair.
+bool ipv4_canonical(const std::string& host, std::string& out);
+
 // One non-blocking UDP socket. Shared by the connected client transport and the
 // server hub; address handling stays in the caller.
 class UdpSocket {

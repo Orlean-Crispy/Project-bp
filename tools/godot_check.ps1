@@ -68,6 +68,26 @@ if (-not $portField.Success -or [int]$portField.Groups[1].Value -ne $defaultPort
 Write-Host $hudLine
 Write-Host 'PASS: extension loaded, HUD composed, default port wired' -ForegroundColor Green
 
+# Render interpolation: the camera blends the two newest ticks, which only works
+# if the bridge really keeps a previous tick. Equal prev/cur while the player is
+# moving means the history is missing and the view is back to stepping at 64 Hz.
+Write-Host '== render interpolation =='
+$interp = Invoke-BpGodotHeadless -Arguments @('--autoplay', '--interp-check')
+$interpLines = @($interp.Output.Split([char]10) | ForEach-Object { $_.TrimEnd([char]13) } |
+    Where-Object { $_ -like 'interp prev=*' })
+if ($interpLines.Count -ne 1) {
+    Write-Host $interp.Output
+    Write-Host $interp.Error
+    Fail 'no interp line: the bridge does not expose the previous tick'
+}
+$interpLine = $interpLines[0]
+$gapField = [regex]::Match($interpLine, 'gap=([0-9.]+)')
+if (-not $gapField.Success -or [double]$gapField.Groups[1].Value -le 0.01) {
+    Fail ('the previous tick has no movement in it: ' + $interpLine)
+}
+Write-Host $interpLine
+Write-Host 'PASS: previous tick exposed, camera can interpolate' -ForegroundColor Green
+
 if ($SkipReconnect) { exit 0 }
 
 Write-Host '== reconnect check (two processes) =='

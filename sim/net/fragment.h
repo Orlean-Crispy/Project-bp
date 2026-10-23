@@ -23,7 +23,12 @@ public:
     bool recv(std::vector<uint8_t>& out) override;
     void advance(uint32_t tick) override { m_inner.advance(tick); }
 
+    // Counters for the real-link gate (AUD-23): how many datagrams the decorator
+    // split, and how many messages it reassembled whole. Both are zero on the
+    // normal snapshot path, which is the point.
     int dropped_packets() const { return m_dropped; }
+    int fragments_sent() const { return m_fragments_sent; }
+    int reassembled() const { return m_reassembled; }
 
 private:
     void abandon();
@@ -36,6 +41,8 @@ private:
     std::vector<uint8_t> m_buffer;
     std::vector<uint16_t> m_sizes;
     int m_dropped = 0;
+    int m_fragments_sent = 0;
+    int m_reassembled = 0;
 };
 
 }  // namespace sim

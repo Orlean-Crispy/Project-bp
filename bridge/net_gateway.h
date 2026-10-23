@@ -13,6 +13,7 @@
 #include "sim/net/matchmaking.h"
 #include "sim/net/session.h"
 #include "sim/net/ticket.h"
+#include "sim/net/fragment.h"
 #include "sim/net/transport.h"
 #include "sim/net/udp_hub.h"
 #include "sim/net/udp_transport.h"
@@ -54,6 +55,10 @@ private:
     std::unique_ptr<sim::NetClient> m_net_client;
     std::unique_ptr<sim::UdpPeerHub> m_hub;
     std::unique_ptr<sim::UdpTransport> m_udp;
+    // AUD-23: every real-link datagram goes through the fragmenter, so a large
+    // snapshot is split here instead of at the IP layer. Declared after m_udp
+    // because it references it.
+    std::unique_ptr<sim::FragmentedTransport> m_frag;
     std::unique_ptr<sim::LoopbackTransport> m_local_to_server;
     std::unique_ptr<sim::LoopbackTransport> m_local_to_client;
     bool m_hosting = false;

@@ -42,6 +42,7 @@ unsigned long long allocation_count();
 #include "tests_demo.h"
 #include "tests_move.h"
 #include "tests_net.h"
+#include "tests_proto.h"
 
 namespace {
 
@@ -113,6 +114,7 @@ void usage() {
         "  --test-health     HP 100 + 25 / 25 regen / 50 armour damage and regen rules\n"
         "  --test-hitbox     verify the 64-tick hitbox history and the 3-zone multipliers\n"
         "  --test-events     event channel: jump/land emission, determinism, ring overflow\n"
+        "  --test-snapshot   protocol wire: 16-bit mask/flags, vitals, delta economy, MTU\n"
         "  --bench [n]       time n ticks and report mean/p99/max\n"
         "  --players <n>     with --bench: simulate n players (default 1)\n");
 }
@@ -225,6 +227,8 @@ int main(int argc, char** argv) {
             opt.test_hitbox = true;
         } else if (arg == "--test-events") {
             opt.test_events = true;
+        } else if (arg == "--test-snapshot") {
+            opt.test_snapshot = true;
         } else if (arg == "--players") {
             const char* v = need_value("--players");
             if (!v) return 2;
@@ -263,6 +267,7 @@ int main(int argc, char** argv) {
         return 2;
     }
 
+    if (opt.test_snapshot) return run_snapshot_check();
     if (opt.test_hitbox) return run_hitbox_test(opt);
     if (opt.test_events) return run_event_test(opt);
     if (opt.test_health) return run_health_test(opt);

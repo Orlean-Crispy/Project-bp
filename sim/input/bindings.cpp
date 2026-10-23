@@ -31,7 +31,7 @@ const ActionEntry kActions[] = {
     {Action::WallClimb, "WallClimb", "actions.wallclimb"},
     {Action::Vault, "Vault", "actions.vault"},
     {Action::Reload, "Reload", "actions.reload"},
-    {Action::Use, "Use", "actions.use"},
+    {Action::Interact, "Interact", "actions.interact"},
     {Action::Scoreboard, "Scoreboard", "actions.scoreboard"},
 };
 
@@ -73,7 +73,9 @@ bool KeyState::down(Key key) const {
 
 Bindings::Bindings() {
     m_keys.fill(Key::None);
-    // Valorant layout: abilities on C / Q / E / X, movement on WASD.
+    // Movement on WASD, abilities on C / Q / V / X, interact on E. E used to be
+    // wall climb; the interact key belongs to the bomb and the doors, and moving
+    // a key after parkour baselines and animations exist is much more expensive.
     set_key(Action::MoveForward, Key::W);
     set_key(Action::MoveBack, Key::S);
     set_key(Action::MoveLeft, Key::A);
@@ -82,11 +84,11 @@ Bindings::Bindings() {
     set_key(Action::Crouch, Key::LeftCtrl);
     set_key(Action::Slide, Key::LeftShift);
     set_key(Action::WallRun, Key::Q);
-    set_key(Action::WallClimb, Key::E);
+    set_key(Action::WallClimb, Key::V);
     set_key(Action::Vault, Key::C);
     set_key(Action::Dash, Key::X);
     set_key(Action::Reload, Key::R);
-    set_key(Action::Use, Key::F);
+    set_key(Action::Interact, Key::E);
     set_key(Action::Scoreboard, Key::Tab);
 }
 

@@ -11,7 +11,9 @@
 #endif
 #ifndef BP_PROTOCOL_VERSION
 // 5: PlayerSnap carries every input edge and the charge/speed pair (2026-10-20).
-#define BP_PROTOCOL_VERSION 5
+// 6: 16-bit mask/flags, plus the Vitals group (hp/armor) and the reserved Weapon
+//    group. M6 adds combat fields without another bump (2026-10-23).
+#define BP_PROTOCOL_VERSION 6
 #endif
 
 namespace sim {

@@ -747,9 +747,19 @@ int run_keybind_test(const Options& opt) {
     check("no key is bound twice", bindings.conflicts().empty());
     check("wall run on Q (Valorant layout)",
           bindings.key(sim::Action::WallRun) == sim::Key::Q);
-    check("wall climb on E", bindings.key(sim::Action::WallClimb) == sim::Key::E);
+    check("wall climb on V", bindings.key(sim::Action::WallClimb) == sim::Key::V);
+    check("interact on E", bindings.key(sim::Action::Interact) == sim::Key::E);
     check("vault on C", bindings.key(sim::Action::Vault) == sim::Key::C);
     check("dash on X", bindings.key(sim::Action::Dash) == sim::Key::X);
+    // The whole point of the move: nothing else may claim E, or the interact key
+    // silently fires a movement ability instead (M6 entry condition 6).
+    bool e_free = true;
+    for (sim::Action a : {sim::Action::WallRun, sim::Action::WallClimb, sim::Action::Vault,
+                          sim::Action::Dash, sim::Action::Slide, sim::Action::Crouch,
+                          sim::Action::Jump}) {
+        if (bindings.key(a) == sim::Key::E) e_free = false;
+    }
+    check("E is reserved for interact", e_free);
 
     sim::KeyState keys;
     keys.set(sim::Key::W, true);
@@ -758,12 +768,14 @@ int run_keybind_test(const Options& opt) {
     check("W + SPACE produces forward + jump", input.forward > 0.5f && input.jump);
 
     // Rebind at runtime; the old key must stop working immediately.
-    bindings.set_key(sim::Action::Jump, sim::Key::V);
+    // Z, not V: V is the wall climb key now, and binding jump there would make
+    // the conflict check below fail for the wrong reason.
+    bindings.set_key(sim::Action::Jump, sim::Key::Z);
     input = sim::build_move_input(bindings, keys, 0.0f);
     check("after rebinding, SPACE no longer jumps", !input.jump);
-    keys.set(sim::Key::V, true);
+    keys.set(sim::Key::Z, true);
     input = sim::build_move_input(bindings, keys, 0.0f);
-    check("after rebinding, V jumps", input.jump);
+    check("after rebinding, Z jumps", input.jump);
 
     // Persist and reload into a fresh object.
     const std::string saved = "build/keybinds_test.toml";
@@ -776,8 +788,8 @@ int run_keybind_test(const Options& opt) {
         std::fprintf(stderr, "error: %s\n", error.c_str());
         return 1;
     }
-    check("saved keymap reloads with V on jump",
-          reloaded.key(sim::Action::Jump) == sim::Key::V);
+    check("saved keymap reloads with Z on jump",
+          reloaded.key(sim::Action::Jump) == sim::Key::Z);
 
     // Positive control for conflict detection: this must be able to fail.
     bindings.set_key(sim::Action::Slide, sim::Key::Q);
@@ -1024,6 +1036,14 @@ int run_hitbox_test(const Options& opt) {
     check("chest multiplier is x1", sim::hit_multiplier(stand, 0.90f, params) == 1.0f);
     check("leg band", sim::hit_zone_at(stand, 0.30f) == sim::HitZone::Legs);
     check("leg multiplier is x0.7", sim::hit_multiplier(stand, 0.30f, params) == 0.7f);
+    // The value is tuning data now: a changed params must change the result, or
+    // it is still a literal wearing a field's name.
+    {
+        sim::MovementParams tuned = params;
+        tuned.legshot_mult = 0.55f;
+        check("leg multiplier reads movement.toml",
+              sim::hit_multiplier(stand, 0.30f, tuned) == 0.55f);
+    }
     check("just above the head line is head", sim::hit_zone_at(stand, 0.84f * 1.42f) ==
                                                   sim::HitZone::Head);
     check("just below the head line is chest", sim::hit_zone_at(stand, 0.80f * 1.42f) ==

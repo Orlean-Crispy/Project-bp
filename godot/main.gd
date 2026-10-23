@@ -61,6 +61,13 @@ var reconnect_locked := false
 var force_paused := false
 var autoplay_jumped := false
 var menu_accumulator := 0.0
+var interp_check := false
+var interp_done := false
+# AUD-20: whole ticks thrown away when one frame is longer than the 5-tick cap.
+# They are not hidden: the network client re-anchors its axis from the next
+# snapshot, and this counter is what a gate can look at.
+var dropped_ticks := 0
+var dropped_reported := false
 
 func _ready() -> void:
 	RenderingServer.set_default_clear_color(Color(0.07, 0.08, 0.1))
@@ -87,6 +94,10 @@ func _ready() -> void:
 			# AUD-02 gate: start with the in-game menu open so a headless run can
 			# prove the network pump keeps going while the world is paused.
 			force_paused = true
+		elif arg == "--interp-check":
+			# Render-interpolation gate: proves the bridge exposes the previous tick,
+			# and that it really is a different position while the player moves.
+			interp_check = true
 
 	sim = SimWorld.new()
 	if net_port <= 0:
@@ -431,6 +442,18 @@ func _update_remote_players(players: Array) -> void:
 			remote_nodes[slot].queue_free()
 			remote_nodes.erase(slot)
 
+func _place_camera(alpha: float) -> void:
+	# One tick behind the simulation, blended: the newest tick is what the client
+	# already has, the previous one is what it is moving away from. Angle is
+	# per frame (mouse), position is per tick - without this the view glides
+	# while the body jumps a grid.
+	var blend: float = clampf(alpha, 0.0, 1.0)
+	var position: Vector3 = sim.get_prev_position().lerp(sim.get_position(), blend)
+	var eye: float = lerpf(sim.get_prev_eye_height(), sim.get_eye_height(), blend)
+	camera.position = position + Vector3(0.0, eye, 0.0)
+	# sim yaw 0 looks down +X and maps to Godot (x, z, -y)
+	camera.rotation = Vector3(pitch, atan2(-cos(yaw), sin(yaw)), 0.0)
+
 func _process(delta: float) -> void:
 	if sim == null or camera == null:
 		return
@@ -461,8 +484,7 @@ func _process(delta: float) -> void:
 			_update_hud()
 		# The world keeps stepping while the menu is open (the link must not time
 		# out), so the camera has to follow it: otherwise resuming snapped it back.
-		camera.position = sim.get_position() + Vector3(0.0, sim.get_eye_height(), 0.0)
-		camera.rotation = Vector3(pitch, atan2(-cos(yaw), sin(yaw)), 0.0)
+		_place_camera(0.0)
 		# Drain while paused too: otherwise a one-second pause fills the ring with
 		# stale jump/land events that all fire on resume.
 		sim.drain_events()
@@ -508,10 +530,31 @@ func _process(delta: float) -> void:
 			sim.step()
 		accumulator -= TICK
 		ticks += 1
-	if ticks == 5:
-		accumulator = 0.0
+	if ticks >= 5 and accumulator >= TICK:
+		# AUD-20: a frame longer than five ticks. Zeroing the accumulator shifted
+		# the tick phase by a random fraction and threw the lost ticks away silently,
+		# so the command tick stayed behind the server for the rest of the match.
+		# Keep the sub-tick remainder and count what was skipped; the network client
+		# re-anchors its own axis from the next snapshot.
+		dropped_ticks += int(floor(accumulator / TICK))
+		accumulator = fmod(accumulator, TICK)
+		if not dropped_reported:
+			dropped_reported = true
+			print("breakpoint: frame drop, %d ticks skipped" % dropped_ticks)
 
 	_update_net_state()
+
+	if interp_check and not interp_done and int(sim.get_tick()) > 40:
+		# Gate: the bridge must expose a previous tick, and while the player is
+		# moving it must be a different position (equal values = no history).
+		interp_done = true
+		var cur: Vector3 = sim.get_position()
+		var prev: Vector3 = sim.get_prev_position()
+		print("interp prev=%.4f cur=%.4f gap=%.4f eye_prev=%.4f eye=%.4f blend=%.4f" % [
+			prev.x, cur.x, absf(cur.x - prev.x), sim.get_prev_eye_height(),
+			sim.get_eye_height(), prev.lerp(cur, 0.5).x
+		])
+		get_tree().quit()
 
 	var events: Array = sim.drain_events()
 	for event in events:
@@ -521,11 +564,10 @@ func _process(delta: float) -> void:
 		if autoplay:
 			print("event: ", last_event)
 
+	# 64 Hz simulation, arbitrary display rate: blend the two newest ticks
+	# instead of snapping to the newest one and holding it two or three frames.
+	_place_camera(accumulator / TICK)
 	var position: Vector3 = sim.get_position()
-	camera.position = position + Vector3(0.0, sim.get_eye_height(), 0.0)
-	# sim yaw 0 looks down +X and maps to Godot (x, z, -y)
-	var godot_yaw := atan2(-cos(yaw), sin(yaw))
-	camera.rotation = Vector3(pitch, godot_yaw, 0.0)
 
 	var velocity: Vector3 = sim.get_velocity()
 	var speed := Vector2(velocity.x, velocity.z).length()

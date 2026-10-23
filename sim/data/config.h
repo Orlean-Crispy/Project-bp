@@ -65,6 +65,9 @@ struct MovementParams {
     float damage_slow_factor = 0.85f;
     int damage_slow_ticks = 96;
     float headshot_mult = 5.0f;
+    // Leg multiplier. It was a literal 0.7 in hitbox.cpp, which is exactly the
+    // kind of feel value iron law I says must live in the data file.
+    float legshot_mult = 0.7f;
 
     // FNV-1a over every field in declaration order.
     uint64_t hash() const;

@@ -78,6 +78,10 @@ uint64_t World::state_hash() const {
         h.vec3(p.wall_normal).vec3(p.vault_dir).f32(p.vault_rise);
         h.f32(p.speed_coefficient).f32(p.slow_factor);
         h.u32(static_cast<uint32_t>(p.recharge_progress));
+        // v6: the same two fields the snapshot carries (lesson 16 - a field in
+        // one and not the other is a false divergence or a silent one).
+        h.u32(static_cast<uint32_t>(p.vitals.health))
+            .u32(static_cast<uint32_t>(p.vitals.armor));
     }
     return h.value();
 }

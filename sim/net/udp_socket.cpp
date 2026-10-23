@@ -46,6 +46,13 @@ std::string address_to_string(const sockaddr_in& addr) {
 
 }  // namespace
 
+bool ipv4_canonical(const std::string& host, std::string& out) {
+    sockaddr_in address{};
+    if (!make_address(host, 0, address)) return false;
+    out = address_to_string(address);
+    return true;
+}
+
 UdpSocket::~UdpSocket() {
     if (m_socket != kInvalid) close_socket(static_cast<Socket>(m_socket));
 }

@@ -46,6 +46,7 @@ void FragmentedTransport::send(const std::vector<uint8_t>& packet) {
                   packet.begin() + static_cast<long>(offset + chunk), frame.begin() + 5);
         frame.resize(kHeaderBytes + chunk);
         m_inner.send(frame);
+        ++m_fragments_sent;
         frame.resize(kHeaderBytes + kPayloadBytes);
     }
 }
@@ -86,6 +87,7 @@ bool FragmentedTransport::recv(std::vector<uint8_t>& out) {
             const std::size_t last = static_cast<std::size_t>(m_total - 1) * kPayloadBytes +
                                      m_sizes[m_total - 1];
             out.assign(m_buffer.begin(), m_buffer.begin() + static_cast<long>(last));
+            ++m_reassembled;
             m_id = 0;
             m_total = 0;
             m_received = 0;

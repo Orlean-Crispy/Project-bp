@@ -28,7 +28,8 @@ float zone_multiplier(HitZone zone, const MovementParams& params) {
         case HitZone::Chest:
             return 1.0f;
         case HitZone::Legs:
-            return 0.7f;
+            // plan 6.8 / 0.7, but it is tuning data (movement.toml [damage]).
+            return params.legshot_mult;
     }
     return 1.0f;
 }

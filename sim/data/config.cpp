@@ -147,7 +147,8 @@ uint64_t MovementParams::hash() const {
     h.f32(dash_speed).f32(dash_cooldown);
     h.f32(min_wall_thickness).u32(static_cast<uint32_t>(max_slide_steps))
      .u32(static_cast<uint32_t>(max_bumps));
-    h.f32(damage_slow_factor).u32(static_cast<uint32_t>(damage_slow_ticks)).f32(headshot_mult);
+    h.f32(damage_slow_factor).u32(static_cast<uint32_t>(damage_slow_ticks)).f32(headshot_mult)
+        .f32(legshot_mult);
     return h.value();
 }
 
@@ -262,6 +263,7 @@ bool load_movement_params(const std::string& path, MovementParams& out,
     b.number("damage.slow_factor", p.damage_slow_factor);
     b.integer("damage.slow_ticks", p.damage_slow_ticks);
     b.number("damage.headshot_mult", p.headshot_mult);
+    b.number("damage.legshot_mult", p.legshot_mult);
 
     for (const auto& e : table.entries) {
         if (b.used.find(e.first) == b.used.end()) {

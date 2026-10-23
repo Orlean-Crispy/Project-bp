@@ -2,6 +2,7 @@
 
 #include "sim/collision/trace.h"
 #include "sim/data/config.h"
+#include "sim/game/combat.h"
 
 namespace sim {
 
@@ -59,6 +60,10 @@ struct PlayerState {
     // derives slow_factor from this every tick, so the penalty can never be left
     // on by accident (whole ticks, no float time - iron law B).
     int slow_ticks = 0;
+    // Protocol v6: health and armour live in the player state so they can be
+    // hashed and replicated. Nothing damages them yet (M6 owns the weapon); the
+    // M5 -> M6 audit required the wire capacity to exist before that work starts.
+    PlayerVitals vitals;
 };
 
 // max speed = base * weapon * slow * crouch (plan section 5.10).

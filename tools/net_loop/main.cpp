@@ -97,7 +97,7 @@ int run_server(const Options& opt) {
             if (!sim::hello_id(packet, who)) continue;
             const int slot = admission.take(who);
             if (slot < 0) continue;  // never admitted over TCP
-            sim::PeerTransport* peer = hub.add_peer(host, port);
+            sim::Transport* peer = hub.add_peer(host, port);
             if (server.add_client(peer, peer, slot) < 0) continue;
             std::printf("join slot=%d addr=%s:%u server_tick=%u\n", slot, host.c_str(), port,
                         server.tick());
@@ -137,6 +137,9 @@ int run_server(const Options& opt) {
 
 int run_client(const Options& opt) {
     sim::UdpTransport transport;
+    // AUD-23: the session sees the fragmenter; the HELLO is sent on the raw
+    // socket below, exactly like the bridge does.
+    sim::FragmentedTransport link(transport);
     sim::NetClient client;
     std::string error;
     bool inited = false;
@@ -168,7 +171,7 @@ int run_client(const Options& opt) {
                 game_port = reply.game_port;
                 if (transport.open(0, error) &&
                     transport.connect_peer(opt.host, game_port, error) &&
-                    client.init(&transport, &transport, slot, opt.map, opt.data, error)) {
+                    client.init(&link, &link, slot, opt.map, opt.data, error)) {
                     inited = true;
                     std::printf("signal slot=%d game_port=%u\n", slot, game_port);
                     std::fflush(stdout);

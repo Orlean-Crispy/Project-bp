@@ -29,17 +29,22 @@ bool UdpPeerHub::next_unknown(std::string& host, uint16_t& port, std::vector<uin
     return true;
 }
 
-PeerTransport* UdpPeerHub::add_peer(const std::string& host, uint16_t port) {
+Transport* UdpPeerHub::add_peer(const std::string& host, uint16_t port) {
     const std::string id = key(host, port);
-    const auto it = m_peers.find(id);
-    if (it != m_peers.end()) return it->second.get();
+    const auto it = m_links.find(id);
+    if (it != m_links.end()) return it->second.get();
     auto peer = std::make_unique<PeerTransport>(m_socket, host, port);
     PeerTransport* raw = peer.get();
     m_peers.emplace(id, std::move(peer));
-    return raw;
+    auto link = std::make_unique<FragmentedTransport>(*raw);
+    Transport* view = link.get();
+    m_links.emplace(id, std::move(link));
+    return view;
 }
 
 void UdpPeerHub::remove_peer(const std::string& host, uint16_t port) {
+    // Drop the fragment view first: it holds a reference to the peer transport.
+    m_links.erase(key(host, port));
     m_peers.erase(key(host, port));
 }
 
