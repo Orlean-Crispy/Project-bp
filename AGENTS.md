@@ -112,9 +112,9 @@ v0.1 定义：**两个人、局域网、1 张 40×40 图、对枪 10 分钟不�
 
 ## 3. 下一步（严格按计划书顺序，禁止跳步）
 
-1. **M6 射击**（契约 `docs/contracts/M6.md`）：先拍 D1/D2/D3 三个决策，再从 W1 `weapons.toml` 开始。
+1. **M6 射击**（契约 `docs/contracts/M6.md`）：D1/D2/D3 已定（ADR 0006），按 §6 的 M6.1–M6.12 一次一个任务推进。
 2. M7/M8：音频、第三人称动画、第一人称视角模型。
-3. 未解决项与债只看 `docs/DEBT.md`（31 条）；设计待定与功能缺口看 `docs/BACKLOG.md`。
+3. 未解决项与债只看 `docs/DEBT.md`（32 条）；设计待定与功能缺口看 `docs/BACKLOG.md`。
 
 ---
 
@@ -157,12 +157,13 @@ powershell -File tools\run_demo.ps1     # Godot demo
 | docs/contracts/M6.md | M6 里程碑契约：进入条件（已达成）、范围、退出判据、预算 |
 | docs/budgets.md | 有限资源台账（协议位 / MTU / tick / 闸门 / 文档体积，80% 报警） |
 | docs/AGENTS.md | 铁律、判据清单、实现速查（§8）、环境事实、文件地图 |
-| docs/DEBT.md | **未解决问题与技术债的唯一入口**（31 条，状态四值 + verify 命令） |
-| docs/BACKLOG.md | 设计待定（DESIGN-01…08）与功能缺口（FEAT-01…11） |
+| docs/DEBT.md | **未解决问题与技术债的唯一入口**（32 条，状态四值 + verify 命令） |
+| docs/BACKLOG.md | 设计待定（ADR 0006 之后余 5 条）与功能缺口（FEAT-01…11） |
+| docs/HANDOFF.md | 这一段工作的**叙事交接**（为什么这样做、坑在哪、怎么接手）；不写状态数字 |
 | docs/PROGRESS.md | 进度日志（S 短条目 + 末尾详细开发日志） |
 | docs/AUDIT.md | 审计**索引**（每轮一个文件，证据在 docs/audits/） |
 | docs/backup.md | GitHub / bundle / 恢复步骤 |
 | docs/pitfalls/ | 事故案例（5 篇） |
-| docs/decisions/ | ADR（护甲 / 网络时间轴 / 命名） |
+| docs/decisions/ | ADR 0003 护甲 · 0004 网络时间轴 · 0005 命名 · 0006 穿透/护甲结算/热重载 |
 | docs/keymap.md / docs/demo-format.md | 键位 / demo 格式 |
 | docs/archive/ | 只读历史（HANDOFF、GAPS、8.3 专章）；**不再维护，别当现状读** |
