@@ -165,14 +165,14 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
    SERVER SILENT 1 s）、重连按钮、A5 网络网关拆分全部实测通过。第三人称动画与 5v5 选边
    按计划书属于 M7，不在此条。
 2. **v0.4 的 M5 增量** — A1/A2/A5 全部接入并实测；configstring 带真实哈希且失配拒局。**已关闭**。
-3. **M6 射击** — hitscan、后坐力表、三段部位判定（hitbox 已就绪）、穿透、伤害衰减、
-   hitmarker 全未做。护甲的**吸收比例 66%** 与**再生 5 s / 10 s** 是提案值，需要确认（契约 D2）。
+3. **M6 射击** — hitscan、后坐力表、穿透、伤害衰减、hitmarker 全未做。
+   范围与顺序见 `docs/contracts/M6.md` §6 的 M6.1–M6.12（一次只做一个）；护甲结算已按 ADR 0006 实现。
 4. **Godot 版本** — 计划书写 4.7 Mono，但 godot-cpp 最高只有 4.5，现用 4.5。
    lead：M7（Godot-Locomotion 绑定 4.7.2）之前必须解决。
 5. **跨机 demo 比对** — 工具与流程就绪（docs/demo-format.md），缺第二台机器。
 6. **游戏内改键 UI** — 键位系统已数据驱动，UI 未做。lead：M5 之后。
-7. **穿透两套模型** — .map 的 _penetrable 与武器 penetration_count 谁优先未定。lead：M6。
-8. **movement.toml 热重载** — 铁律 I 只做了哈希，没有 reload 路径（契约 D3，DESIGN-07）。lead：M6 前。
+7. **穿透** — **已定**（ADR 0006）：武器决定、地图能否决（`_penetrable 0` 硬挡）。M6.5 实现。
+8. **热重载** — **已定不做**（ADR 0006 D3）：文档改成"启动时读"，转 `DEBT-22`（lead M7）。
 9. **impulse 上限** — 计划书 §5.2 仍标「待定」，sim 现值 4（movement.toml 的 max_impulses），
    命名方案画 6 格；HUD 必须读参数、不许写死。lead：M3 手感验收。
 
@@ -314,7 +314,7 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、co
 - 包头：type/seq/ack/ack_bits（ack_bits 在 v0.1 **恒为 0**，只做累积 ack；见 netchan.h 注释）。
 - 快照 delta 以「客户端最近 ack 的快照」为 baseline。**协议 v6**（S60）：mask 与 flags 都是 16 位，
   PlayerSnap 带全部四个按下沿、`recharge_progress`、`speed_coefficient`，以及 Vitals 组
-  （hp/armor，真值）与 Weapon 组（weapon_id/ammo/cooldown，**恒 0，M6 W5 才填**）。
+  （hp/armor，真值）与 Weapon 组（weapon_id/ammo/cooldown，**恒 0，M6.7 才填**）。
   mask 的第 8 组与 flags 的 7–10 位（firing/reloading/ads/alive）已经在协议里，M6 加字段不用再升版本。
 - 客户端：本地预测 + 128 tick 历史 + 回滚重放；命令包带最近 4 个输入。
 - 时间轴：客户端 = 服务器 tick + 4（单程 30 ms ≈ 2 tick + 2 tick 前瞻）；初始化时
@@ -443,11 +443,15 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、co
   中途加入（tick 202）与重连（tick 701）偏差 0.00000 m；参数哈希不同被拒绝；
   远端缓冲 32 帧、newest == 最后一份快照。
 
-### 8.5 战斗（sim/game/combat.*）
+### 8.5 战斗（sim/game/combat.*，ADR 0006）
 
-- HP 100；护甲 25 / 25 再生 / 50；吸收 66%（**提案**）。
-- 再生甲：5 s 无伤害后开始，10 s 回满（**提案**）。
-- 伤害用整数运算；apply_damage 返回实际扣血。
+- HP 100；护甲 25 / 25 再生 / 50；再生甲 5 s 无伤害后开始，10 s 回满。
+- **按部位结算**：`HitZone::Head` = 真伤，直接扣 HP、护甲一点不掉；
+  胸/腿先扣护甲池（`absorb_percent = 100`），扣完溢出才扣 HP。
+- `apply_damage(vitals, damage, zone, params)`；`HitZone` 定义在 `combat.h`（伤害概念），
+  `hitbox` 只负责判断高度落在哪一段。
+- 爆头 25×5 = 125 → 一枪击杀（有甲无甲都一样）；重甲躯干 6 发 = 0.60 s（TTK 下限）。
+- 伤害用整数运算；返回实际扣血。判据：`--test-health`（13 项，含爆头真伤与腿部走护甲）。
 
 ### 8.6 demo（sim/demo/*，docs/demo-format.md）
 
@@ -528,11 +532,12 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、co
 
 ## 11. 下一步（严格按计划书顺序，不要跳）
 
-1. **M6 射击**：先拍 D1/D2/D3，再 WeaponDef(toml) → 开火输入 → hitscan + hitbox 回溯 →
-   三段伤害 + 伤害通路 + 死亡/重生 + 穿透/衰减；TTK 用 100 HP / 三甲复算。契约见 docs/contracts/M6.md。
+1. **M6 射击**：D1/D2/D3 已定（ADR 0006），契约已 active。按 §6 的 M6.1–M6.12 一次一个任务推进：
+   weapons.toml → 开火输入 → hitscan → 回溯 → 穿透 → 三段伤害 → 弹药 → 伤害进快照 → 死亡重生 →
+   后坐力 → 表现层 → 验收。
 2. **M7 / M8**：动画、视角模型、音频垂直定位（§9.2 的楼层低通）。
 3. 代码体检：A1–A7、AUD-01…19、R1–R19 已完成；S60 关掉了 AUD-20/23/26/27，
-   其余见 docs/DEBT.md（31 条）与 docs/BACKLOG.md（设计待定/功能缺口）。
+   其余见 docs/DEBT.md（32 条）与 docs/BACKLOG.md（设计待定/功能缺口）。
 
 ---
 

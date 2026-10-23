@@ -7,13 +7,8 @@
 namespace sim {
 
 // Plan 6.8: three height bands, no bones. The bands are fractions of the
-// movement hull height, so crouching follows automatically.
-enum class HitZone : uint8_t {
-    Legs = 0,
-    Chest = 1,
-    Head = 2,
-};
-
+// movement hull height, so crouching follows automatically. HitZone itself is
+// declared in combat.h (the armour model needs it).
 // One tick of a player's damageable volume (plan 7.3). Multipliers are not
 // stored per sample: zone_multiplier() is the single source, and the head
 // multiplier comes from the tuning (movement.toml [damage]).

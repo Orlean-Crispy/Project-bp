@@ -806,8 +806,9 @@ int run_keybind_test(const Options& opt) {
 }
 
 
-// M6 groundwork: HP 100 and the three armour types. Absorption and regen timing
-// are proposals (see combat.toml), so these checks pin the *rules*, not the tuning.
+// HP and the three armour types under the ADR 0006 model: body/legs feed the
+// armour pool first, headshots are true damage. These checks pin the *rules*;
+// the numbers live in combat.toml.
 int run_health_test(const Options& opt) {
     (void)opt;
     sim::CombatParams params;
@@ -826,22 +827,38 @@ int run_health_test(const Options& opt) {
 
     sim::PlayerVitals bare;
     bare.health = params.max_health;
-    const int dealt = sim::apply_damage(bare, 30, params);
-    check("no armour: 30 damage -> 70 HP", bare.health == 70 && dealt == 30);
+    const int dealt = sim::apply_damage(bare, 30, sim::HitZone::Chest, params);
+    check("no armour: 30 body damage -> 70 HP", bare.health == 70 && dealt == 30);
 
     sim::PlayerVitals light = bare;
     light.health = params.max_health;
     sim::equip_armor(light, sim::ArmorType::Light, params);
-    sim::apply_damage(light, 30, params);
-    // 30 * 66% = 19 absorbed, 11 to health, armour 25 -> 6.
-    check("light armour: 30 damage -> 19 absorbed, 11 HP", light.armor == 6 && light.health == 89);
+    sim::apply_damage(light, 30, sim::HitZone::Chest, params);
+    // ADR 0006: armour eats the whole hit until it runs out (25), 5 spills.
+    check("light armour: 30 body damage -> 25 armour, 5 HP", light.armor == 0 &&
+                                                                    light.health == 95);
 
     sim::PlayerVitals heavy = bare;
     heavy.health = params.max_health;
     sim::equip_armor(heavy, sim::ArmorType::Heavy, params);
-    sim::apply_damage(heavy, 40, params);
-    // 40 * 66% = 26 absorbed, 14 to health, armour 50 -> 24.
-    check("heavy armour: 40 damage -> 26 absorbed, 14 HP", heavy.armor == 24 && heavy.health == 86);
+    sim::apply_damage(heavy, 40, sim::HitZone::Chest, params);
+    // 50 armour holds the whole hit; nothing reaches health.
+    check("heavy armour: 40 body damage -> 10 armour, no HP", heavy.armor == 10 &&
+                                                                   heavy.health == 100);
+
+    // A headshot is true damage: the same 30 through 25 armour costs 30 health.
+    sim::PlayerVitals head = bare;
+    head.health = params.max_health;
+    sim::equip_armor(head, sim::ArmorType::Light, params);
+    sim::apply_damage(head, 30, sim::HitZone::Head, params);
+    check("headshot ignores armour", head.armor == 25 && head.health == 70);
+
+    // Legs are body damage: they feed the armour pool like the chest does.
+    sim::PlayerVitals legs = bare;
+    legs.health = params.max_health;
+    sim::equip_armor(legs, sim::ArmorType::Light, params);
+    sim::apply_damage(legs, 30, sim::HitZone::Legs, params);
+    check("leg damage uses the armour pool", legs.armor == 0 && legs.health == 95);
 
     // R17: bad input must neither index the armour table out of bounds nor turn
     // a hit into healing. An unknown type behaves like "no armour"; >100%
@@ -850,7 +867,7 @@ int run_health_test(const Options& opt) {
     bogus.health = params.max_health;
     bogus.armor = 50;
     bogus.armor_type = static_cast<sim::ArmorType>(99);
-    sim::apply_damage(bogus, 25, params);
+    sim::apply_damage(bogus, 25, sim::HitZone::Chest, params);
     check("invalid armour type is ignored, not indexed", bogus.health == 75 && bogus.armor == 50);
 
     sim::CombatParams clamping = params;
@@ -858,13 +875,13 @@ int run_health_test(const Options& opt) {
     sim::PlayerVitals clamped;
     clamped.health = params.max_health;
     sim::equip_armor(clamped, sim::ArmorType::Heavy, clamping);
-    sim::apply_damage(clamped, 25, clamping);
+    sim::apply_damage(clamped, 25, sim::HitZone::Chest, clamping);
     check("absorption above 100% cannot heal", clamped.health == 100 && clamped.armor == 25);
 
     sim::PlayerVitals broken = bare;
     broken.health = params.max_health;
     sim::equip_armor(broken, sim::ArmorType::Light, params);
-    sim::apply_damage(broken, 100, params);
+    sim::apply_damage(broken, 100, sim::HitZone::Chest, params);
     // Armour caps at 25 absorbed: 75 spills to health.
     check("armour caps out: 100 damage -> 25 absorbed, 75 HP lost",
           broken.armor == 0 && broken.health == 25);
@@ -872,7 +889,7 @@ int run_health_test(const Options& opt) {
     sim::PlayerVitals regen = bare;
     regen.health = params.max_health;
     sim::equip_armor(regen, sim::ArmorType::Regen, params);
-    sim::apply_damage(regen, 20, params);
+    sim::apply_damage(regen, 20, sim::HitZone::Chest, params);
     const int armour_after_hit = regen.armor;
     // Inside the delay nothing regenerates.
     for (int i = 0; i < 100; ++i) sim::tick_vitals(regen, params);
@@ -881,7 +898,7 @@ int run_health_test(const Options& opt) {
     for (int i = 0; i < 2000; ++i) sim::tick_vitals(regen, params);
     check("regen armour: refills to its maximum", regen.armor == 25);
 
-    sim::apply_damage(regen, 10, params);
+    sim::apply_damage(regen, 10, sim::HitZone::Chest, params);
     for (int i = 0; i < 100; ++i) sim::tick_vitals(regen, params);
     check("regen armour: taking damage restarts the delay", regen.ticks_since_damage <= 100);
 
@@ -895,7 +912,7 @@ int run_health_test(const Options& opt) {
     sim::equip_armor(ttk_target, sim::ArmorType::Heavy, params);
     while (ttk_target.health > 0 && shots < 100) {
         ++shots;
-        sim::apply_damage(ttk_target, 25, params);
+        sim::apply_damage(ttk_target, 25, sim::HitZone::Chest, params);
     }
     const float ttk = static_cast<float>(shots) / 10.0f;  // 600 RPM = 10 shots/s
     std::printf("  body TTK with heavy armour: %d shots = %.2f s\n", shots,

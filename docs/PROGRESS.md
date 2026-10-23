@@ -2159,3 +2159,33 @@ W1 `sim/data/weapons.toml`（待建）+ WeaponDef。射击功能本身一行没�
 ### 4. 下一步
 
 拍 D1/D2/D3 → 签 M6 契约 → W1 `weapons.toml`（待建）。射击功能仍然一行没写。
+
+## S62 · 2026-10-24 · M6.0 规则落地（ADR 0006）
+
+### 1. 做了什么
+
+- **D1 穿透定稿**：武器决定能不能穿、穿几层；地图 `_penetrable 0` 一票否决。写进 ADR 0006。
+- **D2 护甲改成按部位结算**（本次唯一改代码的部分）：
+  `HitZone::Head` = 真伤，直接扣 HP、护甲不掉；胸/腿先扣护甲池（`absorb_percent = 100`），
+  扣完溢出才扣血。`HitZone` 从 `hitbox.h` 移到 `combat.h`（它是伤害概念），
+  `apply_damage(vitals, damage, zone, params)` 强制调用方想清楚打的是哪。
+- **D3 热重载**：决定不做，文档改成"启动时读"，记 `DEBT-22`（lead M7）。
+- 契约 draft → **active**，§6 改成 M6.0–M6.12 的单任务表，做完一个停一次。
+
+### 2. 判据
+
+`--test-health`（13 项）：`light armour: 30 body damage -> 25 armour, 5 HP`、
+`headshot ignores armour`、`leg damage uses the armour pool`、`body TTK with heavy armour: 6 shots = 0.60 s`。
+smoke 19 项 + bench 全绿；`doc_check` 0 fail。
+
+### 3. 失败与修正
+
+- 换成"护甲全吃"之后，旧测试里"light armour: 30 → 19 absorbed, 11 HP"就错了（那是 66% 模型的数）。
+  没有改实现去迁就测试，而是按 ADR 重写了三条断言，并补了爆头真伤 / 腿部走护甲两条。
+- `HitZone` 原来在 `hitbox.h`，而 `combat.h` 不能 include 它（`hitbox → pmove → combat` 会成环）。
+  移到 `combat.h` 后依赖方向变成 `hitbox → combat`，环消失。
+
+### 4. 下一步
+
+M6.1 武器数据层：`sim/data/weapons.toml`（待建）+ `WeaponDef` 加载 + 独立哈希，
+闸门 `--test-weapons`。**做完停下**，等下一句"继续"再开 M6.2。

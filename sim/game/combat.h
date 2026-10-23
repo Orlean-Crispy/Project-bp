@@ -6,6 +6,15 @@
 
 namespace sim {
 
+// Where a shot landed. It lives here, next to the damage rules, because the
+// armour model depends on it (headshots ignore armour); the hitbox sampler only
+// decides which band a height falls into.
+enum class HitZone : uint8_t {
+    Legs = 0,
+    Chest = 1,
+    Head = 2,
+};
+
 // Plan section 6.10 / M6: HP and the three armour types decided on 2026-10-18.
 // Everything here is data driven so the numbers can be tuned without a rebuild.
 enum class ArmorType : uint8_t {
@@ -47,7 +56,10 @@ void equip_armor(PlayerVitals& vitals, ArmorType type, const CombatParams& param
 
 // Applies damage through armour. Returns the health damage actually dealt.
 // Integer maths only: damage must never depend on float rounding.
-int apply_damage(PlayerVitals& vitals, int damage, const CombatParams& params);
+// ADR 0006: body and legs feed the armour pool first and only spill into health
+// once it is empty (absorb_percent = 100 in combat.toml); a headshot is true
+// damage and never touches armour.
+int apply_damage(PlayerVitals& vitals, int damage, HitZone zone, const CombatParams& params);
 
 // Advances regeneration by one tick.
 void tick_vitals(PlayerVitals& vitals, const CombatParams& params);

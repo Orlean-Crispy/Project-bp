@@ -12,12 +12,17 @@
 |---|---|---|---|---|
 | DESIGN-01 | impulse 充能速率 | `recharge_ticks=32`（0.5 s/个），是提案 | 每 N tick 回 1 个，还是"落地立刻回 1 次 + 冷却" | 手感与 parkour 节奏 |
 | DESIGN-02 | 空中 step-up / mantle | 已关掉（跳跃撞台沿不再自动上台阶） | 是否做 Apex 式自动 mantle（显式状态 + 动画） | 移动手感 |
-| DESIGN-03 | 护甲吸收 66% / 再生 5 s / 10 s | combat.toml 实现为 66% 吸收，5 s 后 10 s 回满 | 数值是否定稿（改 1% 就破 TTK 0.6–1.2 s） | M6 平衡 |
 | DESIGN-04 | configstring 的定位 | 真实链路靠 FULL_STATE 两个哈希拒局；可靠流仍未接（DEBT-20） | 只做"规则哈希"，还是将来装资产清单 | M6 后是否接可靠流 |
-| DESIGN-05 | 穿透两套模型 | .map 的 `_penetrable` 与武器 `penetration_count` 谁优先未定 | 选一套或明确组合规则（契约 §4 D1） | M6 穿透/衰减 |
 | DESIGN-06 | impulse 上限 | sim=4，命名方案画 6，计划书 §5.2 待定 | 定 4 还是 6（HUD 已读参数） | 手感与 HUD |
-| DESIGN-07 | movement.toml 热重载 | 文档写"可重载"，实际没有 reload 路径（契约 §4 D3） | 实现 reload（并重算 params_hash），或删掉"reloadable"字样 | 调参流程 |
 | DESIGN-08 | v0.1 发布形态 | 只有编辑器 + template_debug DLL | 只跑编辑器，还是要导出 release 包（DEBT-07） | 发布/CI 范围 |
+
+## 1b. 已拍板（2026-10-24，ADR 0006）
+
+| ID | 议题 | 结论 |
+|---|---|---|
+| DESIGN-03 | 护甲数值与结算 | 按部位：爆头真伤、胸/腿先扣护甲池；25/25再生/50、5 s/10 s 保留 |
+| DESIGN-05 | 穿透两套模型 | 武器决定、地图能否决（`_penetrable 0` 硬挡） |
+| DESIGN-07 | 热重载 | 暂不做；文档改成"启动时读"，转 `DEBT-22`（lead M7） |
 
 ## 2. 功能缺口（按里程碑；不是 bug，是还没做）
 

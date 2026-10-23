@@ -98,12 +98,16 @@ void equip_armor(PlayerVitals& vitals, ArmorType type, const CombatParams& param
     vitals.regen_accumulator = 0;
 }
 
-int apply_damage(PlayerVitals& vitals, int damage, const CombatParams& params) {
+int apply_damage(PlayerVitals& vitals, int damage, HitZone zone, const CombatParams& params) {
     if (damage <= 0 || vitals.health <= 0) return 0;
 
     int remaining = damage;
     const int type_index = armor_index(vitals.armor_type);
-    if (vitals.armor > 0 && type_index >= 0) {
+    // ADR 0006: armour protects the body, never the head. A headshot is true
+    // damage - that is what makes the x5 multiplier worth aiming for and what
+    // keeps armour from turning into a second health bar against good aim.
+    const bool armour_applies = zone != HitZone::Head;
+    if (armour_applies && vitals.armor > 0 && type_index >= 0) {
         const ArmorDef& def = params.armor[type_index];
         // Re-clamped at use as well: a caller may hand us params that never went
         // through load_combat_params (tests, future hot reload).

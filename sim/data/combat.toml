@@ -1,13 +1,17 @@
 # combat.toml - HP and armour. Decided 2026-10-18: HP 100; armour 25 / 25 regen / 50.
-# The absorb percentage and the regeneration timing are PROPOSALS (Valorant-like):
-# they are not in the plan yet and must be confirmed before M6 balancing.
+# ADR 0006 (2026-10-24) fixed the model:
+#   * body and legs consume the armour pool first; health only takes what spills
+#     over once armour is empty (absorb_percent = 100),
+#   * a headshot is TRUE damage: it ignores armour entirely.
+# Regeneration timing (5 s delay, 10 s to refill) is confirmed as the starting
+# point; it is tuning data, so a change here needs no code change.
 
 [health]
 max_health = 100
 
 [armor.light]
 max_armor      = 25
-absorb_percent = 66
+absorb_percent = 100
 regenerates    = false
 
 [armor.regen]
@@ -19,5 +23,5 @@ regen_seconds       = 10.0   # time to refill from 0 to max
 
 [armor.heavy]
 max_armor      = 50
-absorb_percent = 66
+absorb_percent = 100
 regenerates    = false

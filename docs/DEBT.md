@@ -13,7 +13,7 @@
 - **lead**：M6 / M7 / 顺手，只表示排期，不是状态。状态与排期分两列，是为了能统计。
 - **verify**：一条命令 + 期望输出。**没有 verify 的条目不许进 open**（想法去 BACKLOG）。
 
-**当前计数**：未解决 **31** 条（P1 3 / P2 20 / P3 8）；关闭记录 **7** 条；设计待定与功能缺口见 BACKLOG。
+**当前计数**：未解决 **32** 条（P1 3 / P2 20 / P3 9）；关闭记录 **7** 条；设计待定与功能缺口见 BACKLOG。
 改表就要改这个数字——`tools/doc_check.py` 会核对它和实际行数。
 
 ---
@@ -73,6 +73,7 @@
 | DEBT-18 | P3 | PROGRESS.md 单文件 113 KB；查找靠搜索 | docs/PROGRESS.md | 按月拆分并留索引 | open | M7 |
 | DEBT-19 | P3 | 计划书 v0.3 与 v0.4 的冲突只显式裁决了 C1–C3 | 网络层深化 §冲突裁决 | 列一张"v0.4 覆盖 v0.3"的清单 | open | M7 |
 | DEBT-21 | P3 | `NetClient::catch_up` 在一次 `receive()` 里连跑最大约 300 tick（4.7 s 冻结）；更长的冻结会想跑几千 tick，理论上能吃掉一帧预算 | session.cpp catch_up | `--bench` 不覆盖它；补一条"冻结 5 s 后 catch_up 耗时 < 4 ms"的测量 | open | M7 |
+| DEBT-22 | P3 | 没有热重载：`movement.toml`/`combat.toml` 只在启动时读一次，文档已按 ADR 0006 改成"启动时读"，调参要重启游戏（几秒，不是重编） | sim/data/config.* 的加载路径；ADR 0006 D3 | 实现 host-only `reload()`：改 toml → reload → `params_hash` 变化且 pmove 用新值；联网时拒绝重载 | open | M7 |
 
 ## 6. 关闭记录（保留 ID，不复用）
 
