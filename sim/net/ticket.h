@@ -3,9 +3,9 @@
 #include <array>
 #include <cstdint>
 
-namespace sim {
+#include "sim/net/client_id.h"
 
-using ClientId = std::array<uint8_t, 16>;
+namespace sim {
 
 // A5: 32-byte reconnect ticket, held only in host memory.
 // client_id (16) + expiry (4, seconds) + HMAC-SHA256 truncated to 12 bytes.

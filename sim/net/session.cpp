@@ -54,6 +54,11 @@ constexpr size_t kInputRedundancy = 4;
 // the server already executed and are dropped forever.
 constexpr uint32_t kCatchUpTicks = 4;
 
+// Plan 7.0/7.7: a snapshot is already a couple of ticks stale when it arrives, so
+// both a fresh join and a catch-up aim slightly ahead of it. The extra slack only
+// makes the first command arrive early, never late.
+constexpr uint32_t kJoinSlack = 3;
+
 std::vector<uint8_t> encode_commands(const std::deque<InputCmd>& cmds) {
     ByteWriter w;
     w.u8(static_cast<uint8_t>(cmds.size()));
@@ -250,12 +255,11 @@ int NetServer::add_client(Transport* incoming, Transport* outgoing, int player_i
 
 void NetServer::remove_client(int link_index) {
     if (link_index < 0 || link_index >= static_cast<int>(m_links.size())) return;
-    // AUD-27: the matchmaking layer owns the room slot, and only this link knows
-    // which client id the slot was reserved for. Queue a departure instead of
-    // calling back into MatchHost from here: this runs inside step(), and the
-    // host thread must not touch the match state under the server's tick.
-    if (m_links[static_cast<std::size_t>(link_index)].has_id) {
-        m_departed.push_back(m_links[static_cast<std::size_t>(link_index)].id);
+    // AUD-27: only this link knows which client id the room slot was reserved
+    // for, so report it. The handler only takes MatchHost's slot mutex; it never
+    // re-enters this server, so calling it from step() is safe.
+    if (m_links[static_cast<std::size_t>(link_index)].has_id && m_on_departure) {
+        m_on_departure(m_links[static_cast<std::size_t>(link_index)].id);
     }
     // The player stays in the world; a reconnect re-attaches a link to it and
     // receives the full state again (plan 7.7). Until then it is not rendered
@@ -266,13 +270,6 @@ void NetServer::remove_client(int link_index) {
             m_links[static_cast<std::size_t>(link_index)].player)].active = false;
     }
     m_links.erase(m_links.begin() + link_index);
-}
-
-int NetServer::drain_departed(std::vector<ClientId>& out) {
-    const int count = static_cast<int>(m_departed.size());
-    for (const ClientId& id : m_departed) out.push_back(id);
-    m_departed.clear();
-    return count;
 }
 
 void NetServer::debug_advance_seq(uint16_t delta) {
@@ -508,18 +505,19 @@ void NetClient::apply_full_state(const Snapshot& snap) {
     from_snap(snap.players[static_cast<size_t>(m_player)], m_local.players[0]);
     m_local.tick = snap.tick;
 
-    // Plan 7.0/7.7: start on the server tick axis one lead ahead, mirroring the
-    // empty ticks the server runs while our first command is in flight.
-    // The snapshot is already up to three ticks stale when it arrives. Estimate
-    // the server's current tick before adding the normal command lead; the extra
-    // slack only makes the first command arrive early, never late.
-    constexpr uint32_t kJoinSlack = 3;
+    // Start on the server tick axis one lead ahead, mirroring the empty ticks the
+    // server runs while our first command is in flight (see kJoinSlack).
     m_clock.align(snap.tick + kJoinSlack);
     m_hitbox.reset();
     m_hitbox.record(m_local.players[0], m_local.params, snap.tick);
+    advance_to_clock();
+    m_joined = true;
+}
+
+void NetClient::advance_to_clock() {
     while (m_local.tick < m_clock.command_tick()) {
         const MoveInput none;
-        m_local.step_single(none, kDt);
+        m_local.step_single(none, kDt, m_events);
         HistoryEntry entry;
         entry.tick = m_local.tick;
         entry.state = m_local.players[0];
@@ -527,7 +525,9 @@ void NetClient::apply_full_state(const Snapshot& snap) {
         m_history.push_back(entry);
         m_hitbox.record(m_local.players[0], m_local.params, m_local.tick);
     }
-    m_joined = true;
+    if (m_history.size() > 128) {
+        m_history.erase(m_history.begin(), m_history.end() - 128);
+    }
 }
 
 void NetClient::send_input(const MoveInput& input) {
@@ -573,25 +573,12 @@ void NetClient::step_local(EventQueue* events) {
 }
 
 void NetClient::catch_up(uint32_t server_tick) {
-    // Same slack a fresh join uses: the snapshot is a couple of ticks old by the
-    // time it arrives, so aim slightly ahead of it instead of exactly at it.
-    constexpr uint32_t kJoinSlack = 3;
+    // Same slack a fresh join uses (kJoinSlack), so the two paths land on the
+    // same axis instead of two nearly-equal ones.
     m_clock.align(server_tick + kJoinSlack);
     // Commands queued for the ticks we are skipping are all Late on arrival.
     m_pending.clear();
-    while (m_local.tick < m_clock.command_tick()) {
-        const MoveInput none;
-        m_local.step_single(none, kDt, m_events);
-        HistoryEntry entry;
-        entry.tick = m_local.tick;
-        entry.state = m_local.players[0];
-        entry.input = none;
-        m_history.push_back(entry);
-        m_hitbox.record(m_local.players[0], m_local.params, m_local.tick);
-    }
-    if (m_history.size() > 128) {
-        m_history.erase(m_history.begin(), m_history.end() - 128);
-    }
+    advance_to_clock();
     ++m_catch_ups;
 }
 

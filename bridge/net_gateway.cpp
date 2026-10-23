@@ -25,6 +25,9 @@ bool fail(const char* prefix, std::string& error) {
 void NetGateway::abort_host() {
     // A failed host used to leave the TCP listener, its thread and the UDP port
     // alive: the UI said "host failed" while a ghost host kept issuing tickets.
+    // Drop the departure handler first: it captures this and talks to m_match,
+    // both of which are about to go away.
+    if (m_server) m_server->set_departure_handler(nullptr);
     m_net_client.reset();
     m_frag.reset();
     m_hub.reset();
@@ -60,6 +63,13 @@ bool NetGateway::start_host(const std::string& map, const std::string& data, int
         cfg.geometry_hash = m_server->world().collision.geometry_hash();
         m_server->set_configstring(sim::encode_config(cfg));
     }
+    // AUD-27: a client that leaves (or times out) must give its room slot back,
+    // otherwise the second match on a two-slot room is refused with RoomFull.
+    m_server->set_departure_handler([this](const sim::ClientId& id) {
+        if (m_match) m_match->release(id);
+        std::printf("breakpoint: slot released for a departed client\n");
+        std::fflush(stdout);
+    });
     m_hub = std::make_unique<sim::UdpPeerHub>();
     const uint16_t game_port = sim::game_port_of(m_match->port());
     if (!m_hub->open(game_port, error) || m_hub->local_port() != game_port) {
@@ -194,7 +204,7 @@ void NetGateway::pump(const sim::MoveInput& input, sim::EventQueue* events) {
             // matchmaking slot. A failed add means the room has no player slot
             // left, so give the reservation straight back instead of leaking it.
             if (m_server->add_client(peer, peer, slot, nullptr, &who) < 0) {
-                m_match->release(who);
+                m_match->release(who);  // no player slot for an admitted client
                 continue;
             }
             std::printf("breakpoint: peer joined slot %d\n", slot);
@@ -205,17 +215,6 @@ void NetGateway::pump(const sim::MoveInput& input, sim::EventQueue* events) {
         m_server->receive();
         m_server->step();
         m_server->send();
-        // AUD-27: a client that left (or timed out) must give its room slot back,
-        // otherwise the second match on a two-slot room is refused with RoomFull
-        // and only a host restart clears it.
-        std::vector<sim::ClientId> departed;
-        if (m_server->drain_departed(departed) > 0) {
-            for (const sim::ClientId& id : departed) {
-                m_match->release(id);
-                std::printf("breakpoint: slot released for a departed client\n");
-            }
-            std::fflush(stdout);
-        }
         m_local_to_server->advance(1);
         m_local_to_client->advance(1);
         m_net_client->receive();

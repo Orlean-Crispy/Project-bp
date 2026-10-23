@@ -13,7 +13,6 @@ namespace sim {
 // (the common snapshot path) pass through untouched and allocation-free.
 class FragmentedTransport : public Transport {
 public:
-    static constexpr std::size_t kMaxDatagramBytes = 1200;
     static constexpr std::size_t kPayloadBytes = 1100;
     static constexpr std::size_t kHeaderBytes = 5;
 

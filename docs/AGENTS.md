@@ -136,8 +136,8 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 | 5 | 台阶/蹲下 | 0.20/0.35/0.45 可上、0.55 挡住、1.0 m 净高不能站 | --test-step |
 | 6 | 跳跃语义 | 按住 300 tick 只跳 1 次；点按 3 次跳 3 次 | --test-jump |
 | 7 | HP/护甲 | 规则与 TTK 落在 0.6–1.2 s | --test-health |
-| 8 | 网络收敛 + 去重 + 加入 + 插值 + UDP + 分片 + 双客户端 + 信令组局 + 快照字段 | 30% 丢包偏差 < 0.01 m、回滚 < 500；N3 修正 < 3；加入/重连 < 0.01 m；插值正确；UDP 往返；分片 0 损坏且至少 5 个送达；2 客户端经 hub 加入且偏差 < 0.01 m；组局握手按槽位/票据/满员拒绝正确；`[snapfields] 1` | --test-net |
-| 9 | 协议往返 | 16 位 mask/flags、vitals 组存活、空 delta 15 B、10 人满编 ≤1100 B | --test-snapshot |
+| 8 | 网络收敛 + 去重 + 加入 + 插值 + UDP + 分片 + 源校验 + 槽位释放 + 落后补 tick + 双客户端 + 信令组局 | 30% 丢包偏差 < 0.01 m（且确实丢过包）、回滚 < 500；N3 修正 < 3；加入/重连 < 0.01 m；UDP 往返；分片 0 损坏；注入被拒且合法包仍收；2 槽房 3 轮 join/leave；冻 300 tick 后 Late 停止增长；2 客户端经 hub 加入偏差 < 0.01 m | --test-net |
+| 9 | 协议往返 | 16 位 mask/flags、每个字段存活（含 hp/armor）、空 delta 15 B、10 人满编 833 B ≤ 1100、缺 baseline 的 delta 被拒 | --test-snapshot |
 | 10 | 卡死恢复 | 从 brush 内部出生能自行脱困 | --test-stuck |
 | 11 | 乱按压力 | 6000 tick 乱按，最长连续实心 ≤ 2 | --test-soak |
 | 12 | 平台边缘 | 落到边缘后仍能继续走 | --test-edge |
@@ -327,8 +327,9 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、co
   才转正常 delta；客户端重置历史、tick = 快照 tick + 7（3 传输余量 + 4 lead）后预跑。
 - 其他玩家（§7.1）：SnapshotInterpolator 存最近 32 帧（0.5 s），`sample(tick, frac)`
   在相邻两帧间插值 pos/vel；超出范围夹到最近帧、不外推；客户端每收一份快照就 push。
-- 传输：LoopbackTransport 用于确定性闸门；UdpTransport（非阻塞 Winsock，客户端 connect_peer、
-  服务端 recv_from→adopt_peer）用于真实局域网；一个对象一个 peer。
+- 传输：LoopbackTransport 用于确定性闸门；UdpTransport 是一个**已连接**的端点（非阻塞 Winsock，
+  只认 connect_peer 的对端），服务端的多 peer 由 UdpPeerHub 按源地址 demux 后各自建 wrapper。
+  没有"服务端 recv_from→adopt_peer"这条路径了（2026-10-23 删除：除了测试没有调用者）。
 - **源地址校验（AUD-26，S60）**：客户端以前把源地址丢掉，同网段任何人都能往它的临时端口注入
   快照/命令。现在 `connect_peer` 用 inet_pton/inet_ntop 规范化地址，`recv` 只接受
   (host, port) 完全相同的那一个，其余丢弃并计数（`rejected()`），并且继续排空队列
@@ -429,8 +430,9 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、co
   remove_client false；桥接层跳过未激活槽位（否则 host 会看到没加入的幽灵）。
 - **槽位释放（AUD-27，S60）**：MatchHost 的槽位以前只在握手中断时释放，正常离开后没人还，
   2 槽房两个人各进一次就永久 RoomFull。现在 `add_client(..., const ClientId*)` 记住 id，
-  `remove_client` 把它放进 `m_departed`，网关每 tick `drain_departed` 后调
-  `MatchHost::release`（server 不在 step 里回调 match，避免两个状态机互踩）。
+  `NetServer::set_departure_handler(fn)` 在 `remove_client` 时把 id 交给**准入它的人**去释放
+  （桥和 net_loop 都装同一条：`MatchHost::release`）。为什么用回调而不是队列：队列要求每个调用方
+  都记得 drain，net_loop 第一天就忘了，那类泄漏只能靠纪律防；回调装一次就不会漏。
   判据：`[slots] first 1 full 1 reported 1 freed 1 cycles 3/1 anonymous 1`。
 - 远端朝向：PlayerState.yaw 由 pmove 写入；PlayerSnap 的 kFieldYaw 独立字段组；协议版本 **6**
   （R9 起带 wall_normal/vault_dir/vault_rise/slow_ticks；v5 起带 slide/dash/vault 三个按下沿、

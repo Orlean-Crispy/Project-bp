@@ -2127,3 +2127,35 @@ AUD-20/26/27 在 M6 前清（都影响"两个人真打一局"）。
 
 拍 D1（穿透模型）/ D2（护甲 66% 与再生）/ D3（movement.toml 热重载）→ 签 M6 契约 →
 W1 `sim/data/weapons.toml`（待建）+ WeaponDef。射击功能本身一行没写，不要把它算成"M6 已完成"。
+
+## S61 · 2026-10-23 · 开 M6 前的代码体检（去冗余 + 架构）
+
+### 1. 做了什么
+
+- **测试去重与拆分**：删掉 `--test-net` 里的 `[snapfields]`（和 `--test-snapshot` 重复）；
+  `tests_net.cpp` 81 KB → 拆成 `tests_net`（会话）/ `tests_transport`（UDP+分片）/ `tests_lobby`（准入+票据+组局），
+  全部 ≤ 56 KB；5 份重复的 `poll` lambda 收成一个 `wait_for`。
+- **槽位释放改成回调**：`drain_departed` 队列要求每个调用方都记得 drain，`net_loop` 第一天就漏了；
+  改成 `set_departure_handler`，桥与 net_loop 各装一次，漏不掉。网关在 `abort_host` 里先清 handler。
+- **补 tick 与加入共用一段循环**：`advance_to_clock()`；`kJoinSlack` 从两处局部常量收成一处。
+- **收紧 API**：`UdpTransport` 删掉没有生产调用者的 `recv_from/adopt_peer`（只剩"已连接端点"一个职责）；
+  `FragmentedTransport` 删掉没人读的 `kMaxDatagramBytes`；`ClientId` 移进 `sim/net/client_id.h`
+  （`session.h` 不再为了一个 id 去 include 票据格式）。
+- **让诊断量有读者**：30% 丢包闸门现在断言"确实丢了包"（`dropped 1205`）；真实链路分片闸门断言
+  `dropped_packets()==0`（`abandon 1` 表示干净链路上没有丢弃半包）。原来这两个计数器写了没人看。
+- **首帧相机**：`load_map` 末尾先 `remember_previous()`，插值从出生点开始，不再从世界原点滑入。
+
+### 2. 判据
+
+`tools\smoke.ps1`：19 项 + bench 全绿；`[30% loss] … dropped 1205`；`[frag] … abandon 1`；
+`tests_*.cpp` 单文件最大 56 KB（原 81 KB）；`python tools\doc_check.py` 0 fail。
+
+### 3. 失败与修正
+
+1. 拆分后 `tests_lobby.cpp` 少了 `ports.h/session.h/transport.h`，-Werror 一次报出全部 15 个未声明符号。
+2. 把 UDP 闸门改成"双端 connect"后忘了删 `from_host/from_port`，编译期报未使用变量才想起来。
+3. `[frag] real-link` 的 printf 里一度写成 `ten_bytes.size()`（变量其实叫 `bytes`），编译立刻抓住。
+
+### 4. 下一步
+
+拍 D1/D2/D3 → 签 M6 契约 → W1 `weapons.toml`（待建）。射击功能仍然一行没写。

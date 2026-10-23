@@ -57,6 +57,9 @@ int run_server(const Options& opt) {
     }
     // A1: the TCP control plane owns admission; UDP only carries the session.
     sim::MatchHost matcher;
+    // AUD-27: same wiring as the bridge - a departed link frees its room slot, or
+    // the second join against a two-slot room is refused forever.
+    server.set_departure_handler([&matcher](const sim::ClientId& id) { matcher.release(id); });
     if (!matcher.start(opt.port, static_cast<uint8_t>(opt.players), opt.map, 7u, 0, error)) {
         std::fprintf(stderr, "signal listen: %s\n", error.c_str());
         return 1;

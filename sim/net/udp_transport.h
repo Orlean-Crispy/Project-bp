@@ -19,11 +19,9 @@ public:
 
     bool open(uint16_t local_port, std::string& error);
     bool connect_peer(const std::string& host, uint16_t port, std::string& error);
-    bool adopt_peer(const std::string& host, uint16_t port, std::string& error);
 
     void send(const std::vector<uint8_t>& data) override;
     bool recv(std::vector<uint8_t>& out) override;
-    bool recv_from(std::vector<uint8_t>& out, std::string& host, uint16_t& port);
     void advance(uint32_t tick) override { (void)tick; }
 
     bool valid() const { return m_socket.valid(); }

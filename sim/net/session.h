@@ -3,16 +3,17 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <functional>
 #include <string>
 #include <vector>
 
 #include "sim/core/world.h"
 #include "sim/game/hitbox.h"
+#include "sim/net/client_id.h"
 #include "sim/net/configstring.h"
 #include "sim/net/interp.h"
 #include "sim/net/reliable.h"
 #include "sim/net/snapshot.h"
-#include "sim/net/ticket.h"
 #include "sim/net/transport.h"
 
 namespace sim {
@@ -88,9 +89,13 @@ public:
                    ReliableTransport* reliable = nullptr, const ClientId* who = nullptr);
     void set_configstring(std::vector<uint8_t> blob);
     void remove_client(int link_index);
-    // Moves the ids of every link removed since the last call into out and
-    // returns how many. Empty is the common case and allocates nothing.
-    int drain_departed(std::vector<ClientId>& out);
+    // AUD-27: the room slot belongs to whoever admitted the client, so the server
+    // only reports the departure. A queue nobody drains eventually leaks a slot
+    // (net_loop forgot to drain it on day one); a handler cannot be forgotten.
+    // Called from remove_client(); it must not call back into the server.
+    void set_departure_handler(std::function<void(const ClientId&)> handler) {
+        m_on_departure = std::move(handler);
+    }
     void receive();
     void step();
     void send();
@@ -223,7 +228,7 @@ private:
     int m_accepted_cmds = 0;
     int m_timed_out = 0;
     uint32_t m_next_join_id = 1;
-    std::vector<ClientId> m_departed;
+    std::function<void(const ClientId&)> m_on_departure;
     std::vector<HitboxHistory> m_hitboxes;
     std::vector<std::vector<uint8_t>> m_config_chunks;
 };
@@ -339,8 +344,12 @@ private:
 
     void apply_snapshot(const Snapshot& snap);
     void apply_full_state(const Snapshot& snap);
-    // Re-anchors the tick axis ahead of server_tick and fills the skipped ticks
-    // with empty input. Used only when the client fell behind (AUD-20).
+    // Steps empty-input ticks until the local tick reaches the command tick,
+    // recording each in the history and the hitbox ring. A join and a catch-up
+    // must land on exactly the same axis, so they share this one loop.
+    void advance_to_clock();
+    // Re-anchors the tick axis ahead of server_tick and calls advance_to_clock().
+    // Used only when the client fell behind (AUD-20).
     void catch_up(uint32_t server_tick);
 
     Transport* m_tx = nullptr;

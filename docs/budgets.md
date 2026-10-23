@@ -76,7 +76,7 @@ static_assert(kFlagsAll != 0xFFFF, "flags 已满，必须扩到 uint32");
 | 资源 | 值 | 说明 |
 |---|---|---|
 | smoke 闸门数 | **19** | 加一项必须同步：`STATE §3`、`budgets`（本行）、`AGENTS.md`、`docs/AGENTS.md` |
-| `tests_*.cpp` 体量 | 约 135 KB | 单文件 > 70 KB 时按主题拆分（`tests_net.cpp` 已 71 KB） |
+| `tests_*.cpp` 体量 | 单文件 ≤ 70 KB | 2026-10-23 把 `tests_net.cpp`（81 KB）按主题拆成 transport / lobby / net 三份 |
 | 文档体积 | — | `PROGRESS` ≤150 KB / 单文件；`STATE` ≤120 行；`DEBT` ≤400 行 |
 | 会话读入 | 60 KB | 超了 = 任务该切，不是该硬读 |
 

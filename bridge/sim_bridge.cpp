@@ -90,6 +90,9 @@ public:
         m_world.players.clear();
         m_world.players.push_back(player);
         m_world.tick = 0;
+        // The interpolation history starts at the spawn, not at (0,0,0): before
+        // the first step the camera would otherwise blend in from the world origin.
+        remember_previous();
 
         build_mesh();
         return true;

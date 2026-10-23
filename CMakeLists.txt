@@ -56,7 +56,15 @@ endif()
 # of "the header says 5, the build script still says 4".
 target_compile_definitions(sim PUBLIC BP_BUILD_ID="${BP_BUILD_ID}")
 
-add_executable(headless_sim tools/headless_sim/main.cpp tools/headless_sim/tests_net.cpp tools/headless_sim/tests_demo.cpp tools/headless_sim/tests_proto.cpp tools/headless_sim/test_util.cpp tools/headless_sim/tests_move.cpp)
+add_executable(headless_sim
+  tools/headless_sim/main.cpp
+  tools/headless_sim/tests_net.cpp
+  tools/headless_sim/tests_transport.cpp
+  tools/headless_sim/tests_lobby.cpp
+  tools/headless_sim/tests_proto.cpp
+  tools/headless_sim/tests_demo.cpp
+  tools/headless_sim/tests_move.cpp
+  tools/headless_sim/test_util.cpp)
 target_link_libraries(headless_sim PRIVATE sim)
 
 add_executable(move_metrics tools/move_metrics/main.cpp)

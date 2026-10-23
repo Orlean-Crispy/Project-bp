@@ -22,10 +22,6 @@ bool UdpTransport::connect_peer(const std::string& host, uint16_t port, std::str
     return true;
 }
 
-bool UdpTransport::adopt_peer(const std::string& host, uint16_t port, std::string& error) {
-    return connect_peer(host, port, error);
-}
-
 void UdpTransport::send(const std::vector<uint8_t>& data) {
     if (!m_has_peer) return;
     m_socket.send_to(data.data(), data.size(), m_peer_host, m_peer_port);
@@ -44,10 +40,6 @@ bool UdpTransport::recv(std::vector<uint8_t>& out) {
         ++m_rejected;
     }
     return false;
-}
-
-bool UdpTransport::recv_from(std::vector<uint8_t>& out, std::string& host, uint16_t& port) {
-    return m_socket.recv_from(out, host, port);
 }
 
 }  // namespace sim
