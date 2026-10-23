@@ -11,13 +11,14 @@
 | 层 | 做什么 | 现在状态 |
 |---|---|---|
 | 1. 版本历史 | 每个功能一个 commit；里程碑打 tag | 已有 28 个会话的提交 |
-| 2. 本地离线副本 | `git bundle` 全历史单文件，放到另一块盘/U 盘 | 已生成 `G:\BreakpointBackups\breakpoint-20261019.bundle`（314 KB，verify 通过） |
+| 2. 本地离线副本 | `git bundle` 全历史单文件，放到另一块盘/U 盘 | 每次收工跑 `tools\backup.ps1`；最新一版在 `G:\BreakpointBackups\`（verify 通过） |
 | 3. 异地副本 | GitHub 私有仓库，或云盘同步 bundle | ✅ 已推送 main + tag |
 
 ## GitHub
 
-- 仓库：<https://github.com/Orlean-Crispy/unknow>（私有）。
-- 本机 remote：`ssh://git@ssh.github.com:443/Orlean-Crispy/unknow.git`
+- 仓库：<https://github.com/Orlean-Crispy/Project-bp>（私有）。**2026-10-23 由 `unknow` 改名**，
+  GitHub 仍会重定向旧地址，但 push 会打 "This repository moved" 警告；本机 remote 已改成新名。
+- 本机 remote：`ssh://git@ssh.github.com:443/Orlean-Crispy/Project-bp.git`
   （SSH 走 443，绕过本机指向 7897 的 HTTPS 代理）。
 - 首次推送时远端已有 `Initial commit`（LICENSE + README），本地用
   `git merge --allow-unrelated-histories` 合并；README 保留本项目的版本。
