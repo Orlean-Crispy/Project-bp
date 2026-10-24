@@ -207,6 +207,16 @@ void player_hull(const PlayerState& player, const MovementParams& params, Vec3& 
     maxs = Vec3(params.player_radius, params.player_radius, height);
 }
 
+Vec3 view_forward(float yaw, float pitch) {
+    const float cp = std::cos(pitch);
+    return Vec3(std::cos(yaw) * cp, std::sin(yaw) * cp, std::sin(pitch));
+}
+
+Vec3 eye_position(const PlayerState& player, const MovementParams& params) {
+    const float height = player.crouched ? params.crouch_height : params.stand_height;
+    return Vec3(player.pos.x, player.pos.y, player.pos.z + height * kEyeHeightScale);
+}
+
 void pmove(PlayerState& player, const MoveInput& input, const CollisionWorld& world,
            const MovementParams& params, float dt) {
     // A NaN in one replicated command would poison pos/vel and with them the whole

@@ -2391,3 +2391,38 @@ smoke 20 项 + bench ALL GREEN；`sources ok: 28`；`doc_check` 0 fail。
 - 每层目前一个系数（来自武器）；按材质分系数时，在循环里再乘一个 per-brush 数即可，
   调用点与 `ShotResult` 都不用动。
 - 下一步 **M6.6 三段伤害**（部位倍率 × 距离衰减；同一定下“谁提供射线方向”与倍率的唯一归属）；做完停下。
+## S69 · 2026-10-24 · 射击链路贯通（M6.6/M6.7 框架，协议 v7）
+
+### 1. 做了什么
+
+- **俯仰**：`MoveInput.pitch`，命令包加 f32 → **协议 v7**。`view_forward(yaw, pitch)` 与
+  `eye_position()` 成为“眼睛在哪、朝哪看”的唯一实现；桥的 `get_eye_height()` 改用同一个
+  `kEyeHeightScale`。没有 pitch，子弹永远只能平着飞。
+- **武器身份**：`WeaponDef.slot` 是显式字段（0..63、唯一），不是文件下标——在文件中间插一把枪
+  不会改别人的 id。`find_by_slot` + `equip_weapon`。
+- **运行时状态**：`PlayerState` 加 `weapon_id / ammo / reserve / fire_cooldown / reload_left`，
+  全部进 `state_hash` 与 Weapon 快照组（教训 16）。满编快照 833 → **873 B**（227 B 余量）。
+- **`sim/game/shoot.*`**：`update_weapon` 先走计时器再开火；服务器与客户端都调它（弹药/冷却一致），
+  但客户端世界里没有受害者，所以伤害仍只有服务器算（A4）。开火 = `eye_position` +
+  `view_forward` + `rewind_frame` + `hitscan_penetrating` + `hit_zone_at` + `damage_at_range`
+  → `apply_damage`。射速 `round(60×64/rpm)`（600 rpm → 6 tick），换弹 `round(秒×64)`。
+- **第 22 项闸门 `--test-damage`**：胸 25、护甲多吃两发、爆头 125 一枪、墙全挡、换弹填满。
+
+### 2. 判据
+
+`[damage] body 4 rounds armour 10 head 125 wall hits 0 reload 30`；smoke 22 项 + bench ALL GREEN；
+`--test-snapshot`：`protocol v7 … 873 B, 86 B/player`；`[fireflags] 92/92 52/52 144/144` 仍绿。
+
+### 3. 失败与修正（以及一个必须记下的发现）
+
+- 眼高 0.9×身高 = 1.278 m，而头段起点是 0.82×身高 = 1.164 m → **平射同身高对手必中头**。
+  这不是 bug 而是参数冲突，但会让 TTK 直接崩（×5 一枪）。记成 `BACKLOG DESIGN-09`，
+  等拍板（抬头段起点 / 压眼高 / 接受）；闸门里打胸时显式压了 -0.05 rad。
+- 服务器还没有测 RTT，回溯只能用 1 tick（`rewind_ticks(0)`）。记成 `DEBT-23`，
+  不在本轮顺手造一个假的延迟估计。
+- 编译期两次小错：`near()` 未使用（-Werror）、`tests_shoot.cpp` 少 include；都按规矩修，没降警告。
+
+### 4. 边界 / 下一步
+
+- 半自动 vs 自动、开镜扩散、后坐力、命中提示、死亡重生都还没有；**M6.8 的两端 HUD 断言**是下一件。
+- 现在能从扣扳机一路走到“对方掉血”，但画面上还看不出来——这是下一步要补的。

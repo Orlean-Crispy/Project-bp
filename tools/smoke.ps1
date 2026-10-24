@@ -50,6 +50,12 @@ try {
     & $exe --test-hitscan
     if ($LASTEXITCODE -ne 0) { throw 'hitscan test failed' }
 
+    Write-Host '== damage ==' -ForegroundColor Cyan
+    # End to end: the trigger spends a round, the round finds a hull, and the
+    # hull loses health. Numbers come from the data files, not from this test.
+    & $exe --test-damage
+    if ($LASTEXITCODE -ne 0) { throw 'damage test failed' }
+
     Write-Host '== protocol wire ==' -ForegroundColor Cyan
     # The snapshot format is the one thing both sides must agree on byte for byte;
     # it gets its own step so a mask that narrows again fails here, not in a match.

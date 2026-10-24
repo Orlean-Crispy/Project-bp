@@ -35,6 +35,7 @@ bool load_world(const Options& opt, World& world, std::string& error) {
     // Spawn in the open lane (y = 5), clear of the 0.1 m test wall at x = 0.
     player.pos = sim::Vec3(-5.0f, 5.0f, 0.01f);
     player.impulses = world.params.max_impulses;
+    if (const sim::WeaponDef* def = world.weapons.find_by_slot(0)) sim::equip_weapon(player, *def);
     world.players.push_back(player);
     return true;
 }

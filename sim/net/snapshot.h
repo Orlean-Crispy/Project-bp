@@ -48,7 +48,9 @@ struct PlayerSnap {
     // until M6 fills them, and a zero group costs one mask bit per snapshot.
     uint8_t weapon_id = 0;
     uint16_t ammo = 0;
+    uint16_t reserve = 0;
     uint16_t fire_cooldown = 0;
+    uint16_t reload_left = 0;
 };
 
 struct Snapshot {

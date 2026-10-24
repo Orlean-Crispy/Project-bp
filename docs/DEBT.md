@@ -13,7 +13,7 @@
 - **lead**：M6 / M7 / 顺手，只表示排期，不是状态。状态与排期分两列，是为了能统计。
 - **verify**：一条命令 + 期望输出。**没有 verify 的条目不许进 open**（想法去 BACKLOG）。
 
-**当前计数**：未解决 **32** 条（P1 3 / P2 20 / P3 9）；关闭记录 **7** 条；设计待定与功能缺口见 BACKLOG。
+**当前计数**：未解决 **33** 条（P1 3 / P2 21 / P3 9）；关闭记录 **7** 条；设计待定与功能缺口见 BACKLOG。
 改表就要改这个数字——`tools/doc_check.py` 会核对它和实际行数。
 
 ---
@@ -26,6 +26,7 @@
 | AUD-22 | P2 | 可靠流 `seq <= ack` / `seq > m_next` 不是 u16 回绕安全的；第 65536 个包后静默死 | reliable.cpp:67,99 | 推 70000 个 rel 包仍完整交付（新闸门） | open | M6 |
 | AUD-24 | P2 | admission 的 approve 队列无 TTL/上限：走过 TCP 但不发 HELLO 的 id 永久留在 deque | admission.h:17-29 | 过期（120 s 或容量上限）后 `admission.pending()==0` | open | M6 |
 | AUD-25 | P3 | `ReliableTransport` 的 now_ms 只在 advance 更新，recv 在 advance 之前时 RTT 采样少一 tick | reliable_transport.cpp:46,56-60 | loopback RTT 采样等于 1-2 tick | open | 顺手 |
+| DEBT-23 | P2 | 服务器的回溯固定用 1 tick（`rewind_ticks(0)`）：没有测 RTT，§9.1 的公式只算了插值那一项。30 ms 局域网内偏差 ≤2 tick，跨网段会明显偏 | session.cpp:NetServer::step | 服务器测单程延迟并传给 `update_weapon`；60 ms 链路上 rewind > 1.5 tick 且射击仍落在旧位置 | open | M6 |
 | DEBT-01 | P2 | 包头 `ack_bits` 恒 0、`Snapshot::acked_cmd` 解出无人读：第二套 ack 的残骸 | netchan.h；snapshot.cpp | 要么删字段（需再升协议）要么真填，二者都要闸门 | open | M6 |
 | DEBT-20 | P2 | 真实链路的可靠流没接：bridge 只 `set_configstring`，从不 `add_client(..., rel)`，所以 configstring 从没真正下发（docs 曾写"已走可靠流"，本轮改正） | net_gateway.cpp:70,186 | 真实链路 `[config] chunks>=1` 且 `configstring 已下发` 出现在 host 日志 | open | M6 |
 
@@ -95,7 +96,7 @@
 | 只做局域网，不做 NAT 穿透/中继 | v1.0 目标锁死 LAN | 见计划书 §7.5 |
 | `ack_bits` 恒 0 | 累积 ack 足够 v0.1 | 与 DEBT-01 同批 |
 | 伤害不在客户端预测（A4） | 预测伤害会导致"打中了又没了" | 需要服务器结算 + 客户端校正表现 |
-| 快照不做压缩 | 10 人满编 833 B，余量够；加密/压缩等真有需求再说 | 见 documents/budgets |
+| 快照不做压缩 | 10 人满编 873 B，余量够；加密/压缩等真有需求再说 | 见 documents/budgets |
 
 ---
 

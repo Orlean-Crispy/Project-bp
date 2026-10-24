@@ -11,6 +11,9 @@ namespace sim {
 // waiting for a reader. Recoil joins at M6.10, ADS and tracers at M6.11.
 struct WeaponDef {
     std::string id;  // section name: [weapon.<id>]
+    // Stable numeric id that goes on the wire and into save/demo data. Reordering
+    // the file must not renumber anybody's gun, so it is explicit, not the index.
+    int slot = 0;
 
     // Damage (plan 6.2, the v0.2 addition): linear from damage_near down to
     // damage_far between falloff_start and falloff_end metres.
@@ -36,6 +39,7 @@ struct WeaponParams {
     std::vector<WeaponDef> weapons;  // file order; ids are unique
 
     const WeaponDef* find(const std::string& id) const;
+    const WeaponDef* find_by_slot(int slot) const;
 
     // FNV-1a over the whole table, ids and order included. Kept separate from
     // the movement hash: tuning a gun must not look like a movement change.
@@ -47,6 +51,20 @@ struct WeaponParams {
 // rejected here, at the one place the file is read.
 bool load_weapon_params(const std::string& path, WeaponParams& out,
                         std::vector<std::string>& warnings, std::string& error);
+
+// Ticks between shots and ticks to reload, from the data. Integer on purpose:
+// the fire cadence is part of the simulation, so it cannot depend on rounding.
+int fire_interval_ticks(const WeaponDef& def);
+int reload_ticks(const WeaponDef& def);
+
+// Damage before zone and penetration, linearly between the two falloff
+// distances. Float only for the interpolation; the caller rounds once.
+float damage_at_range(const WeaponDef& def, float distance);
+
+struct PlayerState;
+// Gives a player this gun: id, a full magazine and a full reserve. Called when a
+// slot joins and when the default kit is handed out.
+void equip_weapon(PlayerState& player, const WeaponDef& def);
 
 // weapons.toml sits next to movement.toml. A missing file leaves the table empty
 // instead of failing: the movement gates and move_metrics run from data

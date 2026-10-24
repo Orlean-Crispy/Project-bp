@@ -95,6 +95,9 @@ public:
             if (sim::entity_origin_metres(entity, spawn)) player.pos = spawn;
         }
 
+        if (const sim::WeaponDef* def = m_world.weapons.find_by_slot(0)) {
+            sim::equip_weapon(player, *def);
+        }
         m_world.players.clear();
         m_world.players.push_back(player);
         m_world.tick = 0;
@@ -125,11 +128,12 @@ public:
     // one positional bool per action. Adding fire/reload/aim would otherwise have
     // grown this signature to thirteen arguments, and their order is invisible at
     // the GDScript call site.
-    void set_input(float forward, float right, float yaw, int buttons) {
+    void set_input(float forward, float right, float yaw, float pitch, int buttons) {
         m_input = sim::input_from_buttons(static_cast<uint16_t>(buttons));
         m_input.forward = forward;
         m_input.right = right;
         m_input.yaw = yaw;
+        m_input.pitch = pitch;
     }
 
     // Action name -> button bit, for the GDScript side to build the mask from the
@@ -332,7 +336,7 @@ protected:
         ClassDB::bind_method(D_METHOD("load_map", "map_path", "data_path"), &SimWorld::load_map);
         ClassDB::bind_method(D_METHOD("load_bindings", "path"), &SimWorld::load_bindings);
         ClassDB::bind_method(D_METHOD("get_bindings"), &SimWorld::get_bindings);
-        ClassDB::bind_method(D_METHOD("set_input", "forward", "right", "yaw", "buttons"),
+        ClassDB::bind_method(D_METHOD("set_input", "forward", "right", "yaw", "pitch", "buttons"),
                              &SimWorld::set_input);
         ClassDB::bind_method(D_METHOD("get_action_bits"), &SimWorld::get_action_bits);
         ClassDB::bind_method(D_METHOD("step"), &SimWorld::step);
@@ -374,8 +378,9 @@ protected:
 private:
     // 90% of the hull height, so crouching lowers the camera with the body.
     float eye_height_for(bool crouched) const {
+        // One source for "where the eye is" (pmove.h): shots start there too.
         const float height = crouched ? m_world.params.crouch_height : m_world.params.stand_height;
-        return height * 0.9f;
+        return height * sim::kEyeHeightScale;
     }
 
     // Called before every step: the tick that is about to be simulated becomes

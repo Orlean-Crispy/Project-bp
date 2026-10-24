@@ -19,6 +19,14 @@ struct DemoPlayerInit {
     float slow_factor = 1.0f;
     bool crouched = false;
     int impulses = 4;
+    // M6.7: the gun and its timers are part of the initial state. A replay that
+    // starts with an empty magazine (or a full one when the demo was recorded
+    // empty) diverges on tick 0 and blames the wrong thing.
+    uint8_t weapon_id = 0;
+    uint16_t ammo = 0;
+    uint16_t reserve = 0;
+    uint16_t fire_cooldown = 0;
+    uint16_t reload_left = 0;
 };
 
 struct DemoHeader {

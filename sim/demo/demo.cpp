@@ -128,7 +128,9 @@ bool DemoWriter::close(std::string& error) {
         ok = ok && put_f32(f, p.speed_coefficient) && put_f32(f, p.slow_factor);
         ok = ok && put_u8(f, p.crouched ? 1 : 0);
         ok = ok && put_u8(f, static_cast<uint8_t>(p.impulses));
-        ok = ok && put_u16(f, 0);
+        ok = ok && put_u8(f, p.weapon_id);
+        ok = ok && put_u16(f, p.ammo) && put_u16(f, p.reserve);
+        ok = ok && put_u16(f, p.fire_cooldown) && put_u16(f, p.reload_left);
     }
     ok = ok && put_u32(f, m_header.tick_count);
 
@@ -201,7 +203,11 @@ bool DemoReader::open(const std::string& path, DemoHeader& header, std::string& 
         bool ok = get_f32(f, p.pos.x) && get_f32(f, p.pos.y) && get_f32(f, p.pos.z);
         ok = ok && get_f32(f, p.vel.x) && get_f32(f, p.vel.y) && get_f32(f, p.vel.z);
         ok = ok && get_f32(f, p.speed_coefficient) && get_f32(f, p.slow_factor);
-        ok = ok && get_u8(f, crouched) && get_u8(f, impulses) && get_u16(f, pad);
+        ok = ok && get_u8(f, crouched) && get_u8(f, impulses);
+        ok = ok && get_u8(f, p.weapon_id);
+        ok = ok && get_u16(f, p.ammo) && get_u16(f, p.reserve);
+        ok = ok && get_u16(f, p.fire_cooldown) && get_u16(f, p.reload_left);
+        (void)pad;
         if (!ok) {
             std::fclose(f);
             error = path + ": truncated player table";

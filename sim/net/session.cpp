@@ -1,6 +1,8 @@
 #include "sim/net/session.h"
 
 #include "sim/core/tick.h"
+#include "sim/game/rewind.h"
+#include "sim/game/shoot.h"
 #include "sim/input/buttons.h"
 #include "sim/net/bytes.h"
 #include "sim/net/netchan.h"
@@ -38,6 +40,7 @@ std::vector<uint8_t> encode_commands(const std::deque<InputCmd>& cmds) {
         w.f32(cmd.input.forward);
         w.f32(cmd.input.right);
         w.f32(cmd.input.yaw);
+        w.f32(cmd.input.pitch);
         w.u16(buttons_from_input(cmd.input));
     }
     return w.data();
@@ -52,6 +55,7 @@ bool decode_commands(const uint8_t* data, size_t size, std::vector<InputCmd>& ou
         cmd.input.forward = r.f32();
         cmd.input.right = r.f32();
         cmd.input.yaw = r.f32();
+        cmd.input.pitch = r.f32();
         const uint16_t buttons = r.u16();
         if (!r.ok()) return false;
         const MoveInput decoded = input_from_buttons(buttons);
@@ -81,7 +85,8 @@ bool same_state(const PlayerSnap& a, const PlayerState& b) {
            a.dash_cooldown == bs.dash_cooldown && a.slow_ticks == bs.slow_ticks &&
            a.recharge == bs.recharge && a.speed_coefficient == bs.speed_coefficient &&
            a.hp == bs.hp && a.armor == bs.armor && a.weapon_id == bs.weapon_id &&
-           a.ammo == bs.ammo && a.fire_cooldown == bs.fire_cooldown &&
+           a.ammo == bs.ammo && a.reserve == bs.reserve &&
+           a.fire_cooldown == bs.fire_cooldown && a.reload_left == bs.reload_left &&
            a.wall_normal == bs.wall_normal &&
            a.vault_dir == bs.vault_dir && a.vault_rise == bs.vault_rise;
 }
@@ -166,6 +171,7 @@ bool NetServer::init(const std::string& map_path, const std::string& params_path
         p.pos = Vec3(-16.0f + static_cast<float>(i) * 2.0f, 0.0f, 0.05f);
         p.impulses = m_world.params.max_impulses;
         p.active = false;  // reserved until a link joins this slot
+        if (const WeaponDef* def = m_world.weapons.find_by_slot(0)) equip_weapon(p, *def);
         m_world.players.push_back(p);
     }
     m_world.tick = 0;
@@ -341,6 +347,15 @@ void NetServer::step() {
         }
     }
     m_world.step(m_inputs, kDt);
+    // M6.7: weapons advance on the commands this tick executed. This runs before
+    // the new hitbox frame is recorded, because a shot rewinds into older frames.
+    for (std::size_t i = 0; i < m_world.players.size(); ++i) {
+        const WeaponDef* def = m_world.weapons.find_by_slot(m_world.players[i].weapon_id);
+        if (def == nullptr) continue;
+        update_weapon(m_world.players[i], static_cast<int>(i), m_inputs[i], *def, m_world,
+                      m_hitboxes.data(), static_cast<int>(m_hitboxes.size()),
+                      m_world.tick - 1, rewind_ticks(0.0f), nullptr);
+    }
     for (std::size_t i = 0; i < m_world.players.size() && i < m_hitboxes.size(); ++i) {
         m_hitboxes[i].record(m_world.players[i], m_world.params, m_world.tick);
     }
@@ -428,6 +443,7 @@ bool NetClient::init(Transport* outgoing, Transport* incoming, int player_index,
     PlayerState p;
     p.pos = Vec3(-16.0f + static_cast<float>(player_index) * 2.0f, 0.0f, 0.05f);
     p.impulses = m_local.params.max_impulses;
+    if (const WeaponDef* def = m_local.weapons.find_by_slot(0)) equip_weapon(p, *def);
     m_local.players.push_back(p);
     m_local.tick = 0;
     m_recent.init();
@@ -496,6 +512,7 @@ void NetClient::advance_to_clock() {
     while (m_local.tick < m_clock.command_tick()) {
         const MoveInput none;
         m_local.step_single(none, kDt, m_events);
+        advance_weapon(none);
         HistoryEntry entry;
         entry.tick = m_local.tick;
         entry.state = m_local.players[0];
@@ -540,6 +557,7 @@ void NetClient::step_local(EventQueue* events) {
     // Prediction uses exactly the input that was just sent, on the server's tick
     // axis; the clock advances with the world so the two never drift apart.
     m_local.step_single(m_last_input, kDt, m_events);
+    advance_weapon(m_last_input);
     m_clock.advance();
     HistoryEntry entry;
     entry.tick = m_local.tick;
@@ -670,6 +688,16 @@ void NetClient::receive() {
     }
 }
 
+void NetClient::advance_weapon(const MoveInput& input) {
+    if (m_local.players.empty()) return;
+    const WeaponDef* def = m_local.weapons.find_by_slot(m_local.players[0].weapon_id);
+    if (def == nullptr) return;
+    // The client has no victim in its predicted world, so this only keeps ammo
+    // and timers in step with the server. Damage stays server-authoritative.
+    update_weapon(m_local.players[0], 0, input, *def, m_local, &m_hitbox, 1,
+                  m_local.tick - 1, rewind_ticks(0.0f), nullptr);
+}
+
 void NetClient::apply_snapshot(const Snapshot& snap) {
     const PlayerSnap& auth = snap.players[static_cast<size_t>(m_player)];
 
@@ -714,6 +742,7 @@ void NetClient::apply_snapshot(const Snapshot& snap) {
 
     for (size_t i = index + 1; i < m_history.size(); ++i) {
         m_local.step_single(m_history[i].input, kDt, m_events);
+        advance_weapon(m_history[i].input);
         m_history[i].state = m_local.players[0];
         m_hitbox.record(m_local.players[0], m_local.params, m_local.tick);
     }

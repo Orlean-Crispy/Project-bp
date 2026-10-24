@@ -22,6 +22,7 @@
 # 50 heavy armour (0.60 s), which is the TTK floor the health gate pins.
 
 [weapon.rifle]
+slot                  = 0      # stable id: goes into snapshots and demos
 damage_near           = 25.0
 damage_far            = 18.0
 falloff_start         = 25.0   # metres
@@ -37,6 +38,7 @@ penetration_damage_scale = 0.7
 # Pistol: slower, harder hits, no penetration. It exists so M6.5 can prove a
 # weapon with no penetration is stopped while the rifle passes.
 [weapon.pistol]
+slot                  = 1
 damage_near           = 34.0
 damage_far            = 25.0
 falloff_start         = 12.0

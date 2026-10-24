@@ -23,6 +23,9 @@ struct MoveInput {
     bool fire = false;
     bool reload = false;
     bool ads = false;
+    // Look pitch in radians, +Z up. Yaw alone can aim around, not up: without
+    // this a shot can never hit anything above or below the horizon.
+    float pitch = 0.0f;
 };
 
 // Timed abilities are counted in whole ticks, never in accumulated float time
@@ -62,6 +65,13 @@ struct PlayerState {
     bool firing = false;
     bool reloading = false;
     bool ads = false;
+    // M6.7: what is held and what is left. Integer ticks and integer rounds: the
+    // cadence is part of the simulation, so it must not depend on frame timing.
+    uint8_t weapon_id = 0;  // WeaponDef::slot
+    int ammo = 0;
+    int reserve = 0;
+    int fire_cooldown = 0;  // ticks until the next shot
+    int reload_left = 0;    // ticks until the magazine refills
     Vec3 vault_dir;      // horizontal direction of the vault in progress
     float vault_rise = 0.0f;  // metres to climb during the vault
 
@@ -78,6 +88,17 @@ struct PlayerState {
     // M5 -> M6 audit required the wire capacity to exist before that work starts.
     PlayerVitals vitals;
 };
+
+// The camera sits at this fraction of the hull height; the bridge draws from it
+// and a shot leaves from it, so the two can never disagree about where "the eye" is.
+constexpr float kEyeHeightScale = 0.9f;
+
+// Direction the player looks in, from yaw (0 = +X) and pitch (+ = up). The single
+// definition of "forward" for shots and for the camera.
+Vec3 view_forward(float yaw, float pitch);
+
+// Where a shot (or the camera) starts: the feet plus the eye height.
+Vec3 eye_position(const PlayerState& player, const MovementParams& params);
 
 // max speed = base * weapon * slow * crouch (plan section 5.10).
 float effective_max_speed(const PlayerState& player, const MovementParams& params);

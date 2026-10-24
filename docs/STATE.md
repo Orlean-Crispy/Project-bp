@@ -5,7 +5,7 @@
 > 历史过程 → `docs/PROGRESS.md`；待办 → `docs/DEBT.md`；预算 → `docs/budgets.md`；
 > 设计待定与功能缺口 → `docs/BACKLOG.md`；**这一段工作的叙事交接 → `docs/HANDOFF.md`**（不重复本文件的数字）。
 
-**更新**：2026-10-24 · S66 · 维护者：谢政霖
+**更新**：2026-10-24 · S69 · 维护者：谢政霖
 
 ---
 
@@ -13,10 +13,10 @@
 
 | 项 | 值 |
 |---|---|
-| 里程碑 | **M6 进行中**：D1–D5 已定；M6.0–M6.5 完成，按 M6.6 → M6.12 逐个推进 |
+| 里程碑 | **M6 进行中**：射击链路已贯通（M6.6/M6.7 框架）；剩 HUD 断言、死亡重生、后坐力、表现层 |
 | 契约 | `docs/contracts/M6.md`（**active**） |
-| 本阶段 | M6.5 穿透完成（地图否决 + 每层 ×0.7）；下一个是 M6.6 三段伤害 |
-| 协议版本 | **v6**（16 位 mask/flags，Vitals 已接，Weapon 预留） |
+| 本阶段 | 射击链路贯通：俯仰进命令包、弹药/换弹/射速、`[damage]` 闸门；下一个是 M6.8 HUD 断言 |
+| 协议版本 | **v7**（命令带 pitch；Weapon 组接真值并加 reserve/reload） |
 | 宿主 | Godot **4.5**（计划书目标 4.7，DEBT-15，M7 前必须有结论） |
 | 分支 | `main` · 工作区 `G:\自制游戏` · 工具链 `C:\bp-toolchain` |
 
@@ -32,18 +32,18 @@
 
 | # | ID | 一句话 |
 |---|---|---|
-| 0 | M6.6 | 三段伤害：部位倍率 × 距离衰减 → `apply_damage(zone)`；定倍率归属 + 射线方向的来源 |
-| 1 | M6.7 | 弹匣/换弹/开火冷却（Weapon 组填值） |
-| 2 | M6.8 | 伤害进快照 → HUD 真实值（关 AUD-16） |
-| 3 | M6.9 | 死亡与重生（`alive` 位、输入忽略、回出生点） |
-| 4 | M6.10 | 后坐力查表 + `punch` 增量（不进快照，A4） |
-| 5 | M6.11 | 表现层：hitmarker、伤害数字、枪口火光（最小实现） |
+| 0 | M6.8 | 伤害进快照 → 两端 HUD 断言（关 AUD-16） |
+| 1 | M6.9 | 死亡与重生（`alive` 位、输入忽略、回出生点） |
+| 2 | M6.10 | 后坐力查表 + `punch` 增量（不进快照，A4） |
+| 3 | M6.11 | 表现层：hitmarker、伤害数字、枪口火光（最小实现） |
+| 4 | M6.12 | E1–E9 回归与验收（含 TTK 扫描表） |
+| 5 | DESIGN-09 | 眼高 1.278 > 头段起点 1.164 → 平射必中头；先拍板再调 TTK |
 
 ## 3. 闸门基线（**写数字，不写"全绿"**）
 
 | 闸门 | 基线 | 采集命令 |
 |---|---|---|
-| smoke | 21 项，全过 | `tools\smoke.ps1` |
+| smoke | 22 项，全过 | `tools\smoke.ps1` |
 | 单 tick p99 / max | 2.40 / 4.20 µs（10 玩家） | `headless_sim.exe --bench 1000 --players 10` |
 | 分配 | 0 allocs/tick | 同上，输出 `allocs 0.00 / tick` |
 | 30% 丢包回滚 | 51 / 2000 tick | `--test-net` |
@@ -55,7 +55,8 @@
 | 命中判定 | 14 项全过；`[hitscan] chest 1 face 1 wide 1 edge 1 crouch 1 wall 1 range 1` | `--test-hitscan` |
 | 回溯 | `[rewind] window 6 at-6 1 current-miss 1 interp 1 clamp 1` | `--test-hitscan` |
 | 穿透 | `[penetrate] walls 2 one 1 two 2 scale 0.49 pistol 1 concrete 1 open 1` | `--test-hitscan` |
-| 协议往返 | 10 人满编 833 B；空 delta 15 B | `--test-snapshot` |
+| 射击链路 | `[damage] body 4 rounds armour 10 head 125 wall hits 0 reload 30` | `--test-damage` |
+| 协议往返 | 10 人满编 873 B（86 B/人）；空 delta 15 B | `--test-snapshot` |
 | 文档一致性 | 0 fail / 0 warn | `python tools\doc_check.py` |
 
 > 回归判定：任一项比基线差 **>10%** 或出现非 0 分配，即视为回归，先查再继续。
@@ -66,7 +67,7 @@
 |---|---|---|
 | delta mask 位 | 9 / 16 | 7 |
 | flags 位 | 7 已用（另 4 位 v6 预留）/ 16 | 5 |
-| 快照字节（10 人满编、全字段变化） | 833 / 1100 B | 267 B |
+| 快照字节（10 人满编、全字段变化） | 873 / 1100 B | 227 B |
 | sim tick | 0.0024 / 4 ms | 约 1600× |
 | allocs/tick | 0 / 0 | 硬线 |
 

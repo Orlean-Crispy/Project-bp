@@ -5,7 +5,9 @@
 #include <utility>
 
 #include "sim/core/hash.h"
+#include "sim/core/tick.h"
 #include "sim/data/config.h"
+#include "sim/move/pmove.h"
 
 namespace sim {
 namespace {
@@ -56,6 +58,7 @@ bool validate(const WeaponDef& def, std::string& error) {
     if (def.reserve_ammo < 0) return fail("reserve_ammo cannot be negative");
     if (def.reload_seconds < 0.0f) return fail("reload_seconds cannot be negative");
     if (def.penetration_count < 0) return fail("penetration_count cannot be negative");
+    if (def.slot < 0 || def.slot > 63) return fail("slot must be in 0..63");
     if (!(def.penetration_damage_scale > 0.0f) || def.penetration_damage_scale > 1.0f) {
         return fail("penetration_damage_scale must be in (0, 1]");
     }
@@ -71,11 +74,48 @@ const WeaponDef* WeaponParams::find(const std::string& id) const {
     return nullptr;
 }
 
+const WeaponDef* WeaponParams::find_by_slot(int slot) const {
+    for (const WeaponDef& def : weapons) {
+        if (def.slot == slot) return &def;
+    }
+    return nullptr;
+}
+
+int fire_interval_ticks(const WeaponDef& def) {
+    if (!(def.rpm > 0.0f)) return 1;
+    const float ticks = 60.0f * static_cast<float>(kDefaultTickRate) / def.rpm;
+    const int rounded = static_cast<int>(ticks + 0.5f);
+    return rounded > 0 ? rounded : 1;
+}
+
+int reload_ticks(const WeaponDef& def) {
+    if (!(def.reload_seconds > 0.0f)) return 0;
+    return static_cast<int>(def.reload_seconds * static_cast<float>(kDefaultTickRate) + 0.5f);
+}
+
+float damage_at_range(const WeaponDef& def, float distance) {
+    if (distance <= def.falloff_start) return def.damage_near;
+    if (distance >= def.falloff_end) return def.damage_far;
+    const float span = def.falloff_end - def.falloff_start;
+    if (!(span > 0.0f)) return def.damage_far;
+    const float t = (distance - def.falloff_start) / span;
+    return def.damage_near + (def.damage_far - def.damage_near) * t;
+}
+
+void equip_weapon(PlayerState& player, const WeaponDef& def) {
+    player.weapon_id = static_cast<uint8_t>(def.slot & 0xFF);
+    player.ammo = def.magazine;
+    player.reserve = def.reserve_ammo;
+    player.fire_cooldown = 0;
+    player.reload_left = 0;
+}
+
 uint64_t WeaponParams::hash() const {
     Hasher h;
     h.u32(static_cast<uint32_t>(weapons.size()));
     for (const WeaponDef& def : weapons) {
         h.str(def.id);
+        h.u32(static_cast<uint32_t>(def.slot));
         h.f32(def.damage_near).f32(def.damage_far);
         h.f32(def.falloff_start).f32(def.falloff_end);
         h.f32(def.rpm).f32(def.range);
@@ -100,6 +140,7 @@ bool load_weapon_params(const std::string& path, WeaponParams& out,
         const std::string prefix = std::string(kWeaponPrefix) + id + ".";
         WeaponDef def;
         def.id = id;
+        def.slot = static_cast<int>(params.weapons.size());  // file order unless the file says otherwise
 
         // A weapon is a complete definition, not a set of overrides: a missing
         // key is a mistake in the file even though the default still applies.
@@ -120,6 +161,9 @@ bool load_weapon_params(const std::string& path, WeaponParams& out,
             binder.integer(key, target);
         };
 
+        // slot is optional: without it the file order decides, but an explicit
+        // one is what keeps ids stable when somebody inserts a gun above.
+        if (table.find(prefix + "slot")) binder.integer(prefix + "slot", def.slot);
         number("damage_near", def.damage_near);
         number("damage_far", def.damage_far);
         number("falloff_start", def.falloff_start);
@@ -134,6 +178,16 @@ bool load_weapon_params(const std::string& path, WeaponParams& out,
 
         if (!validate(def, error)) return false;
         params.weapons.push_back(std::move(def));
+    }
+
+    for (std::size_t i = 0; i < params.weapons.size(); ++i) {
+        for (std::size_t j = i + 1; j < params.weapons.size(); ++j) {
+            if (params.weapons[i].slot == params.weapons[j].slot) {
+                error = "weapon " + params.weapons[i].id + " and " + params.weapons[j].id +
+                        " share slot " + std::to_string(params.weapons[i].slot);
+                return false;
+            }
+        }
     }
 
     if (params.weapons.empty()) {

@@ -75,6 +75,11 @@ bool play_file(const std::string& demo_path, const std::string& params_path,
         p.slow_factor = init.slow_factor;
         p.crouched = init.crouched;
         p.impulses = init.impulses;
+        p.weapon_id = init.weapon_id;
+        p.ammo = init.ammo;
+        p.reserve = init.reserve;
+        p.fire_cooldown = init.fire_cooldown;
+        p.reload_left = init.reload_left;
         world.players.push_back(p);
     }
     world.tick = 0;
@@ -143,6 +148,11 @@ bool record_demo(World& world, const std::string& map_path, const std::string& s
         init.slow_factor = p.slow_factor;
         init.crouched = p.crouched;
         init.impulses = p.impulses;
+        init.weapon_id = p.weapon_id;
+        init.ammo = static_cast<uint16_t>(p.ammo);
+        init.reserve = static_cast<uint16_t>(p.reserve);
+        init.fire_cooldown = static_cast<uint16_t>(p.fire_cooldown);
+        init.reload_left = static_cast<uint16_t>(p.reload_left);
         header.players.push_back(init);
     }
 

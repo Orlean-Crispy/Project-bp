@@ -490,7 +490,7 @@ func _process(delta: float) -> void:
 		# (the pose is frozen because the camera update below still does not run).
 		accumulator = 0.0
 		if sim.is_networked():
-			sim.set_input(0.0, 0.0, yaw, 0)
+			sim.set_input(0.0, 0.0, yaw, pitch, 0)
 			menu_accumulator += delta
 			var pumps := 0
 			while menu_accumulator >= TICK and pumps < 5:
@@ -534,7 +534,7 @@ func _process(delta: float) -> void:
 			else:
 				right = 1.0
 
-	sim.set_input(forward, right, yaw, buttons)
+	sim.set_input(forward, right, yaw, pitch, buttons)
 
 	accumulator += delta
 	var ticks := 0

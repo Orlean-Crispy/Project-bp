@@ -73,7 +73,8 @@ bool same_vitals(const PlayerSnap& a, const PlayerSnap& b) {
     return a.hp == b.hp && a.armor == b.armor;
 }
 bool same_weapon(const PlayerSnap& a, const PlayerSnap& b) {
-    return a.weapon_id == b.weapon_id && a.ammo == b.ammo && a.fire_cooldown == b.fire_cooldown;
+    return a.weapon_id == b.weapon_id && a.ammo == b.ammo && a.reserve == b.reserve &&
+           a.fire_cooldown == b.fire_cooldown && a.reload_left == b.reload_left;
 }
 
 }  // namespace
@@ -105,7 +106,11 @@ PlayerSnap to_snap(const PlayerState& p) {
     s.vault_rise = p.vault_rise;
     s.hp = static_cast<uint16_t>(std::min(65535, std::max(0, p.vitals.health)));
     s.armor = static_cast<uint16_t>(std::min(65535, std::max(0, p.vitals.armor)));
-    // weapon_id / ammo / fire_cooldown stay zero until M6 gives them a producer.
+    s.weapon_id = p.weapon_id;
+    s.ammo = static_cast<uint16_t>(std::min(65535, std::max(0, p.ammo)));
+    s.reserve = static_cast<uint16_t>(std::min(65535, std::max(0, p.reserve)));
+    s.fire_cooldown = static_cast<uint16_t>(std::min(65535, std::max(0, p.fire_cooldown)));
+    s.reload_left = static_cast<uint16_t>(std::min(65535, std::max(0, p.reload_left)));
     return s;
 }
 
@@ -135,6 +140,11 @@ void from_snap(const PlayerSnap& s, PlayerState& p) {
     p.vault_rise = s.vault_rise;
     p.vitals.health = s.hp;
     p.vitals.armor = s.armor;
+    p.weapon_id = s.weapon_id;
+    p.ammo = s.ammo;
+    p.reserve = s.reserve;
+    p.fire_cooldown = s.fire_cooldown;
+    p.reload_left = s.reload_left;
 }
 
 std::vector<uint8_t> encode_snapshot(const Snapshot& current, const Snapshot* baseline) {
@@ -192,7 +202,9 @@ std::vector<uint8_t> encode_snapshot(const Snapshot& current, const Snapshot* ba
         if (mask & kFieldWeapon) {
             w.u8(now.weapon_id);
             w.u16(now.ammo);
+            w.u16(now.reserve);
             w.u16(now.fire_cooldown);
+            w.u16(now.reload_left);
         }
     }
     return w.data();
@@ -257,7 +269,9 @@ bool decode_snapshot(const uint8_t* data, size_t size, const Snapshot* baseline,
         if (mask & kFieldWeapon) {
             p.weapon_id = r.u8();
             p.ammo = r.u16();
+            p.reserve = r.u16();
             p.fire_cooldown = r.u16();
+            p.reload_left = r.u16();
         }
         if (!r.ok()) return false;
     }

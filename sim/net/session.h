@@ -344,6 +344,9 @@ private:
 
     void apply_snapshot(const Snapshot& snap);
     void apply_full_state(const Snapshot& snap);
+    // Ammo and fire timers advance on the predicted world too, or every snapshot
+    // would disagree with it and roll the client back for a reload tick.
+    void advance_weapon(const MoveInput& input);
     // Steps empty-input ticks until the local tick reaches the command tick,
     // recording each in the history and the hitbox ring. A join and a catch-up
     // must land on exactly the same axis, so they share this one loop.
