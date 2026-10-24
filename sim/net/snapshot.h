@@ -53,6 +53,10 @@ struct PlayerSnap {
     uint16_t reload_left = 0;
     uint8_t recoil_index = 0;
     uint16_t recoil_recovery = 0;
+    uint8_t hit_target = 0;
+    uint16_t hit_amount = 0;
+    uint8_t hit_zone = 0;
+    uint8_t hit_serial = 0;
 };
 
 struct Snapshot {

@@ -17,7 +17,9 @@
 //    up or down), and the Weapon group gained reserve/reload ticks (2026-10-24).
 // 8: the spray index and its recovery timer ride in the Weapon group: they steer
 //    the aim, so a client that guessed them wrong would shoot elsewhere (2026-10-24).
-#define BP_PROTOCOL_VERSION 8
+// 9: a small hit record (target/amount/zone/serial) rides in its own group, so the
+//    hitmarker and damage number come from the snapshot, not an event (2026-10-24).
+#define BP_PROTOCOL_VERSION 9
 #endif
 
 namespace sim {

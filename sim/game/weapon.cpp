@@ -146,6 +146,7 @@ uint64_t WeaponParams::hash() const {
             h.f32(def.recoil_pitch[i]).f32(def.recoil_yaw[i]);
         }
         h.u32(static_cast<uint32_t>(def.recoil_recovery_ticks));
+        h.f32(def.ads_recoil_scale);
     }
     return h.value();
 }
@@ -199,6 +200,11 @@ bool load_weapon_params(const std::string& path, WeaponParams& out,
         number("penetration_damage_scale", def.penetration_damage_scale);
         // Recoil is optional whole-table: a gun without a pattern simply kicks
         // straight up by zero, which is what a pistol with one step looks like.
+        // Optional with the rest of the recoil block: a gun without a pattern has
+        // nothing for ADS to scale.
+        if (table.find(prefix + "ads_recoil_scale")) {
+            binder.number(prefix + "ads_recoil_scale", def.ads_recoil_scale);
+        }
         binder.floats(prefix + "recoil_pitch", def.recoil_pitch);
         binder.floats(prefix + "recoil_yaw", def.recoil_yaw);
         // Optional like the pattern it belongs to: a gun without a table needs no
@@ -214,6 +220,10 @@ bool load_weapon_params(const std::string& path, WeaponParams& out,
     for (const WeaponDef& def : params.weapons) {
         if (def.recoil_pitch.size() != def.recoil_yaw.size()) {
             error = "weapon " + def.id + ": recoil_pitch and recoil_yaw differ in length";
+            return false;
+        }
+        if (!(def.ads_recoil_scale > 0.0f) || def.ads_recoil_scale > 1.0f) {
+            error = "weapon " + def.id + ": ads_recoil_scale must be in (0, 1]";
             return false;
         }
         if (!def.recoil_pitch.empty() && def.recoil_recovery_ticks <= 0) {

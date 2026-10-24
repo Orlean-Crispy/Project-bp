@@ -308,6 +308,38 @@ public:
     int get_snapshot_age() const { return m_net.snapshot_age(); }
     // M6.10: the view punch is *derived* from the replicated spray index, so it
     // never needs a field of its own (A4: the client can recompute it exactly).
+    // M6.11: the last hit this player dealt. Straight out of the snapshot - the
+    // hitmarker and the damage number are not allowed to ride an event.
+    Dictionary get_hit_mark() const {
+        Dictionary out;
+        // A host's hits happen in the authoritative world; its *predicted* player
+        // never hits anything (that world has one player in it), so reading
+        // local_player() would leave the hitmarker dark forever.
+        const sim::PlayerState* p = local_player();
+        if (const sim::World* authority = gate_world()) {
+            const int slot = m_net.slot();
+            if (!authority->players.empty()) {
+                const std::size_t index =
+                    static_cast<std::size_t>(slot >= 0 && slot < static_cast<int>(authority->players.size())
+                                                 ? slot
+                                                 : 0);
+                p = &authority->players[index];
+            }
+        }
+        if (p == nullptr) {
+            out["serial"] = 0;
+            out["amount"] = 0;
+            out["zone"] = 0;
+            out["target"] = -1;
+            return out;
+        }
+        out["serial"] = static_cast<int>(p->hit_serial);
+        out["amount"] = static_cast<int>(p->hit_amount);
+        out["zone"] = static_cast<int>(p->hit_zone);
+        out["target"] = static_cast<int>(p->hit_target);
+        return out;
+    }
+
     Vector2 get_recoil_offset() const {
         const sim::PlayerState* p = local_player();
         if (p == nullptr) return Vector2();
@@ -397,6 +429,7 @@ protected:
         ClassDB::bind_method(D_METHOD("get_player_hp", "slot"), &SimWorld::get_player_hp);
         ClassDB::bind_method(D_METHOD("get_snapshot_hp"), &SimWorld::get_snapshot_hp);
         ClassDB::bind_method(D_METHOD("get_recoil_offset"), &SimWorld::get_recoil_offset);
+        ClassDB::bind_method(D_METHOD("get_hit_mark"), &SimWorld::get_hit_mark);
         ClassDB::bind_method(D_METHOD("host", "port", "players"), &SimWorld::host);
         ClassDB::bind_method(D_METHOD("join", "host", "port"), &SimWorld::join);
         ClassDB::bind_method(D_METHOD("reconnect"), &SimWorld::reconnect);

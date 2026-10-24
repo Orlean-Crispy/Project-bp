@@ -66,7 +66,10 @@ void update_weapon(PlayerState& shooter, int shooter_index, const MoveInput& inp
 
     // The pattern is shot-indexed: the first round leaves straight, and each
     // later one carries the accumulated climb (a hand-authored table, not noise).
-    const RecoilOffset kick = recoil_offset(def, shooter.recoil_index);
+    // Holding the aim button scales it down (M6.11).
+    const float ads_scale = shooter.ads ? def.ads_recoil_scale : 1.0f;
+    const RecoilOffset kick_raw = recoil_offset(def, shooter.recoil_index);
+    const RecoilOffset kick{kick_raw.pitch * ads_scale, kick_raw.yaw * ads_scale};
     const Vec3 eye = eye_position(shooter, world.params);
     const Vec3 dir = view_forward(shooter.yaw + kick.yaw, input.pitch + kick.pitch);
     if (shooter.recoil_index < recoil_cap(def)) ++shooter.recoil_index;
@@ -104,6 +107,12 @@ void update_weapon(PlayerState& shooter, int shooter_index, const MoveInput& inp
 
     apply_damage(victim.vitals, damage, zone, world.combat);
     apply_damage_slow(victim, world.params);
+    // M6.11: the hitmarker reads this back out of the snapshot. The serial makes
+    // "a new hit" distinguishable from "the same hit still in the snapshot".
+    shooter.hit_target = static_cast<uint8_t>(shot.hit.entity);
+    shooter.hit_amount = static_cast<uint16_t>(damage);
+    shooter.hit_zone = static_cast<uint8_t>(zone);
+    ++shooter.hit_serial;
     if (report != nullptr) {
         ++report->hits;
         report->damage += damage;

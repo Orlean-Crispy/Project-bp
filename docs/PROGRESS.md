@@ -2523,3 +2523,34 @@ smoke 22 项 + bench ALL GREEN；godot_check 全过（protocol 8）。
 - 开镜（ADS）降低后坐力还没做：M6.11 的 `ads_*` 字段要乘到 `recoil_offset` 上。
 - 半自动/自动的区分仍未做（手枪现在也是按住连发）。
 - 没有后坐力恢复的视觉平滑（相机直接跟索引走，一格一格），等 M7 的视角层。
+## S73 · 2026-10-24 · M6.11 表现层（hitmarker / 伤害数字 / 枪口火光 / ADS）
+
+### 1. 做了什么
+
+- **hitmarker 走快照，不走事件**：铁律 C 的原话是「伤害数字只走快照」。`update_weapon` 命中时把
+  `hit_target/amount/zone/serial` 写在射手身上，进新的 Hit 组（5 B/人，协议 **v9**）；客户端比较
+  serial 变没变判断“是不是新命中”，显示 0.3 s。打空、被墙挡、打尸体都不亮。
+- **枪口火光**：同一份 `Shot` 事件在枪口生成一个 0.06 m 发光球，0.05 s 回收。
+- **ADS**：`ads_recoil_scale` 乘在 `recoil_offset` 上（步枪 0.55），FOV 75→55 是纯表现。
+- **闸门**：`godot_check` 新开 `== hitmarker ==`——房主**真的瞄准并开枪**（不是测试钩子），
+  命中后打出 `hitmark serial=1 amount=25 target=1 zone=1`。
+
+### 2. 判据
+
+- `--test-damage` 4 条：命中记录字段、第二发 serial+1、打空不动 serial、ADS 弹着点更低
+  （`plain fifth z 1.848` → `ads fifth z 1.592`）。
+- `--test-snapshot`：`protocol v9 … 953 B, 94 B/player`；`godot_check` 全过（hitmark 一段）。
+
+### 3. 失败与修正
+
+- 房主的 hitmarker 永远不亮：`local_player()` 对房主返回**预测**世界里的自己，而那个世界只有一个玩家，
+  伤害发生在权威世界。改成：有权威世界（host/solo）时读它，客户端才读预测。
+  ——这类“两个世界”的坑值得记：房主的 HUD 数值可以来自预测（会被快照修正），但**命中记录**在预测里
+  永远是 0，因为它没打中过任何人。
+- 打空的测试最初一直“命中”：靶子挪走后 hitbox 历史还留着旧位置（回溯正好读到）。先空跑 8 tick 再打。
+
+### 4. 边界
+
+- 没有命中音效（M7 音频）。
+- 伤害数字是命中者自己看到的；没有“被打的人看到的受伤方向提示”。
+- 枪口火光只有自己看得到（事件还没上网络，M7）。

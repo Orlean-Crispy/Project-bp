@@ -248,6 +248,54 @@ int run_damage_test(const Options& opt) {
     check("silence resets the spray", world.players[0].recoil_index == 0);
     check("a fresh spray starts straight again",
           sim::recoil_offset(*rifle, world.players[0].recoil_index).pitch == 0.0f);
+    // --- hitmarker data (snapshot) and ADS -------------------------------
+    sim::PlayerState clean_shooter = shooter;
+    clean_shooter.hit_serial = 0;
+    reset(clean_shooter, victim);
+    tick = 10;
+    sim::ShotReport hit_report;
+    run(4, fire, &hit_report);  // exactly one round: cadence is 6 ticks
+    check("a hit is recorded for the hitmarker",
+          world.players[0].hit_serial == 1 && world.players[0].hit_amount == 25 &&
+              world.players[0].hit_target == 1 &&
+              world.players[0].hit_zone == static_cast<uint8_t>(sim::HitZone::Chest));
+    run(8, fire, &hit_report);
+    check("a second hit bumps the serial", world.players[0].hit_serial == 2);
+
+    // A miss must not look like a hit: same trigger, nobody in the way.
+    world.players[1].pos = sim::Vec3(3.0f, 9.0f, 0.0f);
+    // Let the hitbox history catch up first: a shot rewinds a tick, so the frame
+    // it reads would still hold the old position and the "miss" would hit.
+    sim::MoveInput no_fire;
+    run(8, no_fire, &hit_report);
+    const uint8_t serial_before = world.players[0].hit_serial;
+    run(8, fire, &hit_report);
+    check("a miss leaves the hitmarker alone",
+          world.players[0].hit_serial == serial_before);
+
+    // ADS scales the whole spray down: the same 12 rounds climb less.
+    sim::PlayerState ads_shooter = clean_shooter;
+    reset(ads_shooter, victim);
+    world.players[1].pos = sim::Vec3(3.0f, 9.0f, 0.0f);
+    // In play step_player copies ads from the input; here the weapon update runs
+    // alone, so the flag is set the same way the step would have set it.
+    world.players[0].ads = true;
+    tick = 10;
+    sim::EventQueue ads_spray;
+    sim::ShotReport ads_report;
+    sim::MoveInput ads_fire = level;
+    ads_fire.ads = true;
+    run(70, ads_fire, &ads_report, &ads_spray);
+    std::vector<float> ads_z;
+    while (ads_spray.pop(shot_event)) {
+        if (shot_event.type == sim::EventType::Shot) ads_z.push_back(shot_event.b.z);
+    }
+    const bool ads_lower = ads_z.size() > 4 && impact_z.size() > 4 &&
+                           ads_z[4] < impact_z[4] - 0.05f;
+    check("ADS flattens the spray", ads_lower);
+    std::printf("    ads: plain fifth z %.3f, ads fifth z %.3f\n",
+                impact_z.size() > 4 ? impact_z[4] : 0.0f,
+                ads_z.size() > 4 ? ads_z[4] : 0.0f);
 
     std::printf("[damage] body 4 rounds armour %d head %d wall hits %d reload %d\n",
                 armour_report.shots, head_report.damage, wall_report.hits, reloaded_ammo);

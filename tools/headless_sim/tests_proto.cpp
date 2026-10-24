@@ -163,7 +163,7 @@ int run_snapshot_check() {
                       "a delta with no baseline decoded anyway");
 
     // 7. The advertised protocol version is the one this format implements.
-    failures += check(sim::kProtocolVersion == 8, "protocol version is not 8");
+    failures += check(sim::kProtocolVersion == 9, "protocol version is not 9");
 
     std::printf("  [snapshot] %s\n", failures == 0 ? "ok" : "FAILED");
     return failures;

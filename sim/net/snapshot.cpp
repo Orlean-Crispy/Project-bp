@@ -20,8 +20,9 @@ enum FieldMask : uint16_t {
     kFieldExtra = 1u << 5,    // wall_normal, vault_dir, vault_rise (R9)
     kFieldCharge = 1u << 6,   // recharge progress, speed_coefficient
     kFieldVitals = 1u << 7,   // hp, armor
-    kFieldWeapon = 1u << 8,   // weapon_id, ammo, fire_cooldown (reserved for M6)
-    kFieldAll = 0x01FF,
+    kFieldWeapon = 1u << 8,   // weapon_id, ammo, reserve, cooldowns, recoil
+    kFieldHit = 1u << 9,      // last hit dealt: target, amount, zone, serial
+    kFieldAll = 0x03FF,
 };
 
 // Same split for the flags word. Only bits 0..6 have a producer today; 7..10 are
@@ -43,7 +44,7 @@ enum FlagBit : uint16_t {
 
 constexpr uint16_t kFieldsUsed = kFieldPos | kFieldVel | kFieldStatus | kFieldTimers |
                                  kFieldYaw | kFieldExtra | kFieldCharge | kFieldVitals |
-                                 kFieldWeapon;
+                                 kFieldWeapon | kFieldHit;
 constexpr uint16_t kFlagsUsed = kFlagOnGround | kFlagCrouched | kFlagActive | kFlagJumpWasDown |
                                 kFlagSlideWasDown | kFlagDashWasDown | kFlagVaultWasDown |
                                 kFlagFiring | kFlagReloading | kFlagAds;
@@ -72,6 +73,10 @@ bool same_charge(const PlayerSnap& a, const PlayerSnap& b) {
 bool same_vitals(const PlayerSnap& a, const PlayerSnap& b) {
     return a.hp == b.hp && a.armor == b.armor;
 }
+bool same_hit(const PlayerSnap& a, const PlayerSnap& b) {
+    return a.hit_serial == b.hit_serial;
+}
+
 bool same_weapon(const PlayerSnap& a, const PlayerSnap& b) {
     return a.weapon_id == b.weapon_id && a.ammo == b.ammo && a.reserve == b.reserve &&
            a.fire_cooldown == b.fire_cooldown && a.reload_left == b.reload_left &&
@@ -114,6 +119,10 @@ PlayerSnap to_snap(const PlayerState& p) {
     s.reload_left = static_cast<uint16_t>(std::min(65535, std::max(0, p.reload_left)));
     s.recoil_index = static_cast<uint8_t>(std::min(255, std::max(0, p.recoil_index)));
     s.recoil_recovery = static_cast<uint16_t>(std::min(65535, std::max(0, p.recoil_recovery)));
+    s.hit_target = p.hit_target;
+    s.hit_amount = static_cast<uint16_t>(std::min(65535, std::max(0, static_cast<int>(p.hit_amount))));
+    s.hit_zone = p.hit_zone;
+    s.hit_serial = p.hit_serial;
     return s;
 }
 
@@ -150,6 +159,10 @@ void from_snap(const PlayerSnap& s, PlayerState& p) {
     p.reload_left = s.reload_left;
     p.recoil_index = s.recoil_index;
     p.recoil_recovery = s.recoil_recovery;
+    p.hit_target = s.hit_target;
+    p.hit_amount = s.hit_amount;
+    p.hit_zone = s.hit_zone;
+    p.hit_serial = s.hit_serial;
 }
 
 std::vector<uint8_t> encode_snapshot(const Snapshot& current, const Snapshot* baseline) {
@@ -176,6 +189,7 @@ std::vector<uint8_t> encode_snapshot(const Snapshot& current, const Snapshot* ba
             if (!same_charge(now, before)) mask |= kFieldCharge;
             if (!same_vitals(now, before)) mask |= kFieldVitals;
             if (!same_weapon(now, before)) mask |= kFieldWeapon;
+            if (!same_hit(now, before)) mask |= kFieldHit;
         }
         w.u16(mask);
         if (mask & kFieldPos) w.vec3(now.pos);
@@ -212,6 +226,12 @@ std::vector<uint8_t> encode_snapshot(const Snapshot& current, const Snapshot* ba
             w.u16(now.reload_left);
             w.u8(now.recoil_index);
             w.u16(now.recoil_recovery);
+        }
+        if (mask & kFieldHit) {
+            w.u8(now.hit_target);
+            w.u16(now.hit_amount);
+            w.u8(now.hit_zone);
+            w.u8(now.hit_serial);
         }
     }
     return w.data();
@@ -281,6 +301,12 @@ bool decode_snapshot(const uint8_t* data, size_t size, const Snapshot* baseline,
             p.reload_left = r.u16();
             p.recoil_index = r.u8();
             p.recoil_recovery = r.u16();
+        }
+        if (mask & kFieldHit) {
+            p.hit_target = r.u8();
+            p.hit_amount = r.u16();
+            p.hit_zone = r.u8();
+            p.hit_serial = r.u8();
         }
         if (!r.ok()) return false;
     }

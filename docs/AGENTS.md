@@ -28,7 +28,7 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 它和根目录 AGENTS.md §2、HANDOFF、PROGRESS 各写一遍，四处互相矛盾。2026-10-23 起删掉，只留结论：
 
 - M0–M5 已关闭（M4 的跨机比对仍缺第二台机器 = DEBT-14）。
-- M6 已开工：射击链路、两端 HUD、曳光/轮廓、死亡重生、后坐力已通；hitmarker 与验收未完。
+- M6 已开工：M6.0–M6.11 全部完成（射击链路、HUD、表现层、死亡重生、后坐力）；只剩 M6.12 验收。
 
 ### 0.3 现在能跑什么
 
@@ -145,7 +145,7 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 | 6 | 跳跃语义 | 按住 300 tick 只跳 1 次；点按 3 次跳 3 次 | --test-jump |
 | 7 | HP/护甲 | 规则与 TTK 落在 0.6–1.2 s | --test-health |
 | 8 | 网络收敛 + 去重 + 加入 + 插值 + UDP + 分片 + 源校验 + 槽位释放 + 落后补 tick + 双客户端 + 信令组局 | 30% 丢包偏差 < 0.01 m（且确实丢过包）、回滚 < 500；N3 修正 < 3；加入/重连 < 0.01 m；UDP 往返；分片 0 损坏；注入被拒且合法包仍收；2 槽房 3 轮 join/leave；冻 300 tick 后 Late 停止增长；2 客户端经 hub 加入偏差 < 0.01 m | --test-net |
-| 9 | 协议往返 | 16 位 mask/flags、每个字段存活（含 hp/armor 与武器状态/后坐力）、空 delta 15 B、10 人满编 903 B ≤ 1100、缺 baseline 的 delta 被拒 | --test-snapshot |
+| 9 | 协议往返 | 16 位 mask/flags、每个字段存活（含 hp/armor、武器/后坐力、命中记录）、空 delta 15 B、10 人满编 953 B ≤ 1100、缺 baseline 的 delta 被拒 | --test-snapshot |
 | 10 | 卡死恢复 | 从 brush 内部出生能自行脱困 | --test-stuck |
 | 11 | 乱按压力 | 6000 tick 乱按，最长连续实心 ≤ 2 | --test-soak |
 | 12 | 平台边缘 | 落到边缘后仍能继续走 | --test-edge |
@@ -154,7 +154,7 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 | 15 | demo | 同构建逐 tick 一致；改动参数必被检出 | --test-demo |
 | 16 | hitbox 历史 | 64 tick 环形、帧间插值、三段 ×5/×1/×0.7（腿倍率来自 toml）、蹲下自动跟随 | --test-hitbox |
 | 17 | 事件通道 | 跳跃/落地事件带 tick、可复现、环形溢出丢最旧 | --test-events |
-| 18 | Godot 桥 | 扩展真的加载、HUD 打印 vertices>0 与默认端口、上一 tick 可读、按住扳机产出 `tracer events>0`、两进程重连回原槽且第二次被拒、暂停菜单 7 s 不掉线、房主 30+100 伤害后客户端 HUD 依次 70→0→100 | tools/godot_check.ps1 |
+| 18 | Godot 桥 | 扩展真的加载、HUD 打印 vertices>0 与默认端口、上一 tick 可读、按住扳机产出 `tracer events>0`、两进程重连回原槽且第二次被拒、暂停菜单 7 s 不掉线、房主 30+100 伤害后客户端 HUD 依次 70→0→100、房主真实开枪命中后打出 `hitmark serial=…` | tools/godot_check.ps1 |
 | 19 | 文档一致性 | 协议版本、闸门数、DEBT 守恒、路径、STATE 质量 0 fail；`--selftest` 能红 | python tools/doc_check.py |
 | 20 | 武器数据 | 两把枪加载 0 警告、缺键/拼错都报警、坏值被拒、改一个数哈希变、武器表不动 movement 哈希、BOM 可读 | --test-weapons |
 | 21 | 命中判定 | 正对躯干必中、偏一个盒宽必不中、0.40 中 / 0.41 不中、蹲下躲过、墙挡人、射程截断、自伤忽略、最近者胜；回溯 6 tick 仍命中当时位置、半 tick 插值、超界不外推 | --test-hitscan |
@@ -176,7 +176,7 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
    SERVER SILENT 1 s）、重连按钮、A5 网络网关拆分全部实测通过。第三人称动画与 5v5 选边
    按计划书属于 M7，不在此条。
 2. **v0.4 的 M5 增量** — A1/A2/A5 全部接入并实测；configstring 带真实哈希且失配拒局。**已关闭**。
-3. **M6 射击** — 射击链路、两端 HUD、曳光/轮廓、死亡重生、后坐力已通；还差 hitmarker 与验收（M6.11–M6.12）。
+3. **M6 射击** — M6.0–M6.11 完成；只剩 M6.12（E1–E9 回归 + 两人局域网手测）。
 4. **Godot 版本** — 计划书写 4.7 Mono，但 godot-cpp 最高只有 4.5，现用 4.5。
    lead：M7（Godot-Locomotion 绑定 4.7.2）之前必须解决。
 5. **跨机 demo 比对** — 工具与流程就绪（docs/demo-format.md），缺第二台机器。
@@ -326,10 +326,11 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HA
 ### 8.4 网络（sim/net/*）
 
 - 包头：type/seq/ack/ack_bits（ack_bits 在 v0.1 **恒为 0**，只做累积 ack；见 netchan.h 注释）。
-- 快照 delta 以「客户端最近 ack 的快照」为 baseline。**协议 v8**（S72）：mask 与 flags 都是 16 位，
+- 快照 delta 以「客户端最近 ack 的快照」为 baseline。**协议 v9**（S73）：mask 与 flags 都是 16 位，
   命令包带 **pitch**（没有它只能平射）；PlayerSnap 带四个按下沿、`recharge_progress`、
   `speed_coefficient`，Vitals 组（hp/armor 真值）与 Weapon 组（weapon_id/ammo/reserve/
-  fire_cooldown/reload_left，v8 起再加 `recoil_index/recoil_recovery`，**全部有生产者**）。
+  fire_cooldown/reload_left，v8 起再加 `recoil_index/recoil_recovery`，**全部有生产者**），
+  以及 Hit 组（v9：target/amount/zone/serial，每玩家 5 B）。
   flags 的 7/8/9 是**按住状态**（不是一 tick 脉冲），
   bit10 从 S71 起也**不填**：`alive` 由 `hp > 0` 派生，别再养第二份真值。
 - 客户端：本地预测 + 128 tick 历史 + 回滚重放；命令包带最近 4 个输入。
@@ -354,7 +355,7 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HA
   以上切成 5 B 头（marker/id/index/total）的片；接收端按 id 重组，半包绝不交付，新 id 丢弃旧包。
   真实路径：桥的 host 给每个 peer 一个 wrapper（`UdpPeerHub::add_peer` 返回 fragmenting view），
   客户端 `NetGateway::join_impl` 把 NetClient 接到 wrapper 上；HELLO 仍走裸 socket（22 B）。
-  判据：`[frag] real-link 10p 903 B ten 1 decode 1 nofrag 1 3000B 1 split 1 small 1`
+  判据：`[frag] real-link 10p 953 B ten 1 decode 1 nofrag 1 3000B 1 split 1 small 1`
   ——满编快照不触发分片、3000 B 才触发，两条都验才算过。
 - 多 peer：UdpSocket 共享 + UdpPeerHub 按源地址 demux；PeerTransport 每 peer 一个收件队列；
   未知来源进有界队列（64），HELLO（22 B，magic “BPH0” + 协议版本 + 16 B client_id）通过才 add_peer。
@@ -371,7 +372,7 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HA
   用 `get_max_impulses()` 画格（**不写死**），状态行显示 role/slot/peers/waiting；
   Esc 开合暂停菜单（Resume / Reconnect（仅客户端）/ Leave）。
   判据：`--hud-check` 打 `hud hp=100 armor=0 impulse=4/4 role=solo vertices=360
-  build=<hash> protocol=8 port=27115`——vertices > 0 证明 mesh_builder 还在产出几何，
+  build=<hash> protocol=9 port=27115`——vertices > 0 证明 mesh_builder 还在产出几何，
   port 证明默认端口来自 ports.h 而不是脚本；hp/armor 是 PlayerState 里的真值，伤害来源自 S70 起
   也有了（AUD-16 关闭：房主打 30 → 客户端 HUD `hp=70`）。这条检查已并入 tools/godot_check.ps1。
 - 失联检测（`NetClient::snapshot_age()`）：客户端用**最后一次收到快照的 tick 差**判断，
@@ -450,7 +451,7 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HA
   （桥和 net_loop 都装同一条：`MatchHost::release`）。为什么用回调而不是队列：队列要求每个调用方
   都记得 drain，net_loop 第一天就忘了，那类泄漏只能靠纪律防；回调装一次就不会漏。
   判据：`[slots] first 1 full 1 reported 1 freed 1 cycles 3/1 anonymous 1`。
-- 远端朝向：PlayerState.yaw 由 pmove 写入；PlayerSnap 的 kFieldYaw 独立字段组；协议版本 **8**
+- 远端朝向：PlayerState.yaw 由 pmove 写入；PlayerSnap 的 kFieldYaw 独立字段组；协议版本 **9**
   （R9 起带 wall_normal/vault_dir/vault_rise/slow_ticks；v5 起带 slide/dash/vault 三个按下沿、
   recharge_progress 与 speed_coefficient；v6 起 mask/flags 16 位并带 hp/armor）。
   GDScript 用 rotation.y = atan2(-cos(yaw), sin(yaw))，插值器取前一帧 yaw。
@@ -502,7 +503,7 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HA
   会让 DLL 与 exe 的浮点结果悄悄分叉（教训 12）。
 - **版本号唯一来源是 sim/core/version.h**。CMake 只注入 BP_BUILD_ID（git short hash），
   桥用同一条命令注入同一个值；桥暴露 `get_build_id()/get_protocol_version()`，Godot 启动打
-  `breakpoint: build <id> protocol 8`——两台机器的日志一比就知道是不是同一个构建。
+  `breakpoint: build <id> protocol 9`——两台机器的日志一比就知道是不是同一个构建。
 - **breakpoint.gdextension 必须同时有 `windows.editor.x86_64`**：我们用的是 release 编辑器
   二进制跑 headless，它只认 editor key；只写 `windows.debug.*` 时扩展根本不加载，
   报错还会说是「找不到 windows.x86_64 的库」（教训 13）。
@@ -577,7 +578,15 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HA
 - **敌方红轮廓**：远端玩家节点加一个略大的胶囊壳（半径 +0.025、高 +0.05），
   材质 `CULL_FRONT` + unshaded 红 —— 只画背面就得到一圈红边。蹲下时随节点 scale.y 一起缩。
   **M6 没有队伍**，所以“远端 = 敌方”；M8 分队后必须按队伍着色（记在 BACKLOG FEAT-14）。
-- 判据：`godot_check.ps1` 的 `== tracers ==`（按住扳机 1 s → `tracer events=14`）。
+- **hitmarker / 伤害数字（S73）**：`update_weapon` 在命中时把 `hit_target/amount/zone/serial`
+  写在**射手**身上，随快照下发（Hit 组，协议 v9）。**伤害数字不走事件**（铁律 C 的原话），
+  GDScript 比较 serial 变没变来决定“这是不是一次新命中”，显示 0.3 s 就消失。
+  打空、被墙挡、打尸体都不会亮——它只认快照。
+- **枪口火光（S73）**：同一份 `Shot` 事件在枪口生成一个 0.06 m 的发光球，0.05 s 后回收。
+- **ADS（S73）**：`ads_recoil_scale`（weapons.toml，0..1）乘在 `recoil_offset` 上；
+  FOV 从 75 插值到 55 是纯表现（aim 已经在模拟里）。
+- 判据：`godot_check.ps1` 的 `== tracers ==`（按住扳机 1 s → `tracer events=14`）与
+  `== hitmarker ==`（房主真实开枪命中 → `hitmark serial=1 amount=25 target=1 zone=1`）。
 
 ### 8.14 死亡与重生（sim/game/spawn.*、respawn.*，S71）
 
@@ -649,8 +658,7 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HA
 
 ## 11. 下一步（严格按计划书顺序，不要跳）
 
-1. **M6 射击**：射击链路、两端 HUD、死亡重生、后坐力已通。下一步 M6.11 表现层剩余
-   （hitmarker/伤害数字/枪口火光）→ M6.12 验收。**一次只做一个任务。**
+1. **M6 射击**：M6.0–M6.11 完成。下一步 **M6.12 验收**（E1–E9、TTK 扫描表、两人局域网 10 分钟）。
 2. **M7 / M8**：动画、视角模型、音频垂直定位（§9.2 的楼层低通）。
 3. 代码体检：A1–A7、AUD-01…19、R1–R19 已完成；S60 关掉了 AUD-20/23/26/27，
    其余见 docs/DEBT.md（32 条）与 docs/BACKLOG.md（设计待定/功能缺口）。

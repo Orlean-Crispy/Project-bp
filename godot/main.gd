@@ -87,6 +87,17 @@ var damage_hurt_tick := 0
 var fire_check := false
 var fire_reported := false
 var shot_events := 0
+# M6.11 gate: the host aims at the joining slot and holds the trigger.
+var hit_check := false
+var hit_reported := false
+# Hitmarker state: serial of the last hit shown, and how long it stays up.
+var hit_serial := 0
+var hitmark_time := 0.0
+var hitmark_label: Label = null
+var muzzle_time := 0.0
+const FLASH_SECONDS := 0.05
+# Live muzzle flashes (node + remaining life), aged like the tracers.
+var flashes: Array = []
 var hud_damage_check := false
 # M6.11: live tracers (node + remaining life in seconds).
 var tracers: Array = []
@@ -129,6 +140,9 @@ func _ready() -> void:
 		elif arg == "--fire-check":
 			# Offline gate: hold the trigger and count tracer events.
 			fire_check = true
+		elif arg == "--hit-check":
+			# Host side of the hitmarker gate: aim at the joining slot and fire.
+			hit_check = true
 
 	sim = SimWorld.new()
 	if net_port <= 0:
@@ -163,7 +177,7 @@ func _ready() -> void:
 		_show_net_menu()
 
 	camera = Camera3D.new()
-	camera.fov = 90.0
+	camera.fov = 75.0
 	camera.near = 0.05
 	camera.far = 200.0
 	add_child(camera)
@@ -173,6 +187,14 @@ func _ready() -> void:
 	light.rotation_degrees = Vector3(-55, -35, 0)
 	light.light_energy = 0.9
 	add_child(light)
+
+	# M6.11 hitmarker: the number is the damage the server confirmed, not a guess.
+	hitmark_label = Label.new()
+	hitmark_label.text = ""
+	hitmark_label.add_theme_color_override("font_color", Color(1.0, 0.25, 0.2))
+	hitmark_label.add_theme_font_size_override("font_size", 28)
+	hitmark_label.set_anchors_preset(Control.PRESET_CENTER)
+	add_child(hitmark_label)
 
 	hud = Label.new()
 	hud.position = Vector2(16, 12)
@@ -481,6 +503,58 @@ func _age_tracers(delta: float) -> void:
 			var material: StandardMaterial3D = entry["material"]
 			material.albedo_color.a = 0.85 * (life / TRACER_SECONDS)
 
+
+# M6.11: a hitmarker is a lie detector. It only appears when the snapshot says a
+# hit landed, so a visual miss or a blocked shot never shows one.
+func _update_hitmarker(delta: float) -> void:
+	var mark: Dictionary = sim.get_hit_mark()
+	var serial := int(mark["serial"])
+	if serial != hit_serial and serial > 0:
+		hit_serial = serial
+		hitmark_time = 0.3
+		if hitmark_label != null:
+			hitmark_label.text = "%d" % int(mark["amount"])
+		if hit_check and not hit_reported:
+			hit_reported = true
+			print("hitmark serial=%d amount=%d target=%d zone=%d" % [
+				serial, int(mark["amount"]), int(mark["target"]), int(mark["zone"])
+			])
+			get_tree().quit()
+	if hitmark_time > 0.0:
+		hitmark_time -= delta
+		if hitmark_label != null:
+			hitmark_label.modulate = Color(1.0, 1.0, 1.0, clampf(hitmark_time / 0.3, 0.0, 1.0))
+	elif hitmark_label != null:
+		hitmark_label.text = ""
+
+# Muzzle flash: a small bright sphere at the muzzle for a few frames. Same Shot
+# event as the tracer, no extra state in the simulation.
+func _spawn_muzzle(pos: Vector3) -> void:
+	var node := MeshInstance3D.new()
+	var mesh := SphereMesh.new()
+	mesh.radius = 0.06
+	mesh.height = 0.12
+	node.mesh = mesh
+	var material := StandardMaterial3D.new()
+	material.albedo_color = Color(1.0, 0.9, 0.5, 0.9)
+	material.emission_enabled = true
+	material.emission = Color(1.0, 0.8, 0.3)
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	node.material_override = material
+	add_child(node)
+	node.position = pos
+	flashes.append({"node": node, "life": 0.05, "material": material})
+
+func _age_flashes(delta: float) -> void:
+	for i in range(flashes.size() - 1, -1, -1):
+		var entry: Dictionary = flashes[i]
+		entry["life"] = float(entry["life"]) - delta
+		if float(entry["life"]) <= 0.0:
+			var dead: MeshInstance3D = entry["node"]
+			dead.queue_free()
+			flashes.remove_at(i)
+
 func _update_remote_players(players: Array) -> void:
 	var alive := {}
 	for entry in players:
@@ -605,6 +679,16 @@ func _process(delta: float) -> void:
 	var buttons := _held_buttons()
 	if fire_check and int(sim.get_tick()) < 80:
 		buttons |= int(button_bits.get("Fire", 0))
+	if hit_check and sim.is_networked() and sim.get_peer_count() >= 2:
+		# Point at the other player's chest and hold fire. This is real shooting:
+		# no test hook, the hitmarker has to come out of the normal path.
+		var remotes: Array = sim.get_remote_players()
+		if remotes.size() > 0:
+			var target: Vector3 = remotes[0]["pos"] + Vector3(0.0, 1.0, 0.0)
+			var to_target: Vector3 = target - camera.position
+			yaw = atan2(-to_target.z, to_target.x)
+			pitch = asin(clampf(to_target.y / maxf(to_target.length(), 0.001), -1.0, 1.0))
+			buttons |= int(button_bits.get("Fire", 0))
 	if autoplay:
 		yaw = 0.9  # make remote orientation observable in the headless check
 	if autoplay and tick < 128:
@@ -621,6 +705,9 @@ func _process(delta: float) -> void:
 				right = 1.0
 
 	sim.set_input(forward, right, yaw, pitch, buttons)
+	# ADS is presentation here: the aim is already simulated, this is the zoom.
+	var want_fov := 55.0 if (int(buttons) & int(button_bits.get("Aim", 0))) != 0 else 75.0
+	camera.fov = lerpf(camera.fov, want_fov, clampf(delta * 12.0, 0.0, 1.0))
 
 	accumulator += delta
 	var ticks := 0
@@ -667,6 +754,7 @@ func _process(delta: float) -> void:
 		if int(event["type"]) == EVENT_SHOT:
 			shot_events += 1
 			_spawn_tracer(event["a"], event["b"])
+			_spawn_muzzle(event["a"])
 
 	if fire_check and not fire_reported and int(sim.get_tick()) > 90:
 		fire_reported = true
@@ -674,6 +762,8 @@ func _process(delta: float) -> void:
 		get_tree().quit()
 
 	_age_tracers(delta)
+	_age_flashes(delta)
+	_update_hitmarker(delta)
 
 	# M6.9 gate: hurt the joining slot, then kill it, then watch it come back.
 	# The client only prints its HUD; every claim below is what it saw.

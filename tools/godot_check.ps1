@@ -213,4 +213,37 @@ if ($backAt -le $deadAt) { Fail 'the client never came back from a respawn' }
 Write-Host ('death seq: hurt@{0} dead@{1} back@{2}' -f $hurtAt, $deadAt, $backAt)
 Write-Host 'PASS: damage, death and respawn crossed the snapshot into the other HUD' -ForegroundColor Green
 
+# M6.11: the hitmarker has to be a confirmed hit from the snapshot, not a guess.
+# The host aims at the joining player and fires for real (no test hook), then
+# reports the hit record it read back. A miss would print nothing and time out.
+Write-Host '== hitmarker =='
+$hitHost = $temp + '.hhost'
+$hitClient = $temp + '.hclient'
+$hostProcess = $null
+$clientProcess = $null
+try {
+    $hostProcess = Start-Process -FilePath $godot -PassThru -NoNewWindow -RedirectStandardOutput $hitHost -RedirectStandardError ($hitHost + '.err') -ArgumentList @('--headless', '--path', $project, '--', '--host', ('--port=' + $gatePort), '--hit-check')
+    Start-Sleep -Milliseconds 2500
+    $clientProcess = Start-Process -FilePath $godot -PassThru -NoNewWindow -RedirectStandardOutput $hitClient -RedirectStandardError ($hitClient + '.err') -ArgumentList @('--headless', '--path', $project, '--', '--connect=127.0.0.1', ('--port=' + $gatePort))
+    $hitDeadline = (Get-Date).AddSeconds(20)
+    while ((Get-Date) -lt $hitDeadline) {
+        Start-Sleep -Milliseconds 250
+        if (Test-Path $hitHost) {
+            if (Select-String -Path $hitHost -Pattern 'hitmark serial=' -Quiet) { break }
+        }
+    }
+} finally {
+    foreach ($proc in @($clientProcess, $hostProcess)) {
+        if ($proc -and -not $proc.HasExited) { Stop-Process -Id $proc.Id -Force }
+    }
+    Start-Sleep -Milliseconds 300
+}
+$hitText = if (Test-Path $hitHost) { Get-Content -LiteralPath $hitHost -Raw } else { '' }
+Remove-Item -LiteralPath $hitHost, ($hitHost + '.err'), $hitClient, ($hitClient + '.err') -Force -ErrorAction SilentlyContinue
+if ($hitText -notmatch 'hitmark serial=') { Fail 'the host never confirmed a hit (no hitmarker)' }
+$hitLine = [regex]::Match($hitText, 'hitmark serial=.*').Value
+if ($hitLine -notmatch 'amount=([1-9]\d*)') { Fail ('a hitmarker with no damage: ' + $hitLine) }
+Write-Host $hitLine
+Write-Host 'PASS: a real shot produced a confirmed hitmarker' -ForegroundColor Green
+
 exit 0

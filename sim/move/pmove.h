@@ -77,6 +77,13 @@ struct PlayerState {
     // visible punch does not need to be replicated separately (A4).
     int recoil_index = 0;
     int recoil_recovery = 0;  // ticks of silence left before the spray resets
+    // M6.11: the last confirmed hit this player *dealt* - hitmarker and damage
+    // number, straight from the snapshot (iron law C: damage numbers never ride
+    // an event). Presentation only: nothing here steers the simulation.
+    uint8_t hit_target = 0;
+    uint16_t hit_amount = 0;
+    uint8_t hit_zone = 0;
+    uint8_t hit_serial = 0;
     Vec3 vault_dir;      // horizontal direction of the vault in progress
     float vault_rise = 0.0f;  // metres to climb during the vault
 

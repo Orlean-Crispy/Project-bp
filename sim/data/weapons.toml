@@ -43,6 +43,7 @@ penetration_damage_scale = 0.7
 recoil_pitch          = [0.011, 0.010, 0.009, 0.008, 0.007, 0.006, 0.005, 0.004]
 recoil_yaw            = [0.000, 0.002, -0.003, 0.004, -0.002, 0.001, -0.004, 0.002]
 recoil_recovery_ticks = 24     # 0.375 s of silence resets the spray
+ads_recoil_scale      = 0.55   # holding aim multiplies the whole pattern
 
 # Pistol: slower, harder hits, no penetration. It exists so M6.5 can prove a
 # weapon with no penetration is stopped while the rifle passes.
@@ -65,3 +66,4 @@ penetration_damage_scale = 0.7   # unused while penetration_count is 0
 recoil_pitch          = [0.030]
 recoil_yaw            = [0.004]
 recoil_recovery_ticks = 40
+ads_recoil_scale      = 0.7

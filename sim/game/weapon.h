@@ -42,6 +42,9 @@ struct WeaponDef {
     std::vector<float> recoil_yaw;
     // Silence for this many ticks and the spray resets to straight.
     int recoil_recovery_ticks = 32;
+    // Aiming down sights scales the spray down (0..1). 1.0 means ADS does
+    // nothing, which is the honest default until the field is tuned.
+    float ads_recoil_scale = 1.0f;
 };
 
 struct WeaponParams {
