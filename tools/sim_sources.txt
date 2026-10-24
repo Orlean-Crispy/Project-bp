@@ -8,6 +8,7 @@ sim/demo/demo.cpp
 sim/game/combat.cpp
 sim/game/hitbox.cpp
 sim/game/hitscan.cpp
+sim/game/rewind.cpp
 sim/game/weapon.cpp
 sim/input/bindings.cpp
 sim/input/buttons.cpp

@@ -6,6 +6,7 @@
 
 #include "options.h"
 #include "sim/game/hitscan.h"
+#include "sim/game/rewind.h"
 #include "test_util.h"
 
 namespace {
@@ -114,11 +115,65 @@ int run_hitscan_test(const Options& opt) {
         sim::hitscan(world.collision, boxes, 2, eye, sim::Vec3(0.0f, 0.0f, 0.0f), range, 0);
     check("a zero direction is a miss", !degenerate.hit);
 
+
+    // ---- M6.4: rewind -------------------------------------------------
+    // A target crossing the lane at 8 m/s (0.125 m per tick), moving across
+    // the line of fire. At tick 100 it is at y = 5; six ticks earlier it was
+    // at y = 4.25, which is 0.75 m away - more than a hull radius, so
+    // "shoot where it was" and "shoot where it is" give opposite answers.
+    sim::HitboxHistory history;
+    const float per_tick = 8.0f / 64.0f;
+    // 61 frames: the ring keeps 64 ticks, so this is a full second of history.
+    for (uint32_t t = 40; t <= 100; ++t) {
+        sim::PlayerState mover;
+        mover.pos = sim::Vec3(3.0f, 5.0f - static_cast<float>(100 - t) * per_tick, 0.0f);
+        history.record(mover, world.params, t);
+    }
+
+    check("6 ticks is the rewind window", std::fabs(sim::rewind_ticks(90.0f) - 6.0f) < 1e-4f);
+    check("a bad latency clamps to the floor",
+          std::fabs(sim::rewind_ticks(-5.0f) - sim::kInterpTicks) < 1e-4f);
+
+    sim::HitboxSample past[1];
+    const int past_count = sim::rewind_frame(&history, 1, 100, 6.0f, past, 1);
+    check("the rewound frame is the one from six ticks ago",
+          past_count == 1 && near(past[0].pos.y, 4.25f, 1e-4f));
+
+    sim::HitboxSample now_frame[1];
+    sim::rewind_frame(&history, 1, 100, 0.0f, now_frame, 1);
+    check("rewind 0 is the current frame", near(now_frame[0].pos.y, 5.0f, 1e-4f));
+
+    // Aim at where the target was. Against the rewound frame that is a hit;
+    // against the current frame it is 0.75 m of air.
+    const sim::Vec3 aim(6.0f, 4.25f - 5.0f, 0.0f);
+    const sim::ShotHit old_shot = sim::hitscan(world.collision, past, 1, eye, aim, range, -1);
+    const sim::ShotHit new_shot =
+        sim::hitscan(world.collision, now_frame, 1, eye, aim, range, -1);
+    check("a 6-tick-late shot still hits the old position", old_shot.is_player);
+    check("the same aim against the current frame misses", !new_shot.is_player);
+
+    // Between two frames the sample is interpolated, not snapped.
+    sim::HitboxSample half[1];
+    sim::rewind_frame(&history, 1, 100, 5.5f, half, 1);
+    check("a fractional rewind interpolates between frames",
+          near(half[0].pos.y, 4.3125f, 1e-4f));
+
+    // Older than the retained history: clamp to the oldest frame, never
+    // extrapolate (a rewind must not invent a position nobody recorded).
+    sim::HitboxSample clamped[1];
+    sim::rewind_frame(&history, 1, 45, 6.0f, clamped, 1);
+    check("rewinding past the oldest frame clamps to it",
+          near(clamped[0].pos.y, -2.5f, 1e-4f));
     std::printf("[hitscan] chest %d face %d wide %d edge %d crouch %d wall %d range %d\n",
                 chest.is_player ? 1 : 0, near(chest.point.x, 2.595f, 1e-3f) ? 1 : 0,
                 (!wide.is_player) ? 1 : 0, (inside.is_player && !outside.is_player) ? 1 : 0,
                 (!ducked.is_player) ? 1 : 0, (!blocked.is_player && blocked.hit) ? 1 : 0,
                 (!short_shot.hit) ? 1 : 0);
+
+    std::printf("[rewind] window %d at-6 %d current-miss %d interp %d clamp %d\n",
+                sim::kMaxRewindTicks, old_shot.is_player ? 1 : 0,
+                (!new_shot.is_player) ? 1 : 0, near(half[0].pos.y, 4.3125f, 1e-4f) ? 1 : 0,
+                near(clamped[0].pos.y, -2.5f, 1e-4f) ? 1 : 0);
 
     if (failures != 0) {
         std::printf("FAIL: %d hitscan checks failed\n", failures);

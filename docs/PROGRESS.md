@@ -2325,3 +2325,35 @@ smoke 20 项 + bench ALL GREEN；`sources ok: 28`；`doc_check` 0 fail。
   要不要升协议 v7）在 M6.6 决定——这条已经写进契约那一行，不会漏。
 - M6.5 的穿透需要知道“打到了哪个 brush”，届时给 `ShotHit` 加 `const Brush*`（现在加了没人用）。
 - 下一步 **M6.4 hitbox 回溯**（6 tick 窗口 + 帧间插值）；做完停下。
+## S67 · 2026-10-24 · M6.4 hitbox 回溯（公式 + 插值）
+
+### 1. 做了什么
+
+- **`sim/game/rewind.*`**：
+  `rewind_ticks(one_way_ms)` = 单程延迟 × 64拍 + **1 tick 插值**，夹到 `kMaxRewindTicks = 6`。
+  按 v0.4 §9.1 的推导：30 ms RTT + 15.6 ms 插值 + 5 ms 抖动 ≈ 51 ms → 4 tick，取 6 作裕度。
+  这行是公式不是经验值：改输入（延迟/插值）而不是改常数。
+- `rewind_frame(histories, count, shot_tick, rewind, out, cap)`：从 64 tick 历史里取
+  `shot_tick - rewind` 那一帧，**小数部分用 `HitboxHistory::sample` 插值**（不取整帧）。
+  比最旧帧更老 → 夹到最旧，**绝不外推**。零分配：缓冲区由调用方持有。
+- 闸门加 8 项到 `--test-hitscan` 的 `[rewind]` 段：靶子以 8 m/s 横穿火线，6 tick 走 0.75 m，
+  超过半个盒宽——同一个瞄准点，打回溯帧命中、打当前帧落空。
+
+### 2. 判据
+
+`[rewind] window 6 at-6 1 current-miss 1 interp 1 clamp 1`；smoke 21 项 + bench ALL GREEN。
+**闸门能红**：把 `shot_tick - rewind` 改成 `+`，4 项立刻 FAIL（帧位置、命中、插值、夹取）。
+
+### 3. 失败与修正
+
+- 第一版 clamp 项期望 `y = -7.5`（tick 0），实际失败：hitbox 环只有 **64 tick**，
+  我录了 101 帧，tick 0 早被覆盖。改成录 61 帧（一个整秒）并把用例改成“早于最旧帧”，
+  期望值随之改成 tick 40 的位置——测试因此还顺手钉住了“历史只有 1 秒”这件事。
+- 体感上“晚 6 tick 仍命中”靠的是靶子**横穿**火线（沿 y 走）。第一版让靶子沿射线方向走，
+  那样不管回不回都命中，测试等于没测。
+
+### 4. 边界 / 下一步
+
+- 回溯的**生产消费者**还没出现：真正开枪（用输入方向 + `rewind_ticks(实测 RTT)`）在 M6.6/M6.7。
+- 客户端预测命中（v0.4 §9.3）需要“同一个函数 + 同一份历史”，也就是这套 API；但要等伤害落地。
+- 下一步 **M6.5 穿透**（地图 `_penetrable` + 每层 ×0.7）；做完停下。
