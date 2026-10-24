@@ -41,7 +41,9 @@ void CollisionWorld::build(const MapData& map) {
     h.u32(static_cast<uint32_t>(m_brushes.size()));
     for (const Brush& b : m_brushes) {
         h.u32(static_cast<uint32_t>(b.planes.size()));
-        h.u32((b.climbable ? 1u : 0u) | (b.wallrunnable ? 2u : 0u));
+        // Every flag that changes collision or shooting belongs in here: a map
+        // that only differs in _penetrable must not join a game against the other.
+        h.u32((b.climbable ? 1u : 0u) | (b.wallrunnable ? 2u : 0u) | (b.penetrable ? 4u : 0u));
         for (const Plane& p : b.planes) h.vec3(p.normal).f32(p.dist);
     }
     m_geometry_hash = h.value();

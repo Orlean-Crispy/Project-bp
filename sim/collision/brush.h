@@ -30,6 +30,10 @@ struct Brush {
     std::string material;
     bool climbable = false;
     bool wallrunnable = false;
+    // ADR 0006 D1: only surfaces the map marks readable (thin wood, sheet metal)
+    // may be crossed at all. The weapon decides how many layers it can afford;
+    // this flag is the map's veto, and it defaults to "block" on purpose.
+    bool penetrable = false;
 };
 
 // Intersects every plane triple, keeps the points inside all halfspaces, and

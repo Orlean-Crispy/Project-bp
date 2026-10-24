@@ -2357,3 +2357,37 @@ smoke 20 项 + bench ALL GREEN；`sources ok: 28`；`doc_check` 0 fail。
 - 回溯的**生产消费者**还没出现：真正开枪（用输入方向 + `rewind_ticks(实测 RTT)`）在 M6.6/M6.7。
 - 客户端预测命中（v0.4 §9.3）需要“同一个函数 + 同一份历史”，也就是这套 API；但要等伤害落地。
 - 下一步 **M6.5 穿透**（地图 `_penetrable` + 每层 ×0.7）；做完停下。
+## S68 · 2026-10-24 · M6.5 穿透（地图否决 + 每层 ×0.7）
+
+### 1. 做了什么
+
+- **地图侧**：`Brush::penetrable`，来自实体的 `_penetrable`（和 `_climbable` 同一个解析点）。
+  ADR 0006 D1 的默认值是**挡**：没写这个键的墙就是混凝土。它同时进 `geometry_hash`——
+  两张只差 `_penetrable` 的图不能互通，否则一发子弹的结果取决于谁当房主。
+- **判定侧**：`hitscan_penetrating`。先取射线上最近的世界表面与最近的玩家：玩家在前就是命中；
+  世界在前就先问地图（不可穿 → `stopped_by_map`），再问武器预算（层数用完 → `out_of_layers`）；
+  都放行就穿过这一层、`damage_scale *= 0.7`，从**凸体出口**（六个半空间里沿射线方向最近的那个面）
+  再推进 1 mm 继续。原来的 `hitscan` 现在是它的 `layers = 0` 包装——只有一条射线实现。
+- **接口**：`PenetrationParams { layers, damage_scale }` 代替两个位置参数。以后要按材质给不同系数，
+  改的是这个结构体怎么填（或让它带一个 per-brush 乘数），不是 `hitscan_penetrating` 的签名。
+- 新地图 `sim/data/maps/penetrate_test.map`：x=0 与 x=2 两堵可穿墙、x=5 一堵混凝土；
+  专供闸门，不污染 movement 基准。
+
+### 2. 判据
+
+`[penetrate] walls 2 one 1 two 2 scale 0.49 pistol 1 concrete 1 open 1`；smoke 21 项 + bench ALL GREEN。
+**闸门能红**：把地图否决短路掉，`concrete vetoes even five layers` 立刻 FAIL（步枪穿过了混凝土）。
+
+### 3. 失败与修正
+
+- 生成测试地图时把 worldspawn 的闭括号切掉了（12 个房间 brush 其实都在同一个实体里），
+  解析器报 `line 59: expected a plane`。改成显式拼实体块，`--info` 校验 9 个 brush 才算过。
+- `dot` 与 `types.h` 里的同名函数撞了（匿名命名空间遮蔽），编译报 ambiguous；删掉自造的那份，
+  直接用现成的 `dot` / `length`——同一类工具不该有第二份。
+
+### 4. 边界 / 下一步
+
+- 穿透**还没有伤害**：`damage_scale` 只是结果里的一个数，M6.6 才把它乘进 `apply_damage`。
+- 每层目前一个系数（来自武器）；按材质分系数时，在循环里再乘一个 per-brush 数即可，
+  调用点与 `ShotResult` 都不用动。
+- 下一步 **M6.6 三段伤害**（部位倍率 × 距离衰减；同一定下“谁提供射线方向”与倍率的唯一归属）；做完停下。

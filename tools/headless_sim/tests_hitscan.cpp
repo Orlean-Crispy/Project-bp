@@ -7,6 +7,7 @@
 #include "options.h"
 #include "sim/game/hitscan.h"
 #include "sim/game/rewind.h"
+#include "sim/game/weapon.h"
 #include "test_util.h"
 
 namespace {
@@ -164,6 +165,90 @@ int run_hitscan_test(const Options& opt) {
     sim::rewind_frame(&history, 1, 45, 6.0f, clamped, 1);
     check("rewinding past the oldest frame clamps to it",
           near(clamped[0].pos.y, -2.5f, 1e-4f));
+
+    // ---- M6.5: penetration -------------------------------------------
+    // A second world: two penetrable walls at x = 0 and x = 2, concrete at
+    // x = 5 (no _penetrable key, so the map vetoes).
+    sim::World pen_world;
+    if (!load_world_from("sim/data/maps/penetrate_test.map", opt.data_path, pen_world, error)) {
+        std::printf("FAIL: penetration world: %s\n", error.c_str());
+        return 1;
+    }
+    int penetrable_brushes = 0;
+    for (const sim::Brush& brush : pen_world.collision.brushes()) {
+        if (brush.penetrable) ++penetrable_brushes;
+    }
+    check("the map marks exactly two surfaces penetrable", penetrable_brushes == 2);
+
+    const sim::WeaponDef* rifle = pen_world.weapons.find("rifle");
+    const sim::WeaponDef* pistol = pen_world.weapons.find("pistol");
+    check("weapon data loads beside the map", rifle != nullptr && pistol != nullptr);
+
+    sim::PenetrationParams rifle_params;
+    sim::PenetrationParams pistol_params;
+    if (rifle != nullptr) {
+        rifle_params.layers = rifle->penetration_count;
+        rifle_params.damage_scale = rifle->penetration_damage_scale;
+    }
+    if (pistol != nullptr) {
+        pistol_params.layers = pistol->penetration_count;
+        pistol_params.damage_scale = pistol->penetration_damage_scale;
+    }
+
+    const sim::Vec3 lane(-3.0f, 0.0f, 1.28f);
+    sim::HitboxSample target[1];
+    target[0] = standing(3.5f, 0.0f);  // between wall B and the concrete wall
+
+    const sim::ShotResult one_layer = sim::hitscan_penetrating(
+        pen_world.collision, target, 1, lane, right, range, rifle_params, -1);
+    check("one layer crosses one wall and stops at the next",
+          one_layer.out_of_layers && !one_layer.hit.is_player && one_layer.layers == 1);
+    check("the first layer already scales damage",
+          near(one_layer.damage_scale, 0.7f, 1e-4f));
+
+    sim::PenetrationParams two_layers = rifle_params;
+    two_layers.layers = 2;
+    const sim::ShotResult through = sim::hitscan_penetrating(
+        pen_world.collision, target, 1, lane, right, range, two_layers, -1);
+    check("two layers cross both walls and hit the player behind them",
+          through.hit.is_player && through.layers == 2);
+    check("damage scales once per layer", near(through.damage_scale, 0.49f, 1e-4f));
+
+    const sim::ShotResult stopped = sim::hitscan_penetrating(
+        pen_world.collision, target, 1, lane, right, range, pistol_params, -1);
+    check("a weapon with no layers is stopped by the first wall",
+          stopped.out_of_layers && stopped.layers == 0 && !stopped.hit.is_player);
+
+    sim::HitboxSample behind_concrete[1];
+    behind_concrete[0] = standing(6.5f, 0.0f);
+    sim::PenetrationParams five_layers = rifle_params;
+    five_layers.layers = 5;
+    const sim::ShotResult veto = sim::hitscan_penetrating(
+        pen_world.collision, behind_concrete, 1, lane, right, range, five_layers, -1);
+    check("concrete vetoes even five layers",
+          veto.stopped_by_map && !veto.hit.is_player && veto.layers == 2);
+
+    sim::HitboxSample open_target[1];
+    open_target[0] = standing(3.5f, 5.0f);
+    const sim::Vec3 open_lane(-3.0f, 5.0f, 1.28f);
+    const sim::ShotResult open = sim::hitscan_penetrating(
+        pen_world.collision, open_target, 1, open_lane, right, range, rifle_params, -1);
+    check("an open shot crosses nothing and keeps full damage",
+          open.hit.is_player && open.layers == 0 && near(open.damage_scale, 1.0f, 1e-6f));
+
+    // The geometry hash covers the flag: two maps that differ only in
+    // _penetrable must not be able to join each other.
+    sim::MapData original;
+    original.brushes = pen_world.collision.brushes();
+    original.bounds = pen_world.collision.bounds();
+    sim::MapData flipped = original;
+    for (sim::Brush& brush : flipped.brushes) brush.penetrable = !brush.penetrable;
+    sim::CollisionWorld original_world;
+    sim::CollisionWorld flipped_world;
+    original_world.build(original);
+    flipped_world.build(flipped);
+    check("the geometry hash covers _penetrable",
+          original_world.geometry_hash() != flipped_world.geometry_hash());
     std::printf("[hitscan] chest %d face %d wide %d edge %d crouch %d wall %d range %d\n",
                 chest.is_player ? 1 : 0, near(chest.point.x, 2.595f, 1e-3f) ? 1 : 0,
                 (!wide.is_player) ? 1 : 0, (inside.is_player && !outside.is_player) ? 1 : 0,
@@ -174,6 +259,11 @@ int run_hitscan_test(const Options& opt) {
                 sim::kMaxRewindTicks, old_shot.is_player ? 1 : 0,
                 (!new_shot.is_player) ? 1 : 0, near(half[0].pos.y, 4.3125f, 1e-4f) ? 1 : 0,
                 near(clamped[0].pos.y, -2.5f, 1e-4f) ? 1 : 0);
+
+    std::printf("[penetrate] walls %d one %d two %d scale %.2f pistol %d concrete %d open %d\n",
+                penetrable_brushes, one_layer.layers, through.layers,
+                static_cast<double>(through.damage_scale), stopped.out_of_layers ? 1 : 0,
+                veto.stopped_by_map ? 1 : 0, open.layers == 0 ? 1 : 0);
 
     if (failures != 0) {
         std::printf("FAIL: %d hitscan checks failed\n", failures);

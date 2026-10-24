@@ -28,7 +28,7 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 它和根目录 AGENTS.md §2、HANDOFF、PROGRESS 各写一遍，四处互相矛盾。2026-10-23 起删掉，只留结论：
 
 - M0–M5 已关闭（M4 的跨机比对仍缺第二台机器 = DEBT-14）。
-- M6 已开工：M6.0 规则、M6.1 武器数据、M6.2 开火输入、M6.3 命中判定、M6.4 回溯完成；穿透（M6.5）未开始。
+- M6 已开工：M6.0–M6.5 完成（规则、武器数据、开火输入、命中判定、回溯、穿透）；三段伤害（M6.6）未开始。
 
 ### 0.3 现在能跑什么
 
@@ -175,8 +175,8 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
    SERVER SILENT 1 s）、重连按钮、A5 网络网关拆分全部实测通过。第三人称动画与 5v5 选边
    按计划书属于 M7，不在此条。
 2. **v0.4 的 M5 增量** — A1/A2/A5 全部接入并实测；configstring 带真实哈希且失配拒局。**已关闭**。
-3. **M6 射击** — M6.0–M6.4 已完成（护甲、武器数据、开火输入、命中判定、回溯）；
-   穿透、后坐力表、伤害衰减、hitmarker 仍未做。顺序见契约 §6 的 M6.5–M6.12（一次只做一个）。
+3. **M6 射击** — M6.0–M6.5 已完成（护甲、武器数据、开火输入、命中判定、回溯、穿透）；
+   后坐力表、伤害衰减、hitmarker 仍未做。顺序见契约 §6 的 M6.6–M6.12（一次只做一个）。
 4. **Godot 版本** — 计划书写 4.7 Mono，但 godot-cpp 最高只有 4.5，现用 4.5。
    lead：M7（Godot-Locomotion 绑定 4.7.2）之前必须解决。
 5. **跨机 demo 比对** — 工具与流程就绪（docs/demo-format.md），缺第二台机器。
@@ -279,6 +279,7 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HA
 | sim/data/maps/step_test.map | 五条通道：0.20 / 0.35 / 0.55 挡墙 / 三级楼梯 / 1.0 m 净高 |
 | sim/data/maps/parkour_test.map | 1.0 m 矮道（滑铲）、可墙跑墙、可爬墙、1.0 m 平台（翻越） |
 | sim/data/maps/playground.map | 40×30 演示图：台阶、平台、矮道、薄墙、墙跑墙、爬墙墙 |
+| sim/data/maps/penetrate_test.map | M6.5 穿透：x=0 / x=2 两堵可穿墙，x=5 一堵混凝土；闸门专用 |
 
 ---
 
@@ -304,7 +305,7 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HA
 ### 8.2 碰撞（sim/collision/*）
 
 - 扫掠 = Minkowski 展开（支撑距离取 **min**）+ 分步（step = 最小墙厚），bumps 严格 `< max_bumps`（旧的 `<=` 实际多给一次）。
-- geometry_hash 覆盖 brush 平面 **与 _climbable/_wallrunnable 标志**，并在 build() 时缓存（原来每 tick 重算全图）。
+- geometry_hash 覆盖 brush 平面 **与 _climbable/_wallrunnable/_penetrable 标志**，并在 build() 时缓存（原来每 tick 重算全图）。
 - entity 的 `origin` 也由 map_parse 换算成米（`entity_origin_metres()`），桥不再乘 0.0254。
 - 进入分数钳到 0（接触 epsilon 的坑）。
 - 落地不接受实心点；pmove 每 tick 检查实心并向上/四向脱离。
@@ -539,6 +540,13 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HA
   就夹到最旧，**不许外推**。零分配，缓冲区由调用方给。
   判据：`[rewind] window 6 at-6 1 current-miss 1 interp 1 clamp 1`——靶子横穿火线 6 tick 走 0.75 m，
   同一个瞄准点打回溯帧命中、打当前帧落空。
+- **穿透（M6.5，ADR 0006 D1）**：`Brush::penetrable` 来自 `_penetrable`（**默认挡**，和 `_climbable`
+  同一个解析点、同一个 `geometry_hash`）。`hitscan_penetrating` 的顺序是：玩家最近 → 世界最近 →
+  地图否决（`stopped_by_map`）→ 武器层数预算（`out_of_layers`）→ 穿层并 `damage_scale *= scale`，
+  然后从**凸体出口**再推进 1 mm 继续。`hitscan` 只是 `layers = 0` 的包装，射线只有一份实现。
+  策略在 `PenetrationParams { layers, damage_scale }` 里；以后按材质分系数，只是让循环再乘一个
+  per-brush 数，签名与 `ShotResult` 都不用动。
+  判据：`[penetrate] walls 2 one 1 two 2 scale 0.49 pistol 1 concrete 1 open 1`。
 
 ---
 
@@ -579,8 +587,8 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HA
 
 ## 11. 下一步（严格按计划书顺序，不要跳）
 
-1. **M6 射击**：D1–D5 已定（ADR 0006 + 契约 §4），契约 active。M6.0–M6.4 已完成，
-   下一步 M6.5 穿透 → 三段伤害 → 弹药 → 伤害进快照 → 死亡重生 →
+1. **M6 射击**：D1–D5 已定（ADR 0006 + 契约 §4），契约 active。M6.0–M6.5 已完成，
+   下一步 M6.6 三段伤害 → 弹药 → 伤害进快照 → 死亡重生 →
    后坐力 → 表现层 → 验收。**一次只做一个任务。**
 2. **M7 / M8**：动画、视角模型、音频垂直定位（§9.2 的楼层低通）。
 3. 代码体检：A1–A7、AUD-01…19、R1–R19 已完成；S60 关掉了 AUD-20/23/26/27，

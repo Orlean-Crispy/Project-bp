@@ -252,6 +252,7 @@ bool parse_map_text(const std::string& text, MapData& out, std::string& error) {
             if (surface != entity.keys.end() && !surface->second.empty()) brush.material = surface->second;
             brush.climbable = entity.keys.count("_climbable") && entity.keys.at("_climbable") == "1";
             brush.wallrunnable = entity.keys.count("_wallrunnable") && entity.keys.at("_wallrunnable") == "1";
+            brush.penetrable = entity.keys.count("_penetrable") && entity.keys.at("_penetrable") == "1";
         }
 
         map.entities.push_back(entity);
