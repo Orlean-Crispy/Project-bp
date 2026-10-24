@@ -58,7 +58,8 @@
 | 射击链路 | `[damage] body 4 rounds armour 9 head 105 wall hits 0 reload 30`；含死亡/重生/尸体/后坐力/命中记录 | `--test-damage` |
 | 后坐力 | `recoil: shots 12 first z 1.278 fifth z 1.848`；沉默 24 tick 复位 | `--test-damage` |
 | TTK | 胸 0.62/0.78/0.78/1.09 s（目标 0.6–1.2 ✅）；头 1 发 | `--test-damage` 的 `[ttk]` |
-| 30% 丢包射击 | `[shotloss] loss 30% dropped 187 target 100->0 hitmark 4/25` | `--test-net` |
+| 30% 丢包射击 | `[shotloss] loss 30% dropped 187 target 100->0 hitmark 5/21` | `--test-net` |
+| 10 分钟链路 | `soak 600s joins=2 accepted=76538 late=0 far=0 snapshots=38268/38267` | `tools\net_soak.ps1` |
 | Hitmarker | 真实开枪命中 `hitmark serial=1 amount=21 target=1 zone=1` | `godot_check.ps1` |
 | 伤害进 HUD | 房主打 30 → 客户端打 `hud hp=70` | `godot_check.ps1` |
 | 曳光 | 按住扳机 1 s 得到 `tracer events=14` | `godot_check.ps1` |

@@ -15,7 +15,7 @@
 | E6 | 30% 丢包下射击仍能命中并结算 | ✅ | `--test-net`：`[shotloss] loss 30% dropped 187 target 100->0 hitmark 4/25` |
 | E7 | 全闸门绿：smoke + bench + doc_check | ✅ | `tools\smoke.ps1` 22 项 ALL GREEN；`doc_check` 9 ok / 0 warn / 0 fail |
 | E8 | `0 allocs/tick`，p99 ≤ 4 ms | ✅ | `--bench 1000 --players 10`：p99 **2.40 µs**、max 6.00 µs、`allocs 0.00 / tick` |
-| E9 | 两人局域网真打 10 分钟不崩、无瞬移 | ⏳ **待手测** | 见 §3 的清单 |
+| E9 | 两人局域网真打 10 分钟不崩、无瞬移 | ◐ **自动化半边通过，人手待测** | `tools/net_soak.ps1`：`soak 600s joins=2 accepted=76538 late=0 far=0 snapshots=38268/38267`；手感见 §3 |
 
 ## 2. E3：从 0.28 s 调到 0.62 s（S75 定案）
 
@@ -51,6 +51,10 @@ ttk target 0.60-1.20 s (chest): none 0.62 light 0.78 regen 0.78 heavy 1.09
 
 
 ## 3. E9 手测清单（需要两台机器或两个人）
+
+**自动化半边已完成**：`tools/net_soak.ps1` 让两个客户端 + 服务器跑满 600 s，断言双方持续收到快照
+（600 s × 64 Hz ≈ 38k 份，实测 38268/38267），0 条 late、0 条 far 命令。这证明**链路不会随时间腐烂**；
+证明不了手感。
 
 前置：`demo.bat` → Host（端口 27115）与 Join（同网段 IP）。
 
