@@ -930,6 +930,84 @@ int run_net_alloc_check(const std::string& data_path) {
 // mid-burst. This drives a real client against a real server and samples both
 // sides; the snapshot half of the wire is pinned by --test-snapshot's flags
 // round-trip, and a mismatch here would show up as a rollback correction.
+
+// E6: with 30% loss the shot must still land and the hitmarker must still arrive.
+// This is the one acceptance item that needs the whole stack: client command ->
+// server shot -> damage -> snapshot -> client's own hit record.
+int run_shot_loss_check(const std::string& data_path) {
+    const std::string map_path = "sim/data/maps/metrics_flat.map";
+    std::string error;
+    constexpr float kLoss = 0.3f;
+
+    sim::NetServer server;
+    if (!server.init(map_path, data_path, 2, error)) {
+        std::printf("FAIL: shotloss server init: %s\n", error.c_str());
+        return 1;
+    }
+    sim::NetConditions conditions;
+    conditions.loss = kLoss;
+    conditions.latency_ms = 20.0f;
+    sim::LoopbackTransport to_server(conditions, 900);
+    sim::LoopbackTransport to_client(conditions, 901);
+    // The client takes slot 1; slot 0 is the idle target.
+    server.add_client(&to_server, &to_client, 1);
+
+    sim::NetClient client;
+    if (!client.init(&to_server, &to_client, 1, map_path, data_path, error)) {
+        std::printf("FAIL: shotloss client init: %s\n", error.c_str());
+        return 1;
+    }
+
+    auto tick_once = [&](const sim::MoveInput& in) {
+        client.send_input(in);
+        client.step_local();
+        server.receive();
+        server.step();
+        server.send();
+        to_server.advance(0);
+        to_client.advance(0);
+        client.receive();
+    };
+
+    for (int i = 0; i < 120; ++i) tick_once(sim::MoveInput{});
+    if (!client.joined()) {
+        std::printf("FAIL: shotloss client did not join\n");
+        return 1;
+    }
+
+    // Slots start 2 m apart on -X; the client turns around and aims at the chest.
+    sim::MoveInput firing;
+    firing.fire = true;
+    firing.yaw = 3.14159265f;           // looking down -X
+    firing.pitch = -0.14f;              // chest of a standing target 2 m away
+    const int before = server.world().players[0].vitals.health;
+    for (int i = 0; i < 240; ++i) tick_once(firing);
+
+    const int after = server.world().players[0].vitals.health;
+    const int dropped = to_server.dropped_packets() + to_client.dropped_packets();
+    const bool landed = after < before;
+    const bool confirmed = client.predicted().hit_serial > 0 &&
+                           client.predicted().hit_amount > 0;
+    std::printf("  [shotloss] loss %.0f%% dropped %d target %d->%d hitmark %u/%u\n",
+                kLoss * 100.0f, dropped, before, after,
+                static_cast<unsigned>(client.predicted().hit_serial),
+                static_cast<unsigned>(client.predicted().hit_amount));
+    int failures = 0;
+    if (!landed) {
+        std::printf("FAIL: a shot under 30%% loss never damaged the target\n");
+        ++failures;
+    }
+    if (!confirmed) {
+        std::printf("FAIL: the hitmarker never arrived under 30%% loss\n");
+        ++failures;
+    }
+    if (dropped == 0) {
+        std::printf("FAIL: the lossy link dropped nothing, the check proved nothing\n");
+        ++failures;
+    }
+    return failures;
+}
+
 int run_fire_flag_check(const std::string& data_path) {
     const std::string map_path = "sim/data/maps/metrics_flat.map";
     std::string error;
@@ -1043,6 +1121,7 @@ int run_net_test(const Options& opt) {
     failures += run_ticket_test();
     failures += run_timeout_test();
     failures += run_fire_flag_check(opt.data_path);
+    failures += run_shot_loss_check(opt.data_path);
 
     // v0.4 5.2: duplicates, late and far commands never enter the queue twice.
     {

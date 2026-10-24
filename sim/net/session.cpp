@@ -712,6 +712,19 @@ void NetClient::receive() {
     }
 }
 
+namespace {
+
+// Fields that are not simulation state: they must not cause a rollback, but they
+// must still reach the predicted player, or the HUD loses them.
+void apply_presentation(const PlayerSnap& snap, PlayerState& player) {
+    player.hit_target = snap.hit_target;
+    player.hit_amount = snap.hit_amount;
+    player.hit_zone = snap.hit_zone;
+    player.hit_serial = snap.hit_serial;
+}
+
+}  // namespace
+
 void NetClient::advance_weapon(const MoveInput& input) {
     if (m_local.players.empty()) return;
     const WeaponDef* def = m_local.weapons.find_by_slot(m_local.players[0].weapon_id);
@@ -743,6 +756,10 @@ void NetClient::apply_snapshot(const Snapshot& snap) {
     }
 
     if (same_state(auth, m_history[index].state)) {
+        // The simulation agrees, but the snapshot may still carry presentation
+        // data (the hit record): dropping it would leave the hitmarker dark even
+        // though the hit really happened (S73).
+        apply_presentation(auth, m_local.players[0]);
         m_history.erase(m_history.begin(), m_history.begin() + static_cast<long>(index));
         return;
     }

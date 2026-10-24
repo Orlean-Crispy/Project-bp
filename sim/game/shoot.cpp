@@ -12,14 +12,14 @@ namespace {
 // size and keeps the shot path allocation free.
 constexpr int kMaxShotTargets = 16;
 
-int damage_for(float base, HitZone zone, const MovementParams& params, float penetration_scale) {
+}  // namespace
+
+int shot_damage(float base, HitZone zone, const MovementParams& params, float penetration_scale) {
     if (!(base > 0.0f)) return 0;
     const float scaled = base * zone_multiplier(zone, params) * penetration_scale;
     const int rounded = static_cast<int>(scaled + 0.5f);
     return rounded > 1 ? rounded : 1;
 }
-
-}  // namespace
 
 void update_weapon(PlayerState& shooter, int shooter_index, const MoveInput& input,
                    const WeaponDef& def, World& world, const HitboxHistory* histories,
@@ -102,7 +102,7 @@ void update_weapon(PlayerState& shooter, int shooter_index, const MoveInput& inp
     PlayerState& victim = world.players[static_cast<std::size_t>(shot.hit.entity)];
     const HitZone zone = hit_zone_at(frame[shot.hit.entity], shot.hit.point.z);
     const int damage =
-        damage_for(damage_at_range(def, shot.hit.distance), zone, world.params, shot.damage_scale);
+        shot_damage(damage_at_range(def, shot.hit.distance), zone, world.params, shot.damage_scale);
     if (damage <= 0) return;
 
     apply_damage(victim.vitals, damage, zone, world.combat);

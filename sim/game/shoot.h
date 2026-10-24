@@ -3,10 +3,15 @@
 #include <cstdint>
 
 #include "sim/core/world.h"
+#include "sim/game/combat.h"
 #include "sim/game/hitbox.h"
 #include "sim/game/weapon.h"
 
 namespace sim {
+
+// Damage of one hit before it is applied: falloff x zone x penetration, rounded
+// once. Shared by the shot path and the TTK table so the two cannot drift.
+int shot_damage(float base, HitZone zone, const MovementParams& params, float penetration_scale);
 
 struct ShotReport {
     int shots = 0;
