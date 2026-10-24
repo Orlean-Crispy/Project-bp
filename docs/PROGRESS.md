@@ -1125,3 +1125,26 @@ soak 的输出（600 s 跑完才有意义）：`soak 600s joins=2 accepted=… l
 
 - 等两件事：E9 手测、M7 签字。
 - 签字后第一个任务是 M7.1（枪感旋钮）——它不依赖任何资产，也能立刻让手感可调。
+## S78 · 2026-10-24 · M6 关闭，M7 开工
+
+### 1. 做了什么
+
+- **M6 契约 `closed`**：§8 关闭清单全部勾上。
+- **E9 记为 ACCEPTED-DEFERRED**：所有者说“算，先这样吧”。链路半边有 10 分钟 soak 的硬证据；
+  手感半边**没有人类证据**，明确推迟到 M7 音频上线后一并评。写清楚它是“所有者决定”，不是“测试通过”。
+- **M7 契约 `active`**（S78 签）：D2（Godot 内置音频）、D3（程序化姿态，资产不阻塞）、D4（视角模型只做表现）确认。
+- STATE / 根 AGENTS / docs/AGENTS 全部切到 M7；Top5 换成 M7.1–M7.6 + E9 手感重评。
+
+### 2. 判据
+
+`python tools\doc_check.py` 0 fail；契约状态与 STATE 一致（`doc_check` 的 GATE/PROTO 行仍绿）。
+
+### 3. 为什么把 E9 写成 ACCEPTED-DEFERRED 而不是 PASS
+
+以后再回来看，最危险的是“E9 通过了”这句话。它没有：链路证明了，手感没评。
+验收记录里写“通过”，半年后会有人以为手感被验证过。所以状态名本身要能阻止这种误读。
+
+### 4. 下一步
+
+**M7.1 枪感旋钮**：`draw/holster/ads_in/ads_out/spread_by_state` 进 weapons.toml，`--test-weapons` 扩展。
+不依赖任何资产，做完之后手感参数都能在数据里调。
