@@ -1,8 +1,10 @@
 #include "sim/net/session.h"
 
 #include "sim/core/tick.h"
+#include "sim/game/respawn.h"
 #include "sim/game/rewind.h"
 #include "sim/game/shoot.h"
+#include "sim/game/spawn.h"
 #include "sim/input/buttons.h"
 #include "sim/net/bytes.h"
 #include "sim/net/netchan.h"
@@ -151,6 +153,16 @@ bool InputWindow::take(uint32_t tick, MoveInput& out) {
     return found;
 }
 
+namespace {
+
+// Where slot i starts and comes back. One function so the join position and the
+// respawn position can never drift apart.
+Vec3 spawn_point_for(int index) {
+    return Vec3(-16.0f + static_cast<float>(index) * 2.0f, 0.0f, 0.05f);
+}
+
+}  // namespace
+
 bool NetServer::init(const std::string& map_path, const std::string& params_path,
                      int player_count, std::string& error) {
     MapData map;
@@ -167,17 +179,17 @@ bool NetServer::init(const std::string& map_path, const std::string& params_path
 
     m_world.players.clear();
     for (int i = 0; i < player_count; ++i) {
-        PlayerState p;
-        p.pos = Vec3(-16.0f + static_cast<float>(i) * 2.0f, 0.0f, 0.05f);
-        p.impulses = m_world.params.max_impulses;
+        // One definition of a fresh player, shared with respawn (spawn.h).
+        PlayerState p = make_spawn_player(m_world.params, m_world.combat, m_world.weapons,
+                                          spawn_point_for(i));
         p.active = false;  // reserved until a link joins this slot
-        if (const WeaponDef* def = m_world.weapons.find_by_slot(0)) equip_weapon(p, *def);
         m_world.players.push_back(p);
     }
     m_world.tick = 0;
     // R6: allocate the per-tick input scratch once; step() only clears it.
     m_inputs.assign(static_cast<std::size_t>(player_count), MoveInput{});
     m_hitboxes.assign(static_cast<std::size_t>(player_count), HitboxHistory{});
+    m_respawn.assign(static_cast<std::size_t>(player_count), 0);
     for (int i = 0; i < player_count; ++i) {
         m_hitboxes[static_cast<std::size_t>(i)].record(
             m_world.players[static_cast<std::size_t>(i)], m_world.params, 0);
@@ -358,6 +370,17 @@ void NetServer::step() {
     }
     for (std::size_t i = 0; i < m_world.players.size() && i < m_hitboxes.size(); ++i) {
         m_hitboxes[i].record(m_world.players[i], m_world.params, m_world.tick);
+    }
+    // M6.9: dead players come back after kRespawnTicks. This runs on the server
+    // only; the client learns about it the same way it learns about damage - from
+    // the next snapshot, which then rewinds the prediction to the new position.
+    for (std::size_t i = 0; i < m_world.players.size(); ++i) {
+        if (tick_respawn(m_world, i, m_respawn[i], spawn_point_for(static_cast<int>(i)))) {
+            // The old frames sit at the old position; a shot that rewinds into them
+            // would hit a player who is no longer there.
+            m_hitboxes[i].reset();
+            m_hitboxes[i].record(m_world.players[i], m_world.params, m_world.tick);
+        }
     }
 }
 
@@ -700,6 +723,8 @@ void NetClient::advance_weapon(const MoveInput& input) {
 
 void NetClient::apply_snapshot(const Snapshot& snap) {
     const PlayerSnap& auth = snap.players[static_cast<size_t>(m_player)];
+    m_last_hp = auth.hp;
+    m_last_armor = auth.armor;
 
     // Find the predicted state for this tick.
     size_t index = m_history.size();

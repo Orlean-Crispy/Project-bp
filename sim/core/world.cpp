@@ -12,19 +12,22 @@ void step_player(PlayerState& player, const MoveInput& input, const CollisionWor
                  EventQueue* events) {
     const bool was_ground = player.on_ground;
     const float fall_speed = player.vel.z;
-    // A jump is a *pressed* edge on the ground. The old test only looked at the
-    // velocity, so a vault or a wall climb starting from the floor was reported as
-    // a jump (wrong sound, wrong HUD, wrong statistics).
-    const bool jump_pressed = input.jump && !player.jump_was_down;
-    pmove(player, input, collision, params, dt);
+
+    // M6.9: a dead player still falls (a body dropped mid-air should land), but no
+    // button reaches pmove. Freezing the whole step instead would leave corpses
+    // hanging in the air, which reads as a bug.
+    const MoveInput dead_input;
+    const MoveInput& effective = player.vitals.health > 0 ? input : dead_input;
+    const bool jump_held = effective.jump && !player.jump_was_down;
+    pmove(player, effective, collision, params, dt);
 
     // M6: the trigger is replicated state, not a one-tick pulse. A lost snapshot
     // must not turn "still holding fire" into "released" (same reason the parkour
     // edges ride in the flags), so the last input is mirrored here, once, for the
     // local step and the rollback replay alike.
-    player.firing = input.fire;
-    player.reloading = input.reload;
-    player.ads = input.ads;
+    player.firing = effective.fire;
+    player.reloading = effective.reload;
+    player.ads = effective.ads;
 
     if (events == nullptr) return;
 
@@ -36,7 +39,7 @@ void step_player(PlayerState& player, const MoveInput& input, const CollisionWor
         event.entity_id = static_cast<uint16_t>(entity);
         event.a = player.pos;
         events->push(event);
-    } else if (jump_pressed && was_ground && !player.on_ground && player.vel.z > 0.0f) {
+    } else if (jump_held && was_ground && !player.on_ground && player.vel.z > 0.0f) {
         SimEvent event;
         event.tick = tick;
         event.type = EventType::Jump;

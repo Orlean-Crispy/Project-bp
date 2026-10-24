@@ -119,6 +119,7 @@ ShotResult hitscan_penetrating(const CollisionWorld& world, const HitboxSample* 
             if (i == ignore_entity) continue;
             const HitboxSample& box = boxes[i];
             if (box.height <= 0.0f) continue;
+            if (!box.alive) continue;
             const Vec3 mins(box.pos.x - box.radius, box.pos.y - box.radius, box.pos.z);
             const Vec3 maxs(box.pos.x + box.radius, box.pos.y + box.radius, box.pos.z + box.height);
             float t = 0.0f;

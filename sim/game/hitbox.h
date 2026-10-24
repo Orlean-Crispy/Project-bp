@@ -17,6 +17,9 @@ struct HitboxSample {
     float height = 1.42f;
     float radius = 0.405f;
     bool crouched = false;
+    // M6.9: a corpse is not cover. hitscan() skips dead samples, so a shot goes
+    // through the body to whoever is behind it.
+    bool alive = true;
     uint32_t tick = 0;
 };
 

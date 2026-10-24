@@ -16,7 +16,7 @@
 | 资源 | 上限 | v6 已用 | v7 已用 | 余量 | 断言位置 | 报警线 |
 |---|---|---|---|---|---|---|
 | delta mask 位 | 16（uint16） | 9 | **9** | 7 | `snapshot.cpp` static_assert | 12 |
-| flags 位 | 16（uint16） | 7（另 4 位预留） | **10**（另 1 位 alive 预留） | 5 | 同上 | 12 |
+| flags 位 | 16（uint16） | 7（另 4 位预留） | **9**（bit10 仍预留：alive 由 hp>0 派生） | 6 | 同上 | 12 |
 | 每玩家快照字节（全字段） | — | 82 | **86** | — | `--test-snapshot` 打印 | 1100 B/包 |
 | 单包（10 人满编、全字段） | 1100 B（安全线） | 833 | **873** | 227 B | `--test-snapshot` | 1100 |
 | 空 delta（1 人，无变化） | — | 15 | **15** | — | `--test-snapshot` | — |
@@ -30,7 +30,7 @@ mask : 0 Pos | 1 Vel | 2 Status | 3 Timers | 4 Yaw | 5 Extra | 6 Charge
        9–15 空
 flags: 0 on_ground | 1 crouched | 2 active | 3 jump | 4 slide | 5 dash | 6 vault
        7 firing | 8 reloading | 9 ads   ← S65 起有生产者
-       10 alive                          ← 仍预留（M6.9）
+       10 alive                          ← 不用：alive = hp > 0（S71 定，避免第二份真值）
        11–15 空
 ```
 

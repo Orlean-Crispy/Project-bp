@@ -181,13 +181,16 @@ try {
     $hostProcess = Start-Process -FilePath $godot -PassThru -NoNewWindow -RedirectStandardOutput $damageHost -RedirectStandardError ($damageHost + '.err') -ArgumentList @('--headless', '--path', $project, '--', '--host', ('--port=' + $gatePort), '--damage-check')
     Start-Sleep -Milliseconds 2500
     $clientProcess = Start-Process -FilePath $godot -PassThru -NoNewWindow -RedirectStandardOutput $damageClient -RedirectStandardError ($damageClient + '.err') -ArgumentList @('--headless', '--path', $project, '--', '--connect=127.0.0.1', ('--port=' + $gatePort), '--hud-damage-check')
+    # Hurt -> kill -> watch: the host drives the stages, so wait for its last
+    # line and then give the client the 5 s respawn plus slack.
     $damageDeadline = (Get-Date).AddSeconds(20)
     while ((Get-Date) -lt $damageDeadline) {
         Start-Sleep -Milliseconds 250
-        if (Test-Path $damageClient) {
-            if (Select-String -Path $damageClient -Pattern 'hud hp=70' -Quiet) { break }
+        if (Test-Path $damageHost) {
+            if (Select-String -Path $damageHost -Pattern 'watching slot 1 respawn' -Quiet) { break }
         }
     }
+    Start-Sleep -Seconds 7
 } finally {
     foreach ($proc in @($clientProcess, $hostProcess)) {
         if ($proc -and -not $proc.HasExited) { Stop-Process -Id $proc.Id -Force }
@@ -198,7 +201,16 @@ $damageHostText = if (Test-Path $damageHost) { Get-Content -LiteralPath $damageH
 $damageClientText = if (Test-Path $damageClient) { Get-Content -LiteralPath $damageClient -Raw } else { '' }
 Remove-Item -LiteralPath $damageHost, ($damageHost + '.err'), $damageClient, ($damageClient + '.err') -Force -ErrorAction SilentlyContinue
 if ($damageHostText -notmatch 'damage slot 1 hp=70') { Fail 'the host never applied the damage' }
-if ($damageClientText -notmatch 'hud hp=70') { Fail 'the client HUD never showed the damage (snapshot -> HUD broken)' }
-Write-Host 'PASS: damage crossed the snapshot into the other HUD' -ForegroundColor Green
+if ($damageHostText -notmatch 'killed slot 1 hp=0') { Fail 'the host never killed slot 1' }
+# Order matters: hurt (70) -> dead (0) -> back (100). A plain -match would pass
+# even if the client printed them in the wrong order or never died at all.
+$hurtAt = $damageClientText.IndexOf('hud hp=70')
+$deadAt = $damageClientText.IndexOf('hud hp=0')
+$backAt = $damageClientText.LastIndexOf('hud hp=100')
+if ($hurtAt -lt 0) { Fail 'the client HUD never showed the damage (snapshot -> HUD broken)' }
+if ($deadAt -lt 0) { Fail 'the client HUD never showed the death' }
+if ($backAt -le $deadAt) { Fail 'the client never came back from a respawn' }
+Write-Host ('death seq: hurt@{0} dead@{1} back@{2}' -f $hurtAt, $deadAt, $backAt)
+Write-Host 'PASS: damage, death and respawn crossed the snapshot into the other HUD' -ForegroundColor Green
 
 exit 0

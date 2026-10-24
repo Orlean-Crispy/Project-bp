@@ -28,7 +28,7 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 它和根目录 AGENTS.md §2、HANDOFF、PROGRESS 各写一遍，四处互相矛盾。2026-10-23 起删掉，只留结论：
 
 - M0–M5 已关闭（M4 的跨机比对仍缺第二台机器 = DEBT-14）。
-- M6 已开工：射击链路已贯通（俯仰/弹药/换弹/射速/命中/伤害），HUD 断言、死亡重生、后坐力、表现层未完。
+- M6 已开工：射击链路、两端 HUD、曳光/轮廓、死亡重生已通；后坐力、hitmarker、验收未完。
 
 ### 0.3 现在能跑什么
 
@@ -154,7 +154,7 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 | 15 | demo | 同构建逐 tick 一致；改动参数必被检出 | --test-demo |
 | 16 | hitbox 历史 | 64 tick 环形、帧间插值、三段 ×5/×1/×0.7（腿倍率来自 toml）、蹲下自动跟随 | --test-hitbox |
 | 17 | 事件通道 | 跳跃/落地事件带 tick、可复现、环形溢出丢最旧 | --test-events |
-| 18 | Godot 桥 | 扩展真的加载、HUD 打印 vertices>0 与默认端口、上一 tick 可读、按住扳机产出 `tracer events>0`、两进程重连回原槽且第二次被拒、暂停菜单 7 s 不掉线、房主打 30 后客户端 HUD 显示 70 | tools/godot_check.ps1 |
+| 18 | Godot 桥 | 扩展真的加载、HUD 打印 vertices>0 与默认端口、上一 tick 可读、按住扳机产出 `tracer events>0`、两进程重连回原槽且第二次被拒、暂停菜单 7 s 不掉线、房主 30+100 伤害后客户端 HUD 依次 70→0→100 | tools/godot_check.ps1 |
 | 19 | 文档一致性 | 协议版本、闸门数、DEBT 守恒、路径、STATE 质量 0 fail；`--selftest` 能红 | python tools/doc_check.py |
 | 20 | 武器数据 | 两把枪加载 0 警告、缺键/拼错都报警、坏值被拒、改一个数哈希变、武器表不动 movement 哈希、BOM 可读 | --test-weapons |
 | 21 | 命中判定 | 正对躯干必中、偏一个盒宽必不中、0.40 中 / 0.41 不中、蹲下躲过、墙挡人、射程截断、自伤忽略、最近者胜；回溯 6 tick 仍命中当时位置、半 tick 插值、超界不外推 | --test-hitscan |
@@ -176,7 +176,7 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
    SERVER SILENT 1 s）、重连按钮、A5 网络网关拆分全部实测通过。第三人称动画与 5v5 选边
    按计划书属于 M7，不在此条。
 2. **v0.4 的 M5 增量** — A1/A2/A5 全部接入并实测；configstring 带真实哈希且失配拒局。**已关闭**。
-3. **M6 射击** — 射击链路、两端 HUD、曳光与敌方轮廓已通；还差死亡重生、后坐力、hitmarker 与验收（M6.9–M6.12）。
+3. **M6 射击** — 射击链路、两端 HUD、曳光/轮廓、死亡重生已通；还差后坐力、hitmarker 与验收（M6.10–M6.12）。
 4. **Godot 版本** — 计划书写 4.7 Mono，但 godot-cpp 最高只有 4.5，现用 4.5。
    lead：M7（Godot-Locomotion 绑定 4.7.2）之前必须解决。
 5. **跨机 demo 比对** — 工具与流程就绪（docs/demo-format.md），缺第二台机器。
@@ -330,7 +330,7 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HA
   命令包带 **pitch**（没有它只能平射）；PlayerSnap 带四个按下沿、`recharge_progress`、
   `speed_coefficient`，Vitals 组（hp/armor 真值）与 Weapon 组（weapon_id/ammo/reserve/
   fire_cooldown/reload_left，**全部有生产者**）。flags 的 7/8/9 是**按住状态**（不是一 tick 脉冲），
-  `alive`(bit10) 仍留给 M6.9。
+  bit10 从 S71 起也**不填**：`alive` 由 `hp > 0` 派生，别再养第二份真值。
 - 客户端：本地预测 + 128 tick 历史 + 回滚重放；命令包带最近 4 个输入。
 - 时间轴：客户端 = 服务器 tick + 4（单程 30 ms ≈ 2 tick + 2 tick 前瞻）；初始化时
   预跑 4 个空 tick，复刻服务器在首个命令到达前的状态。
@@ -578,6 +578,21 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HA
   **M6 没有队伍**，所以“远端 = 敌方”；M8 分队后必须按队伍着色（记在 BACKLOG FEAT-14）。
 - 判据：`godot_check.ps1` 的 `== tracers ==`（按住扳机 1 s → `tracer events=14`）。
 
+### 8.14 死亡与重生（sim/game/spawn.*、respawn.*，S71）
+
+- **`alive` 不是字段**：`hp > 0` 就是活着。flags bit10 保持预留——派生值进两份真值，迟早一份是错的。
+- 死亡后**输入进不了 pmove**（`step_player` 换成空 `MoveInput`），但**照样走重力/落地**：直接冻结整个
+  step 会让尸体悬在空中，看起来像 bug。开火侧由 `update_weapon` 第一行拦掉（不开枪、不换弹）。
+- **尸体不是掩体**：`HitboxSample::alive` 由 `record()` 写入，`hitscan` 跳过 dead 帧；插值时取两帧
+  的 **and**（只有确定死了才跳过），避免“死在插值中间”把子弹吞掉。
+- 重生在**服务器**：`tick_respawn` 计时 `kRespawnTicks`（320 = 5 s），到点用 `make_spawn_player()`
+  重造一个玩家（与入局同一份定义），保留 `active`（槽位还是这个客户端的），随后 reset 该槽的 hitbox
+  历史——旧帧在旧位置，回溯会打到“已经不在那的人”。
+- 客户端不预测重生：它只从快照看到 `hp=0` → 冻住，5 s 后看到位置跳回出生点并回滚。
+- HUD 在 `hp<=0` 时显示 `DEAD`；**没有倒计时**（客户端不知道服务器计时器；要做就先把计时器上快照）。
+- 判据：`--test-damage` 的 6 项（死后不能开火、重生是新玩家、尸体不挡枪、活人挡枪）与
+  `godot_check` 的 `death seq: hurt@310 dead@616 back@2171`。
+
 ---
 
 ## 9. 开场 / 收尾协议
@@ -617,7 +632,7 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HA
 
 ## 11. 下一步（严格按计划书顺序，不要跳）
 
-1. **M6 射击**：射击链路与两端 HUD 已通。下一步 M6.9 死亡重生 → M6.10 后坐力 →
+1. **M6 射击**：射击链路、两端 HUD、死亡重生已通。下一步 M6.10 后坐力 →
    M6.11 表现层剩余（hitmarker/伤害数字/枪口火光）→ M6.12 验收。**一次只做一个任务。**
 2. **M7 / M8**：动画、视角模型、音频垂直定位（§9.2 的楼层低通）。
 3. 代码体检：A1–A7、AUD-01…19、R1–R19 已完成；S60 关掉了 AUD-20/23/26/27，

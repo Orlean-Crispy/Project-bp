@@ -77,7 +77,12 @@ var dropped_ticks := 0
 var dropped_reported := false
 # M6.8 gate: host damages a slot, client prints hud lines until hp changes.
 var damage_check := false
-var damage_done := false
+# 0 = waiting for the client, 1 = hurt, 2 = killed, 3 = done watching it respawn.
+# The deadlines are relative to the hurt tick, not to the absolute tick: the host
+# has been running for seconds before a client joins, so "now > 160" is already
+# true and the three stages would fire in three consecutive frames.
+var damage_stage := 0
+var damage_hurt_tick := 0
 # M6.11 gate: hold the trigger offline and count the tracers that come back.
 var fire_check := false
 var fire_reported := false
@@ -197,6 +202,9 @@ func _update_hud() -> void:
 	if hud == null:
 		return
 	var parts: Array[String] = []
+	# M6.9: the health bar is the only place death is visible before M6.11's overlay.
+	if sim.get_hp() <= 0:
+		parts.append("DEAD")
 	parts.append(str(sim.get_role()))
 	if sim.is_networked():
 		parts.append("slot %d" % sim.get_player_slot())
@@ -663,13 +671,28 @@ func _process(delta: float) -> void:
 
 	_age_tracers(delta)
 
-	if damage_check and not damage_done and sim.is_networked() and sim.get_peer_count() >= 2:
-		damage_done = true
-		sim.apply_test_damage(1, 30)
-		print("breakpoint: damage slot 1 hp=%d" % sim.get_player_hp(1))
+	# M6.9 gate: hurt the joining slot, then kill it, then watch it come back.
+	# The client only prints its HUD; every claim below is what it saw.
+	if damage_check and sim.is_networked() and sim.get_peer_count() >= 2:
+		var now := int(sim.get_tick())
+		if damage_stage == 0:
+			damage_stage = 1
+			damage_hurt_tick = now
+			sim.apply_test_damage(1, 30)
+			print("breakpoint: damage slot 1 hp=%d" % sim.get_player_hp(1))
+		elif damage_stage == 1 and now > damage_hurt_tick + 96:
+			damage_stage = 2
+			sim.apply_test_damage(1, 100)
+			print("breakpoint: killed slot 1 hp=%d" % sim.get_player_hp(1))
+		elif damage_stage == 2 and now > damage_hurt_tick + 128:
+			damage_stage = 3
+			print("breakpoint: watching slot 1 respawn hp=%d" % sim.get_player_hp(1))
 
 	if hud_damage_check and int(sim.get_tick()) % 32 == 0:
-		print("hud hp=%d armor=%d" % [sim.get_hp(), sim.get_armor()])
+		print("hud hp=%d armor=%d snap_hp=%d peers=%d age=%d slot=%d" % [
+			sim.get_hp(), sim.get_armor(), sim.get_snapshot_hp(), sim.get_peer_count(),
+			sim.get_snapshot_age(), sim.get_player_slot()
+		])
 
 	# 64 Hz simulation, arbitrary display rate: blend the two newest ticks
 	# instead of snapping to the newest one and holding it two or three frames.

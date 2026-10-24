@@ -306,6 +306,10 @@ public:
     int get_max_impulses() const { return m_world.params.max_impulses; }
 
     int get_snapshot_age() const { return m_net.snapshot_age(); }
+    int get_snapshot_hp() const {
+        const sim::NetClient* net = m_net.client();
+        return net == nullptr ? -1 : net->last_hp();
+    }
 
     // Protocol v6: the real values now ride in PlayerState (and in the snapshot),
     // so the HUD shows replica data instead of a constant. Nothing damages them
@@ -381,6 +385,7 @@ protected:
         ClassDB::bind_method(D_METHOD("apply_test_damage", "slot", "amount"),
                              &SimWorld::apply_test_damage);
         ClassDB::bind_method(D_METHOD("get_player_hp", "slot"), &SimWorld::get_player_hp);
+        ClassDB::bind_method(D_METHOD("get_snapshot_hp"), &SimWorld::get_snapshot_hp);
         ClassDB::bind_method(D_METHOD("host", "port", "players"), &SimWorld::host);
         ClassDB::bind_method(D_METHOD("join", "host", "port"), &SimWorld::join);
         ClassDB::bind_method(D_METHOD("reconnect"), &SimWorld::reconnect);

@@ -6,6 +6,8 @@
 
 #include "options.h"
 #include "sim/core/event.h"
+#include "sim/game/hitscan.h"
+#include "sim/game/respawn.h"
 #include "sim/game/shoot.h"
 #include "sim/game/weapon.h"
 #include "test_util.h"
@@ -74,9 +76,10 @@ int run_damage_test(const Options& opt) {
     };
     run(40, fire, &report);
     check("chest shots kill a bare player", world.players[1].vitals.health == 0);
-    check("the rifle fired at its cadence", report.shots == 7 && report.hits == 7);
+    check("the rifle fired at its cadence", report.shots == 7);
     check("each round is spent", world.players[0].ammo == 23);
-    check("a 25 round body shot is 25 damage", report.damage == 7 * 25);
+    // Four rounds kill; the rest pass through the corpse (M6.9), so only four hit.
+    check("body shots stop at the kill", report.hits == 4 && report.damage == 4 * 25);
     std::printf("    chest: shots %d hits %d damage %d hp %d ammo %d\n", report.shots, report.hits,
                 report.damage, world.players[1].vitals.health, world.players[0].ammo);
 
@@ -154,6 +157,49 @@ int run_damage_test(const Options& opt) {
     check("reload refills the magazine from the reserve",
           world.players[0].ammo == rifle->magazine &&
               world.players[0].reserve == rifle->reserve_ammo - rifle->magazine);
+
+
+    // --- death: no trigger, no cover, and a respawn after the timer ------
+    reset(shooter, victim);
+    tick = 10;
+    sim::ShotReport kill;
+    run(40, fire, &kill);
+    check("the victim dies", world.players[1].vitals.health == 0);
+
+    world.players[0].vitals.health = 0;
+    sim::ShotReport dead_fire;
+    run(10, fire, &dead_fire);
+    check("a dead player cannot fire", dead_fire.shots == 0);
+
+    const sim::Vec3 spawn(-16.0f, 0.0f, 0.05f);
+    uint16_t respawn_timer = 0;
+    bool came_back = false;
+    for (int i = 0; i < sim::kRespawnTicks + 2 && !came_back; ++i) {
+        came_back = sim::tick_respawn(world, 0, respawn_timer, spawn);
+    }
+    check("the respawn timer brings the player back", came_back);
+    check("a respawn is a fresh player, not a healed corpse",
+          world.players[0].vitals.health == world.combat.max_health &&
+              world.players[0].pos == spawn &&
+              world.players[0].ammo == rifle->magazine);
+
+    // A corpse is not cover: the ray must pass through it to the live body.
+    sim::HitboxSample corpse;
+    corpse.pos = sim::Vec3(0.0f, 5.0f, 0.0f);
+    corpse.height = 1.42f;
+    corpse.radius = 0.405f;
+    corpse.alive = false;
+    sim::HitboxSample live = corpse;
+    live.pos = sim::Vec3(4.0f, 5.0f, 0.0f);
+    live.alive = true;
+    sim::HitboxSample line[2] = {corpse, live};
+    const sim::ShotHit through = sim::hitscan(world.collision, line, 2, sim::Vec3(-6.0f, 5.0f, 1.0f),
+                                              sim::Vec3(1.0f, 0.0f, 0.0f), 50.0f, -1);
+    check("a corpse does not stop the ray", through.is_player && through.entity == 1);
+    line[0].alive = true;
+    const sim::ShotHit blocked = sim::hitscan(world.collision, line, 2, sim::Vec3(-6.0f, 5.0f, 1.0f),
+                                              sim::Vec3(1.0f, 0.0f, 0.0f), 50.0f, -1);
+    check("a live body in the way does block", blocked.is_player && blocked.entity == 0);
 
     std::printf("[damage] body 4 rounds armour %d head %d wall hits %d reload %d\n",
                 armour_report.shots, head_report.damage, wall_report.hits,

@@ -58,6 +58,7 @@ void HitboxHistory::record(const PlayerState& player, const MovementParams& para
     entry.sample.height = maxs.z - mins.z;
     entry.sample.radius = maxs.x;
     entry.sample.crouched = player.crouched;
+    entry.sample.alive = player.vitals.health > 0;
     entry.sample.tick = tick;
 
     // O(1): the oldest frame is only needed by diagnostics/tests, so it is
@@ -124,6 +125,9 @@ HitboxSample HitboxHistory::sample(uint32_t tick, float frac) const {
     out.height = a->sample.height + (b->sample.height - a->sample.height) * t;
     out.radius = a->sample.radius + (b->sample.radius - a->sample.radius) * t;
     out.crouched = a->sample.crouched;
+    // Conservative: only call a body dead when both frames agree, so a shot is
+    // never silently swallowed by a death that happens mid-interpolation.
+    out.alive = a->sample.alive && b->sample.alive;
     out.tick = tick;
     return out;
 }

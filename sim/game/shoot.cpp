@@ -25,6 +25,9 @@ void update_weapon(PlayerState& shooter, int shooter_index, const MoveInput& inp
                    const WeaponDef& def, World& world, const HitboxHistory* histories,
                    int history_count, uint32_t tick, float rewind, ShotReport* report,
                    EventQueue* events) {
+    // A dead player holds no trigger: no rounds, no reload, no timers.
+    if (shooter.vitals.health <= 0) return;
+
     // Timers first: a cooldown that ends this tick may fire this tick.
     if (shooter.fire_cooldown > 0) --shooter.fire_cooldown;
     if (shooter.reload_left > 0) {

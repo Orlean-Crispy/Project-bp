@@ -10,6 +10,8 @@ sim/game/hitbox.cpp
 sim/game/hitscan.cpp
 sim/game/rewind.cpp
 sim/game/shoot.cpp
+sim/game/spawn.cpp
+sim/game/respawn.cpp
 sim/game/weapon.cpp
 sim/input/bindings.cpp
 sim/input/buttons.cpp
