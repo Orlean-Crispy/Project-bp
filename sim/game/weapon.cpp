@@ -108,6 +108,23 @@ void equip_weapon(PlayerState& player, const WeaponDef& def) {
     player.reserve = def.reserve_ammo;
     player.fire_cooldown = 0;
     player.reload_left = 0;
+    player.recoil_index = 0;
+    player.recoil_recovery = 0;
+}
+
+int recoil_cap(const WeaponDef& def) {
+    return static_cast<int>(def.recoil_pitch.size());
+}
+
+RecoilOffset recoil_offset(const WeaponDef& def, int shot) {
+    RecoilOffset out;
+    const int cap = recoil_cap(def);
+    const int count = shot < cap ? shot : cap;
+    for (int i = 0; i < count; ++i) {
+        out.pitch += def.recoil_pitch[static_cast<std::size_t>(i)];
+        out.yaw += def.recoil_yaw[static_cast<std::size_t>(i)];
+    }
+    return out;
 }
 
 uint64_t WeaponParams::hash() const {
@@ -124,6 +141,11 @@ uint64_t WeaponParams::hash() const {
             .f32(def.reload_seconds);
         h.u32(static_cast<uint32_t>(def.penetration_count))
             .f32(def.penetration_damage_scale);
+        h.u32(static_cast<uint32_t>(def.recoil_pitch.size()));
+        for (std::size_t i = 0; i < def.recoil_pitch.size(); ++i) {
+            h.f32(def.recoil_pitch[i]).f32(def.recoil_yaw[i]);
+        }
+        h.u32(static_cast<uint32_t>(def.recoil_recovery_ticks));
     }
     return h.value();
 }
@@ -175,9 +197,34 @@ bool load_weapon_params(const std::string& path, WeaponParams& out,
         number("reload_seconds", def.reload_seconds);
         integer("penetration_count", def.penetration_count);
         number("penetration_damage_scale", def.penetration_damage_scale);
+        // Recoil is optional whole-table: a gun without a pattern simply kicks
+        // straight up by zero, which is what a pistol with one step looks like.
+        binder.floats(prefix + "recoil_pitch", def.recoil_pitch);
+        binder.floats(prefix + "recoil_yaw", def.recoil_yaw);
+        // Optional like the pattern it belongs to: a gun without a table needs no
+        // recovery timer, so a data file may omit all three together.
+        if (table.find(prefix + "recoil_recovery_ticks")) {
+            binder.integer(prefix + "recoil_recovery_ticks", def.recoil_recovery_ticks);
+        }
 
         if (!validate(def, error)) return false;
         params.weapons.push_back(std::move(def));
+    }
+
+    for (const WeaponDef& def : params.weapons) {
+        if (def.recoil_pitch.size() != def.recoil_yaw.size()) {
+            error = "weapon " + def.id + ": recoil_pitch and recoil_yaw differ in length";
+            return false;
+        }
+        if (!def.recoil_pitch.empty() && def.recoil_recovery_ticks <= 0) {
+            error = "weapon " + def.id + ": a recoil pattern needs recoil_recovery_ticks > 0";
+            return false;
+        }
+        const RecoilOffset total = recoil_offset(def, recoil_cap(def));
+        if (!(std::fabs(total.pitch) < 1.5708f) || !(std::fabs(total.yaw) < 1.5708f)) {
+            error = "weapon " + def.id + ": recoil pattern sums past 90 degrees";
+            return false;
+        }
     }
 
     for (std::size_t i = 0; i < params.weapons.size(); ++i) {

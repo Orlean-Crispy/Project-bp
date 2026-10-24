@@ -94,7 +94,9 @@ uint64_t World::state_hash() const {
             .u32(static_cast<uint32_t>(p.ammo))
             .u32(static_cast<uint32_t>(p.reserve))
             .u32(static_cast<uint32_t>(p.fire_cooldown))
-            .u32(static_cast<uint32_t>(p.reload_left));
+            .u32(static_cast<uint32_t>(p.reload_left))
+            .u32(static_cast<uint32_t>(p.recoil_index))
+            .u32(static_cast<uint32_t>(p.recoil_recovery));
         h.vec3(p.wall_normal).vec3(p.vault_dir).f32(p.vault_rise);
         h.f32(p.speed_coefficient).f32(p.slow_factor);
         h.u32(static_cast<uint32_t>(p.recharge_progress));

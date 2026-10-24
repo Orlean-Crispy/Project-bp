@@ -89,6 +89,7 @@ bool same_state(const PlayerSnap& a, const PlayerState& b) {
            a.hp == bs.hp && a.armor == bs.armor && a.weapon_id == bs.weapon_id &&
            a.ammo == bs.ammo && a.reserve == bs.reserve &&
            a.fire_cooldown == bs.fire_cooldown && a.reload_left == bs.reload_left &&
+           a.recoil_index == bs.recoil_index && a.recoil_recovery == bs.recoil_recovery &&
            a.wall_normal == bs.wall_normal &&
            a.vault_dir == bs.vault_dir && a.vault_rise == bs.vault_rise;
 }

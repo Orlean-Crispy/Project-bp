@@ -33,6 +33,15 @@ struct WeaponDef {
     // can still veto it with _penetrable 0 (M6.5).
     int penetration_count = 0;
     float penetration_damage_scale = 0.7f;
+
+    // M6.10: the spray pattern, one step per shot, in radians of view offset.
+    // Shot 1 is straight; step k joins when the (k+1)-th round leaves the barrel,
+    // and the offsets accumulate. A table, not a formula: "like CS" means
+    // hand-authored, not procedural.
+    std::vector<float> recoil_pitch;
+    std::vector<float> recoil_yaw;
+    // Silence for this many ticks and the spray resets to straight.
+    int recoil_recovery_ticks = 32;
 };
 
 struct WeaponParams {
@@ -60,6 +69,16 @@ int reload_ticks(const WeaponDef& def);
 // Damage before zone and penetration, linearly between the two falloff
 // distances. Float only for the interpolation; the caller rounds once.
 float damage_at_range(const WeaponDef& def, float distance);
+
+// M6.10: the cumulative view offset after `shot` shots (0 = straight). The
+// pattern is data, so this is only the accumulator; both sides run it and get
+// the same floats.
+struct RecoilOffset {
+    float pitch = 0.0f;
+    float yaw = 0.0f;
+};
+RecoilOffset recoil_offset(const WeaponDef& def, int shot);
+int recoil_cap(const WeaponDef& def);
 
 struct PlayerState;
 // Gives a player this gun: id, a full magazine and a full reserve. Called when a

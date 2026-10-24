@@ -167,6 +167,13 @@ int run_weapon_test(const Options& opt) {
               smg->rpm == 900.0f);
     check("adding a gun moves the weapon hash", grown_ok && grown.hash() != params.hash());
 
+    // M6.10: the spray table is part of the weapon's identity, like any other
+    // number. A client with a different pattern must be refused, not silently
+    // shooting somewhere else.
+    sim::WeaponParams tweaked = params;
+    tweaked.weapons[0].recoil_pitch[0] += 0.001f;
+    check("a recoil step is part of the hash", tweaked.hash() != params.hash());
+
     // Windows editors save UTF-8 with a BOM; a data file that opens in the editor
     // must still load, or the first save silently breaks the game.
     const std::string bom = "build/weapons_bom.toml";

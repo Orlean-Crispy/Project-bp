@@ -2492,3 +2492,34 @@ smoke 20 项 + bench ALL GREEN；`sources ok: 28`；`doc_check` 0 fail。
 - 没有比分/击杀播报（E5 的另一半），M8。
 - 重生点固定（`spawn_point_for(i)` 按槽位偏移），没有出生点选择与保护。
 - HUD 没有重生倒计时（客户端不知道服务器计时器）。
+## S72 · 2026-10-24 · M6.10 查表后坐力（协议 v8）
+
+### 1. 做了什么
+
+- **表在数据里**：`recoil_pitch` / `recoil_yaw` 是 weapons.toml 里的数字数组（每发一步，弧度），
+  `recoil_recovery_ticks` 是沉默复位时间。第 1 发是直的，之后逐发累积；到表尾不再涨。
+  TOML 子集为此加了一个类型（`[1.0, 2.0]`），只支持数字。
+- **应用在方向**：`view_forward(yaw + kick.yaw, pitch + kick.pitch)`，命中和相机用同一个偏移；
+  相机通过 `get_recoil_offset()` 读，所以准星和弹着点不会分家。
+- **进快照的是索引**（`recoil_index`/`recoil_recovery`，协议 v8）：它们决定命中方向，必须回滚一致。
+  punch 本身不进快照——它是索引的纯函数，客户端自己算（A4）。
+- 沉默 24 tick（0.375 s）复位，不是松扳机就复位：点射能恢复准度，按住不放一路爬到表尾。
+
+### 2. 判据
+
+`recoil: shots 12 first z 1.278 fifth z 1.848` —— 12 发打 15 m 外的墙，第 5 发比第 1 发高 0.57 m；
+`--test-weapons` 的“一个后坐力步进也进哈希”；`--test-snapshot` 打 `protocol v8 … 903 B, 89 B/player`。
+smoke 22 项 + bench ALL GREEN；godot_check 全过（protocol 8）。
+
+### 3. 失败与修正
+
+- 第一次把 `recoil_recovery_ticks` 当必填键，`--test-weapons` 的“每个缺失键都报警”从 10 变成 11 而红。
+  想清楚后改成可选（没有表就不需要复位计时），并加“有表则必须 > 0”的校验——比硬凑计数正确。
+- 打印行 `reload 30` 一度变成 `reload 18`：后坐力测试排在换弹后面又打空了半个弹匣，
+  汇总行读的是“当前 ammo”。改成在换弹断言处存快照值，汇总读那个值。
+
+### 4. 边界
+
+- 开镜（ADS）降低后坐力还没做：M6.11 的 `ads_*` 字段要乘到 `recoil_offset` 上。
+- 半自动/自动的区分仍未做（手枪现在也是按住连发）。
+- 没有后坐力恢复的视觉平滑（相机直接跟索引走，一格一格），等 M7 的视角层。

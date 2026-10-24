@@ -550,8 +550,12 @@ func _place_camera(alpha: float) -> void:
 	var position: Vector3 = sim.get_prev_position().lerp(sim.get_position(), blend)
 	var eye: float = lerpf(sim.get_prev_eye_height(), sim.get_eye_height(), blend)
 	camera.position = position + Vector3(0.0, eye, 0.0)
+	# M6.10: bullets leave along yaw+punch, so the camera has to show the same
+	# offset or the crosshair stops being where the shot goes.
+	var recoil: Vector2 = sim.get_recoil_offset()
+	var aim_yaw: float = yaw + recoil.x
 	# sim yaw 0 looks down +X and maps to Godot (x, z, -y)
-	camera.rotation = Vector3(pitch, atan2(-cos(yaw), sin(yaw)), 0.0)
+	camera.rotation = Vector3(pitch + recoil.y, atan2(-cos(aim_yaw), sin(aim_yaw)), 0.0)
 
 func _process(delta: float) -> void:
 	if sim == null or camera == null:

@@ -306,6 +306,16 @@ public:
     int get_max_impulses() const { return m_world.params.max_impulses; }
 
     int get_snapshot_age() const { return m_net.snapshot_age(); }
+    // M6.10: the view punch is *derived* from the replicated spray index, so it
+    // never needs a field of its own (A4: the client can recompute it exactly).
+    Vector2 get_recoil_offset() const {
+        const sim::PlayerState* p = local_player();
+        if (p == nullptr) return Vector2();
+        const sim::WeaponDef* def = m_world.weapons.find_by_slot(p->weapon_id);
+        if (def == nullptr) return Vector2();
+        const sim::RecoilOffset offset = sim::recoil_offset(*def, p->recoil_index);
+        return Vector2(offset.yaw, offset.pitch);
+    }
     int get_snapshot_hp() const {
         const sim::NetClient* net = m_net.client();
         return net == nullptr ? -1 : net->last_hp();
@@ -386,6 +396,7 @@ protected:
                              &SimWorld::apply_test_damage);
         ClassDB::bind_method(D_METHOD("get_player_hp", "slot"), &SimWorld::get_player_hp);
         ClassDB::bind_method(D_METHOD("get_snapshot_hp"), &SimWorld::get_snapshot_hp);
+        ClassDB::bind_method(D_METHOD("get_recoil_offset"), &SimWorld::get_recoil_offset);
         ClassDB::bind_method(D_METHOD("host", "port", "players"), &SimWorld::host);
         ClassDB::bind_method(D_METHOD("join", "host", "port"), &SimWorld::join);
         ClassDB::bind_method(D_METHOD("reconnect"), &SimWorld::reconnect);

@@ -12,7 +12,8 @@
 #   penetration_*        -> M6.5 (_penetrable owns the veto, ADR 0006 D1)
 #   damage_* / falloff_* -> M6.6 zone damage and distance falloff
 #   rpm / magazine / ... -> M6.7 firing cadence and reload
-# Recoil joins at M6.10, ADS and tracers at M6.11. Draw/put-away, sprint-to-fire,
+#   recoil_*             -> M6.10 spray pattern (radians of view offset per shot)
+# ADS joins at M6.11. Draw/put-away, sprint-to-fire,
 # weight and knockback have no task yet, so they are not written here: a field
 # nobody reads is a field nobody keeps correct.
 #
@@ -35,6 +36,14 @@ reload_seconds        = 1.8
 penetration_count     = 1      # one thin layer (M6.5)
 penetration_damage_scale = 0.7
 
+# M6.10 spray pattern. Shot 1 leaves straight; step k is added from the (k+1)-th
+# round on, and the steps accumulate. Radians: 0.0105 rad is about 0.6 degrees,
+# which over 8 rounds is ~3.4 degrees of climb at 20 m - readable, not a laser.
+# The yaw column wiggles around zero so a full spray is not a straight line up.
+recoil_pitch          = [0.011, 0.010, 0.009, 0.008, 0.007, 0.006, 0.005, 0.004]
+recoil_yaw            = [0.000, 0.002, -0.003, 0.004, -0.002, 0.001, -0.004, 0.002]
+recoil_recovery_ticks = 24     # 0.375 s of silence resets the spray
+
 # Pistol: slower, harder hits, no penetration. It exists so M6.5 can prove a
 # weapon with no penetration is stopped while the rifle passes.
 [weapon.pistol]
@@ -50,3 +59,9 @@ reserve_ammo          = 48
 reload_seconds        = 1.4
 penetration_count     = 0
 penetration_damage_scale = 0.7   # unused while penetration_count is 0
+
+# One heavy kick: a pistol is fired in taps, so the pattern is one step and the
+# recovery is slower. 1.7 degrees of climb per shot.
+recoil_pitch          = [0.030]
+recoil_yaw            = [0.004]
+recoil_recovery_ticks = 40

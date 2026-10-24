@@ -51,6 +51,8 @@ struct PlayerSnap {
     uint16_t reserve = 0;
     uint16_t fire_cooldown = 0;
     uint16_t reload_left = 0;
+    uint8_t recoil_index = 0;
+    uint16_t recoil_recovery = 0;
 };
 
 struct Snapshot {

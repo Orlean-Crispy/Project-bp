@@ -15,7 +15,9 @@
 //    group. M6 adds combat fields without another bump (2026-10-23).
 // 7: commands carry pitch (a shot needs a direction, and yaw alone cannot aim
 //    up or down), and the Weapon group gained reserve/reload ticks (2026-10-24).
-#define BP_PROTOCOL_VERSION 7
+// 8: the spray index and its recovery timer ride in the Weapon group: they steer
+//    the aim, so a client that guessed them wrong would shoot elsewhere (2026-10-24).
+#define BP_PROTOCOL_VERSION 8
 #endif
 
 namespace sim {

@@ -28,6 +28,11 @@ void update_weapon(PlayerState& shooter, int shooter_index, const MoveInput& inp
     // A dead player holds no trigger: no rounds, no reload, no timers.
     if (shooter.vitals.health <= 0) return;
 
+    // M6.10: the spray resets after enough silence, not on the next trigger pull.
+    if (shooter.recoil_recovery > 0 && --shooter.recoil_recovery == 0) {
+        shooter.recoil_index = 0;
+    }
+
     // Timers first: a cooldown that ends this tick may fire this tick.
     if (shooter.fire_cooldown > 0) --shooter.fire_cooldown;
     if (shooter.reload_left > 0) {
@@ -59,8 +64,13 @@ void update_weapon(PlayerState& shooter, int shooter_index, const MoveInput& inp
     penetration.layers = def.penetration_count;
     penetration.damage_scale = def.penetration_damage_scale;
 
+    // The pattern is shot-indexed: the first round leaves straight, and each
+    // later one carries the accumulated climb (a hand-authored table, not noise).
+    const RecoilOffset kick = recoil_offset(def, shooter.recoil_index);
     const Vec3 eye = eye_position(shooter, world.params);
-    const Vec3 dir = view_forward(shooter.yaw, input.pitch);
+    const Vec3 dir = view_forward(shooter.yaw + kick.yaw, input.pitch + kick.pitch);
+    if (shooter.recoil_index < recoil_cap(def)) ++shooter.recoil_index;
+    shooter.recoil_recovery = def.recoil_recovery_ticks;
     const ShotResult shot = hitscan_penetrating(world.collision, frame, count, eye, dir, def.range,
                                                 penetration, shooter_index);
 

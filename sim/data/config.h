@@ -76,10 +76,13 @@ struct MovementParams {
 // Minimal TOML subset: [section] headers, key = number|string|bool, # comments.
 // Deliberately not a general TOML parser: the data files are ours.
 struct TomlValue {
-    enum class Type { Number, String, Boolean } type = Type::Number;
+    enum class Type { Number, String, Boolean, Array } type = Type::Number;
     double number = 0.0;
     std::string string;
     bool boolean = false;
+    // Recoil patterns are per-shot tables, so the subset needs one array type.
+    // Numbers only: a table of strings would be a different feature.
+    std::vector<double> array;
 };
 
 struct TomlTable {
@@ -105,6 +108,7 @@ struct TomlBinder {
     bool number(const std::string& key, float& target);
     bool integer(const std::string& key, int& target);
     bool boolean(const std::string& key, bool& target);
+    bool floats(const std::string& key, std::vector<float>& target);
 
     // Reports every unconsumed key starting with 'prefix' as unknown. The prefix
     // keeps the report scoped when several sections share one flat table.

@@ -17,16 +17,16 @@
 |---|---|---|---|---|---|---|
 | delta mask 位 | 16（uint16） | 9 | **9** | 7 | `snapshot.cpp` static_assert | 12 |
 | flags 位 | 16（uint16） | 7（另 4 位预留） | **9**（bit10 仍预留：alive 由 hp>0 派生） | 6 | 同上 | 12 |
-| 每玩家快照字节（全字段） | — | 82 | **86** | — | `--test-snapshot` 打印 | 1100 B/包 |
-| 单包（10 人满编、全字段） | 1100 B（安全线） | 833 | **873** | 227 B | `--test-snapshot` | 1100 |
+| 每玩家快照字节（全字段） | — | 82 | **89** | — | `--test-snapshot` 打印 | 1100 B/包 |
+| 单包（10 人满编、全字段） | 1100 B（安全线） | 833 | **903** | 197 B | `--test-snapshot` | 1100 |
 | 空 delta（1 人，无变化） | — | 15 | **15** | — | `--test-snapshot` | — |
-| 协议版本 | — | 6 | **7** | — | `version.h` | 每次升版必须改 demo 头 |
+| 协议版本 | — | 7 | **8** | — | `version.h` | 每次升版必须改 demo 头 |
 
 **已用位的明细（v7）**
 
 ```
 mask : 0 Pos | 1 Vel | 2 Status | 3 Timers | 4 Yaw | 5 Extra | 6 Charge
-       7 Vitals（hp/armor） | 8 Weapon（weapon_id/ammo/reserve/cooldown/reload）
+       7 Vitals（hp/armor） | 8 Weapon（weapon_id/ammo/reserve/cooldown/reload/recoil）
        9–15 空
 flags: 0 on_ground | 1 crouched | 2 active | 3 jump | 4 slide | 5 dash | 6 vault
        7 firing | 8 reloading | 9 ads   ← S65 起有生产者
@@ -92,6 +92,7 @@ static_assert(kFlagsAll != 0xFFFF, "flags 已满，必须扩到 uint32");
 | 2026-10-24 | 闸门 20 → 21（命中判定）；sim 源文件 28 → 30 | S66 | M6.3 |
 | 2026-10-24 | sim 源文件 30 → 31（回溯）；闸门数不变（`[rewind]` 在 hitscan 闸门内） | S67 | M6.4 |
 | 2026-10-24 | 协议 v6 → v7（命令带 pitch；Weapon 组 +reserve/reload）；闸门 21 → 22（射击链路）；86 B/人、873 B 满编 | S69 | M6.6/M6.7 |
+| 2026-10-24 | 协议 v7 → v8（Weapon 组 +recoil_index/recovery）；89 B/人、903 B 满编 | S72 | M6.10 |
 
 ---
 

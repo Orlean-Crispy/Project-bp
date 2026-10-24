@@ -48,6 +48,28 @@ bool parse_value(const std::string& raw, TomlValue& out) {
         out.boolean = (v == "true");
         return true;
     }
+    if (v.front() == '[') {
+        if (v.size() < 2 || v.back() != ']') return false;
+        out.type = TomlValue::Type::Array;
+        out.array.clear();
+        std::string body = v.substr(1, v.size() - 2);
+        size_t start = 0;
+        while (start < body.size()) {
+            const size_t comma = body.find(',', start);
+            const std::string piece = trim(body.substr(
+                start, comma == std::string::npos ? std::string::npos : comma - start));
+            if (!piece.empty()) {
+                errno = 0;
+                char* item_end = nullptr;
+                const double d = std::strtod(piece.c_str(), &item_end);
+                if (item_end == piece.c_str() || *item_end != '\0' || errno == ERANGE) return false;
+                out.array.push_back(d);
+            }
+            if (comma == std::string::npos) break;
+            start = comma + 1;
+        }
+        return true;
+    }
 
     errno = 0;
     char* end = nullptr;
@@ -203,6 +225,20 @@ bool TomlBinder::boolean(const std::string& key, bool& target) {
         return false;
     }
     target = v->boolean;
+    return true;
+}
+
+bool TomlBinder::floats(const std::string& key, std::vector<float>& target) {
+    const TomlValue* v = table.find(key);
+    if (!v) return false;
+    used.push_back(key);
+    if (v->type != TomlValue::Type::Array) {
+        warnings.push_back(key + ": expected an array of numbers, kept default");
+        return false;
+    }
+    target.clear();
+    target.reserve(v->array.size());
+    for (double d : v->array) target.push_back(static_cast<float>(d));
     return true;
 }
 

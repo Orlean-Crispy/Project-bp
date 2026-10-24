@@ -6,11 +6,19 @@
 
 #include "options.h"
 #include "sim/core/event.h"
+#include <vector>
+
 #include "sim/game/hitscan.h"
 #include "sim/game/respawn.h"
 #include "sim/game/shoot.h"
 #include "sim/game/weapon.h"
 #include "test_util.h"
+
+namespace {
+
+bool near(float a, float b) { return std::fabs(a - b) <= 1e-6f; }
+
+}  // namespace
 
 int run_damage_test(const Options& opt) {
     sim::World world;
@@ -154,8 +162,9 @@ int run_damage_test(const Options& opt) {
     sim::MoveInput press_reload;
     press_reload.reload = true;
     run(130, press_reload, &report);
+    const int reloaded_ammo = world.players[0].ammo;
     check("reload refills the magazine from the reserve",
-          world.players[0].ammo == rifle->magazine &&
+          reloaded_ammo == rifle->magazine &&
               world.players[0].reserve == rifle->reserve_ammo - rifle->magazine);
 
 
@@ -201,9 +210,47 @@ int run_damage_test(const Options& opt) {
                                               sim::Vec3(1.0f, 0.0f, 0.0f), 50.0f, -1);
     check("a live body in the way does block", blocked.is_player && blocked.entity == 0);
 
+
+    // --- recoil: the pattern is data, the order is fixed ----------------
+    const int cap = sim::recoil_cap(*rifle);
+    check("the pattern has eight steps", cap == 8);
+    check("the first shot is straight", sim::recoil_offset(*rifle, 0).pitch == 0.0f);
+    float total_pitch = 0.0f;
+    for (float step : rifle->recoil_pitch) total_pitch += step;
+    check("the second shot carries the first step",
+          near(sim::recoil_offset(*rifle, 1).pitch, rifle->recoil_pitch[0]));
+    check("the spray stops climbing at the cap",
+          near(sim::recoil_offset(*rifle, 100).pitch, total_pitch));
+
+    // Fire the whole pattern at the far wall and watch the impacts climb.
+    reset(shooter, victim);
+    world.players[1].pos = sim::Vec3(3.0f, 9.0f, 0.0f);  // out of the line
+    tick = 10;
+    sim::EventQueue spray;
+    sim::ShotReport spray_report;
+    sim::MoveInput level;
+    level.fire = true;
+    run(70, level, &spray_report, &spray);
+    std::vector<float> impact_z;
+    sim::SimEvent shot_event;
+    while (spray.pop(shot_event)) {
+        if (shot_event.type == sim::EventType::Shot) impact_z.push_back(shot_event.b.z);
+    }
+    bool climbs = impact_z.size() >= 5 && impact_z[4] > impact_z[0] + 0.2f;
+    check("the impacts climb down the pattern", climbs);
+    std::printf("    recoil: shots %d first z %.3f fifth z %.3f\n", (int)impact_z.size(),
+                impact_z.empty() ? 0.0f : impact_z[0],
+                impact_z.size() > 4 ? impact_z[4] : 0.0f);
+
+    // Silence resets the spray: 24 ticks of no fire (recovery_ticks).
+    sim::MoveInput idle;
+    run(rifle->recoil_recovery_ticks + 2, idle, &spray_report);
+    check("silence resets the spray", world.players[0].recoil_index == 0);
+    check("a fresh spray starts straight again",
+          sim::recoil_offset(*rifle, world.players[0].recoil_index).pitch == 0.0f);
+
     std::printf("[damage] body 4 rounds armour %d head %d wall hits %d reload %d\n",
-                armour_report.shots, head_report.damage, wall_report.hits,
-                world.players[0].ammo);
+                armour_report.shots, head_report.damage, wall_report.hits, reloaded_ammo);
 
     if (failures != 0) {
         std::printf("FAIL: %d damage checks failed\n", failures);

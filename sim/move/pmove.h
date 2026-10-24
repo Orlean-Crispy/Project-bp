@@ -72,6 +72,11 @@ struct PlayerState {
     int reserve = 0;
     int fire_cooldown = 0;  // ticks until the next shot
     int reload_left = 0;    // ticks until the magazine refills
+    // M6.10: how far into the spray we are. The offsets come from the weapon's
+    // table, so the aim is a pure function of this index - which is why the
+    // visible punch does not need to be replicated separately (A4).
+    int recoil_index = 0;
+    int recoil_recovery = 0;  // ticks of silence left before the spray resets
     Vec3 vault_dir;      // horizontal direction of the vault in progress
     float vault_rise = 0.0f;  // metres to climb during the vault
 
