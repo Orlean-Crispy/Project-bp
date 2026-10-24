@@ -5,6 +5,7 @@
 #include <string>
 
 #include "options.h"
+#include "sim/core/event.h"
 #include "sim/game/shoot.h"
 #include "sim/game/weapon.h"
 #include "test_util.h"
@@ -62,10 +63,11 @@ int run_damage_test(const Options& opt) {
     reset(shooter, victim);
     sim::ShotReport report;
     uint32_t tick = 10;
-    auto run = [&](int ticks, const sim::MoveInput& input, sim::ShotReport* out) {
+    auto run = [&](int ticks, const sim::MoveInput& input, sim::ShotReport* out,
+                   sim::EventQueue* events = nullptr) {
         for (int i = 0; i < ticks; ++i, ++tick) {
             sim::update_weapon(world.players[0], 0, input, *rifle, world, history, 2, tick, 1.0f,
-                               out);
+                               out, events);
             history[0].record(world.players[0], world.params, tick + 1);
             history[1].record(world.players[1], world.params, tick + 1);
         }
@@ -77,6 +79,24 @@ int run_damage_test(const Options& opt) {
     check("a 25 round body shot is 25 damage", report.damage == 7 * 25);
     std::printf("    chest: shots %d hits %d damage %d hp %d ammo %d\n", report.shots, report.hits,
                 report.damage, world.players[1].vitals.health, world.players[0].ammo);
+
+    // Tracers ride the event channel: one event per shot, muzzle to impact.
+    sim::EventQueue shots;
+    reset(shooter, victim);
+    tick = 10;
+    sim::ShotReport event_report;
+    run(8, fire, &event_report, &shots);
+    int shot_events = 0;
+    bool tracer_ok = true;
+    sim::SimEvent event;
+    while (shots.pop(event)) {
+        if (event.type != sim::EventType::Shot) continue;
+        ++shot_events;
+        if (!(event.a.z > 1.0f) || !(event.b.x > event.a.x)) tracer_ok = false;
+    }
+    check("each shot emits one tracer event",
+          shot_events == event_report.shots && shot_events > 0);
+    check("the tracer runs from the eye to the impact", tracer_ok);
 
     // --- armour changes the number of rounds, not the rule ---------------
     sim::PlayerState armoured = victim;

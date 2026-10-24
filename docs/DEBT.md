@@ -13,7 +13,7 @@
 - **lead**：M6 / M7 / 顺手，只表示排期，不是状态。状态与排期分两列，是为了能统计。
 - **verify**：一条命令 + 期望输出。**没有 verify 的条目不许进 open**（想法去 BACKLOG）。
 
-**当前计数**：未解决 **33** 条（P1 3 / P2 21 / P3 9）；关闭记录 **7** 条；设计待定与功能缺口见 BACKLOG。
+**当前计数**：未解决 **32** 条（P1 2 / P2 21 / P3 9）；关闭记录 **8** 条；设计待定与功能缺口见 BACKLOG。
 改表就要改这个数字——`tools/doc_check.py` 会核对它和实际行数。
 
 ---
@@ -43,7 +43,6 @@
 
 | ID | 级别 | 症状 | 证据 / 位置 | verify | status | lead |
 |---|---|---|---|---|---|---|
-| AUD-16 | P1 | hp/armor 已进 PlayerState 与快照（v6 kFieldVitals），但还没有任何东西造成伤害，所以 HUD 永远满血 | bridge/sim_bridge.cpp get_hp | `godot_check.ps1` 打 30 伤害后 HUD 显示 70 | open | M6 |
 | AUD-31 | P2 | 桥的 `match_request` 在 Godot 主线程同步执行（最坏约 11 s 冻结） | net_gateway.cpp join_impl | 信令移到工作线程，或超时 ≤2 s 且按钮禁用 | open | M7 |
 | AUD-32 | P2 | HUD 每帧重建 `Array[String]`+join；低端机帧时间上升 | godot/main.gd _update_hud | 脏标记：hp/armor/impulse/pos 不变则不重拼 | open | M7 |
 | AUD-35 | P2 | 主循环每帧最多 5 tick：持续 <13 fps 时丢弃的 tick 现在计数并打印（S60），但没有独立闸门 | godot/main.gd | 10 fps 跑 10 s 后 tick 落后 < 1 tick/s | open | M7 |
@@ -87,6 +86,7 @@
 | 2026-10-23 | AUD-26 | UDP 源地址校验：`connect_peer` 规范化地址，`recv` 不匹配即丢并计数 | `[udpsrc] rejected 1 injection-drop 1 legit-after 1` |
 | 2026-10-23 | AUD-27 | 槽位释放：`NetServer::remove_client` 上报 client_id，网关 `MatchHost::release` | `[slots] first 1 full 1 reported 1 freed 1 cycles 3/1 anonymous 1` |
 | 2026-10-23 | DEBT-17 | GAPS.md 归档到 docs/archive/，主目录不再有会误导的过期文档 | `docs/archive/GAPS.md` 存在；doc_check 路径检查 0 失败 |
+| 2026-10-24 | AUD-16 | 伤害有了来源：`update_weapon` 走完命中→伤害；`godot_check` 的“damage reaches the other HUD”在房主打 30 后，客户端 HUD 打出 `hud hp=70`（快照链路，不只本地） | `godot_check.ps1`：`PASS: damage crossed the snapshot into the other HUD`（BACKLOG FEAT-03 随之完成） |
 
 ## 7. 已接受边界（不修，写明原因）
 

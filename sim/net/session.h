@@ -100,6 +100,7 @@ public:
     void step();
     void send();
 
+    World& world() { return m_world; }
     const World& world() const { return m_world; }
     uint32_t tick() const { return m_world.tick; }
     int full_snapshots() const { return m_full; }

@@ -154,7 +154,7 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 | 15 | demo | 同构建逐 tick 一致；改动参数必被检出 | --test-demo |
 | 16 | hitbox 历史 | 64 tick 环形、帧间插值、三段 ×5/×1/×0.7（腿倍率来自 toml）、蹲下自动跟随 | --test-hitbox |
 | 17 | 事件通道 | 跳跃/落地事件带 tick、可复现、环形溢出丢最旧 | --test-events |
-| 18 | Godot 桥加载 | 扩展真的加载、HUD 打印 vertices>0 与 ports.h 的默认端口、上一 tick 位置可读、两进程重连回原槽且第二次调用被拒、暂停菜单 7 s 不掉线 | tools/godot_check.ps1 |
+| 18 | Godot 桥 | 扩展真的加载、HUD 打印 vertices>0 与默认端口、上一 tick 可读、按住扳机产出 `tracer events>0`、两进程重连回原槽且第二次被拒、暂停菜单 7 s 不掉线、房主打 30 后客户端 HUD 显示 70 | tools/godot_check.ps1 |
 | 19 | 文档一致性 | 协议版本、闸门数、DEBT 守恒、路径、STATE 质量 0 fail；`--selftest` 能红 | python tools/doc_check.py |
 | 20 | 武器数据 | 两把枪加载 0 警告、缺键/拼错都报警、坏值被拒、改一个数哈希变、武器表不动 movement 哈希、BOM 可读 | --test-weapons |
 | 21 | 命中判定 | 正对躯干必中、偏一个盒宽必不中、0.40 中 / 0.41 不中、蹲下躲过、墙挡人、射程截断、自伤忽略、最近者胜；回溯 6 tick 仍命中当时位置、半 tick 插值、超界不外推 | --test-hitscan |
@@ -176,8 +176,7 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
    SERVER SILENT 1 s）、重连按钮、A5 网络网关拆分全部实测通过。第三人称动画与 5v5 选边
    按计划书属于 M7，不在此条。
 2. **v0.4 的 M5 增量** — A1/A2/A5 全部接入并实测；configstring 带真实哈希且失配拒局。**已关闭**。
-3. **M6 射击** — 射击链路已贯通（俯仰、弹药、换弹、射速、命中、伤害进快照）；
-   还差两端 HUD 断言、死亡重生、后坐力表、表现层与验收（M6.8–M6.12）。
+3. **M6 射击** — 射击链路、两端 HUD、曳光与敌方轮廓已通；还差死亡重生、后坐力、hitmarker 与验收（M6.9–M6.12）。
 4. **Godot 版本** — 计划书写 4.7 Mono，但 godot-cpp 最高只有 4.5，现用 4.5。
    lead：M7（Godot-Locomotion 绑定 4.7.2）之前必须解决。
 5. **跨机 demo 比对** — 工具与流程就绪（docs/demo-format.md），缺第二台机器。
@@ -372,8 +371,8 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HA
   Esc 开合暂停菜单（Resume / Reconnect（仅客户端）/ Leave）。
   判据：`--hud-check` 打 `hud hp=100 armor=0 impulse=4/4 role=solo vertices=360
   build=<hash> protocol=7 port=27115`——vertices > 0 证明 mesh_builder 还在产出几何，
-  port 证明默认端口来自 ports.h 而不是脚本；hp/armor 现在是 PlayerState 里的真值（v6），
-  不再是常量（伤害来源仍缺 = AUD-16）。这条检查已并入 tools/godot_check.ps1。
+  port 证明默认端口来自 ports.h 而不是脚本；hp/armor 是 PlayerState 里的真值，伤害来源自 S70 起
+  也有了（AUD-16 关闭：房主打 30 → 客户端 HUD `hp=70`）。这条检查已并入 tools/godot_check.ps1。
 - 失联检测（`NetClient::snapshot_age()`）：客户端用**最后一次收到快照的 tick 差**判断，
   > 64 tick（1 s）显示 `SERVER SILENT x.xs`。世界仍在本地推进也能看出来——
   「tick 停走」只能发现模拟卡死，发现不了服务器没了。
@@ -488,7 +487,8 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HA
 
 - `SimEvent`：tick + type + entity + a/b + param；**绝不承载权威数据**（伤害只走快照）。
 - `EventQueue`：1024 条固定环，满了丢最旧并计数，零分配。
-- 生产：`World::step(inputs, dt, &events)` 在起跳/落地沿发射；不传 sink 时零开销。
+- 生产：`World::step(inputs, dt, &events)` 在起跳/落地沿发射；`update_weapon(..., events)` 每次开火发
+  `Shot`（a = 枪口，b = 命中点或射程尽头，param = 武器 slot）。不传 sink 时零开销。
 - 消费：bridge `drain_events()` 每帧取空；Godot 侧只更新 HUD/音效，不反向查询。
 - 判据：--test-events（跳跃 tick 5、落地 tick 47、两次运行一致、溢出 76 条丢最旧）。
 
@@ -566,6 +566,18 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HA
 - 已知边界：服务器还没有测 RTT，回溯用 1 tick（DEBT-23）；半自动与自动的区分、开镜扩散都还没做。
 - 判据：`--test-damage`（smoke 第 22 项）：`[damage] body 4 rounds armour 10 head 125 wall hits 0 reload 30`。
 
+### 8.13 表现层：曳光与敌方轮廓（godot/main.gd，S70）
+
+- **曳光**：sim 每次开火发一个 `Shot` 事件（a = 枪口，b = 命中点/射程尽头），桥 `drain_events()`
+  带 a/b 过界，GDScript 生成一根 0.02 m 的盒子（`look_at` 对齐，沿 -Z 拉伸到长度），
+  0.09 s 内 alpha 淡出后 `queue_free`。事件只在表现层消费，**不承载伤害**。
+- **谁看得到自己的曳光**：开火在自己的预测世界里执行，所以房主/客户端都能立刻看到；
+  别人的枪口火光要等事件上网络（M7），现在看不到。
+- **敌方红轮廓**：远端玩家节点加一个略大的胶囊壳（半径 +0.025、高 +0.05），
+  材质 `CULL_FRONT` + unshaded 红 —— 只画背面就得到一圈红边。蹲下时随节点 scale.y 一起缩。
+  **M6 没有队伍**，所以“远端 = 敌方”；M8 分队后必须按队伍着色（记在 BACKLOG FEAT-14）。
+- 判据：`godot_check.ps1` 的 `== tracers ==`（按住扳机 1 s → `tracer events=14`）。
+
 ---
 
 ## 9. 开场 / 收尾协议
@@ -605,11 +617,11 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HA
 
 ## 11. 下一步（严格按计划书顺序，不要跳）
 
-1. **M6 射击**：射击链路已贯通（M6.6/M6.7 框架）。下一步 M6.8（两端 HUD 断言）→ M6.9 死亡重生 →
-   M6.10 后坐力 → M6.11 表现层 → M6.12 验收。**一次只做一个任务。**
+1. **M6 射击**：射击链路与两端 HUD 已通。下一步 M6.9 死亡重生 → M6.10 后坐力 →
+   M6.11 表现层剩余（hitmarker/伤害数字/枪口火光）→ M6.12 验收。**一次只做一个任务。**
 2. **M7 / M8**：动画、视角模型、音频垂直定位（§9.2 的楼层低通）。
 3. 代码体检：A1–A7、AUD-01…19、R1–R19 已完成；S60 关掉了 AUD-20/23/26/27，
-   其余见 docs/DEBT.md（33 条）与 docs/BACKLOG.md（设计待定/功能缺口）。
+   其余见 docs/DEBT.md（32 条）与 docs/BACKLOG.md（设计待定/功能缺口）。
 
 ---
 

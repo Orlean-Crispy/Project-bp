@@ -28,6 +28,7 @@ struct ShotReport {
 // (sim/game/rewind.h) - the caller owns that policy.
 void update_weapon(PlayerState& shooter, int shooter_index, const MoveInput& input,
                    const WeaponDef& def, World& world, const HitboxHistory* histories,
-                   int history_count, uint32_t tick, float rewind, ShotReport* report);
+                   int history_count, uint32_t tick, float rewind, ShotReport* report,
+                   EventQueue* events = nullptr);
 
 }  // namespace sim

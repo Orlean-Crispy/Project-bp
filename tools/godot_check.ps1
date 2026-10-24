@@ -88,6 +88,21 @@ if (-not $gapField.Success -or [double]$gapField.Groups[1].Value -le 0.01) {
 Write-Host $interpLine
 Write-Host 'PASS: previous tick exposed, camera can interpolate' -ForegroundColor Green
 
+# M6.11: a tracer has to come out of the whole chain (trigger -> shot -> event ->
+# GDScript). Solo holds the trigger for ~1 s and counts the events it drained.
+Write-Host '== tracers =='
+$fire = Invoke-BpGodotHeadless -Arguments @('--fire-check')
+$fireLines = @($fire.Output.Split([char]10) | ForEach-Object { $_.TrimEnd([char]13) } |
+    Where-Object { $_ -like 'tracer events=*' })
+if ($fireLines.Count -ne 1) {
+    Write-Host $fire.Output
+    Fail 'no tracer line: solos shots never produced an event'
+}
+$tracerCount = [int]([regex]::Match($fireLines[0], 'events=(\d+)').Groups[1].Value)
+if ($tracerCount -le 0) { Fail ('no tracer events: ' + $fireLines[0]) }
+Write-Host $fireLines[0]
+Write-Host 'PASS: the trigger produced tracer events end to end' -ForegroundColor Green
+
 if ($SkipReconnect) { exit 0 }
 
 Write-Host '== reconnect check (two processes) =='
@@ -153,4 +168,37 @@ if ($pausedText -notmatch 'joined slot 1') { Fail 'the paused client never joine
 if ($pausedText -notmatch 'peers 1') { Fail 'the paused client never saw the host' }
 if ($pausedText -match 'server silent') { Fail 'the host dropped a paused client (AUD-02 regression)' }
 Write-Host 'PASS: the link survived 7 s with the menu open' -ForegroundColor Green
+
+# M6.8: damage must cross the snapshot into the other side's HUD. The host hurts
+# slot 1 through the real apply_damage path; the client only prints its HUD, so
+# an hp=70 line there means the snapshot carried it (AUD-16's other half).
+Write-Host '== damage reaches the other HUD =='
+$damageHost = $temp + '.dhost'
+$damageClient = $temp + '.dclient'
+$hostProcess = $null
+$clientProcess = $null
+try {
+    $hostProcess = Start-Process -FilePath $godot -PassThru -NoNewWindow -RedirectStandardOutput $damageHost -RedirectStandardError ($damageHost + '.err') -ArgumentList @('--headless', '--path', $project, '--', '--host', ('--port=' + $gatePort), '--damage-check')
+    Start-Sleep -Milliseconds 2500
+    $clientProcess = Start-Process -FilePath $godot -PassThru -NoNewWindow -RedirectStandardOutput $damageClient -RedirectStandardError ($damageClient + '.err') -ArgumentList @('--headless', '--path', $project, '--', '--connect=127.0.0.1', ('--port=' + $gatePort), '--hud-damage-check')
+    $damageDeadline = (Get-Date).AddSeconds(20)
+    while ((Get-Date) -lt $damageDeadline) {
+        Start-Sleep -Milliseconds 250
+        if (Test-Path $damageClient) {
+            if (Select-String -Path $damageClient -Pattern 'hud hp=70' -Quiet) { break }
+        }
+    }
+} finally {
+    foreach ($proc in @($clientProcess, $hostProcess)) {
+        if ($proc -and -not $proc.HasExited) { Stop-Process -Id $proc.Id -Force }
+    }
+    Start-Sleep -Milliseconds 300
+}
+$damageHostText = if (Test-Path $damageHost) { Get-Content -LiteralPath $damageHost -Raw } else { '' }
+$damageClientText = if (Test-Path $damageClient) { Get-Content -LiteralPath $damageClient -Raw } else { '' }
+Remove-Item -LiteralPath $damageHost, ($damageHost + '.err'), $damageClient, ($damageClient + '.err') -Force -ErrorAction SilentlyContinue
+if ($damageHostText -notmatch 'damage slot 1 hp=70') { Fail 'the host never applied the damage' }
+if ($damageClientText -notmatch 'hud hp=70') { Fail 'the client HUD never showed the damage (snapshot -> HUD broken)' }
+Write-Host 'PASS: damage crossed the snapshot into the other HUD' -ForegroundColor Green
+
 exit 0

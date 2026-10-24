@@ -354,7 +354,7 @@ void NetServer::step() {
         if (def == nullptr) continue;
         update_weapon(m_world.players[i], static_cast<int>(i), m_inputs[i], *def, m_world,
                       m_hitboxes.data(), static_cast<int>(m_hitboxes.size()),
-                      m_world.tick - 1, rewind_ticks(0.0f), nullptr);
+                      m_world.tick - 1, rewind_ticks(0.0f), nullptr, nullptr);
     }
     for (std::size_t i = 0; i < m_world.players.size() && i < m_hitboxes.size(); ++i) {
         m_hitboxes[i].record(m_world.players[i], m_world.params, m_world.tick);
@@ -695,7 +695,7 @@ void NetClient::advance_weapon(const MoveInput& input) {
     // The client has no victim in its predicted world, so this only keeps ammo
     // and timers in step with the server. Damage stays server-authoritative.
     update_weapon(m_local.players[0], 0, input, *def, m_local, &m_hitbox, 1,
-                  m_local.tick - 1, rewind_ticks(0.0f), nullptr);
+                  m_local.tick - 1, rewind_ticks(0.0f), nullptr, m_events);
 }
 
 void NetClient::apply_snapshot(const Snapshot& snap) {

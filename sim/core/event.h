@@ -15,7 +15,10 @@ enum class EventType : uint16_t {
     None = 0,
     Jump = 1,
     Land = 2,
-    // Reserved for M6+: Muzzle, Impact, Footstep, Reload, Break...
+    // M6.11: one shot's tracer. a = muzzle, b = impact point (or where the ray
+    // ran out). param = weapon slot. Visual only: damage never rides an event.
+    Shot = 3,
+    // Reserved for M6+: Impact, Footstep, Reload, Break...
 };
 
 struct SimEvent {

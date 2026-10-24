@@ -41,6 +41,9 @@ public:
     int snapshot_age() const { return m_net_client ? m_net_client->snapshot_age() : -1; }
     const sim::NetClient* client() const { return m_net_client.get(); }
     sim::NetClient* client() { return m_net_client.get(); }
+    // The host's authoritative world, for the gate-only damage seam in SimWorld.
+    sim::NetServer* server() { return m_server.get(); }
+    const sim::NetServer* server() const { return m_server.get(); }
 
 private:
     bool join_impl(const std::string& host, int port, const sim::Ticket* resume,

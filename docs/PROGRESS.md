@@ -2426,3 +2426,36 @@ smoke 20 项 + bench ALL GREEN；`sources ok: 28`；`doc_check` 0 fail。
 
 - 半自动 vs 自动、开镜扩散、后坐力、命中提示、死亡重生都还没有；**M6.8 的两端 HUD 断言**是下一件。
 - 现在能从扣扳机一路走到“对方掉血”，但画面上还看不出来——这是下一步要补的。
+## S70 · 2026-10-24 · M6.8 与表现层（曳光、敌方红轮廓）
+
+### 1. 做了什么
+
+- **M6.8**：桥加了一个**只给闸门用**的 `apply_test_damage(slot, amount)`（走真实 `apply_damage`），
+  房主在客户端加入后打 slot 1 三十点；`godot_check.ps1` 新开一段双进程检查，客户端 HUD 打出
+  `hud hp=70` 即通过。伤害来源→快照→对端 HUD 这条链第一次有证据（AUD-16 关闭）。
+- **曳光**：`EventType::Shot`（a = 枪口、b = 命中点或射程尽头、param = 武器 slot），
+  `update_weapon(..., events)` 每次开火发一个；桥 `drain_events()` 本来就带 a/b；
+  GDScript 生成一根细盒子、`look_at` 对齐、0.09 s 淡出。
+- **单机也能开火**：之前 solo 的 `step()` 只走 `step_single`，扣扳机什么都不会发生。
+  现在 solo 也调同一个 `update_weapon`，所以弹药/冷却/曳光在离线时同样工作。
+- **敌方红轮廓**：远端玩家节点加一个略大的胶囊壳（`CULL_FRONT` + unshaded 红），
+  只画背面得到红边；蹲下随节点缩放。
+
+### 2. 判据
+
+- `godot_check.ps1`：`== tracers ==` → `tracer events=14`；`== damage reaches the other HUD ==` →
+  房主 `damage slot 1 hp=70`、客户端 `hud hp=70`。
+- `--test-damage` 加两条：每次开火恰好一个 Shot 事件、事件从眼睛出发且沿枪口方向。
+- smoke 仍是 22 项 + bench 全绿（没有新增顶层闸门，检查落在第 18 项里）。
+
+### 3. 失败与修正
+
+- `NetServer::world()` 只有 const 版，桥的伤害钩子拿不到可变世界；加了非 const 重载。
+  （这是测试钩子，但重载本身是对的：服务器本来就拥有这个世界。）
+- 第一版把 solo 开火漏了：`--fire-check` 会打印 `tracer events=0`。不是猜测，是闸门先红。
+
+### 4. 边界
+
+- 别人的枪口火光/曳光看不到（事件还没上网络；M7 事件通道）。
+- 没有队伍，所以“远端 = 敌方”；FEAT-14 记下分队后要按队伍着色。
+- hitmarker、伤害数字、枪口火光仍未做（M6.11 剩余）。

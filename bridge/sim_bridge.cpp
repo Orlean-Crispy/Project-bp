@@ -31,6 +31,8 @@
 #include "sim/core/world.h"
 #include "sim/input/bindings.h"
 #include "sim/input/buttons.h"
+#include "sim/game/rewind.h"
+#include "sim/game/shoot.h"
 #include "sim/net/ports.h"
 #include "sim/net/session.h"
 
@@ -157,6 +159,13 @@ public:
         // step_single exists exactly for this: step({input}) would build a
         // one-element vector 64 times a second (iron law E).
         m_world.step_single(m_input, static_cast<float>(sim::tick_seconds()), &m_events);
+        // Solo play runs the same weapon update the sessions run, so the trigger
+        // spends rounds, draws tracers and obeys the cadence offline too.
+        if (const sim::WeaponDef* def = m_world.weapons.find_by_slot(
+                m_world.players[0].weapon_id)) {
+            sim::update_weapon(m_world.players[0], 0, m_input, *def, m_world, nullptr, 0,
+                               m_world.tick - 1, sim::rewind_ticks(0.0f), nullptr, &m_events);
+        }
     }
 
     // ---- networking (host = listen server + local client, join = client) ----
@@ -230,6 +239,22 @@ public:
 
     // Plan 3.4: the presentation layer drains the event channel once per frame.
     // Events carry a tick so a future rollback can discard stale predictions.
+    // Gate-only seam (tools/godot_check.ps1): damage a slot through the real
+    // apply_damage path so "snapshot -> HUD" can be asserted without scripting a
+    // shot frame by frame. Gameplay never calls this.
+    void apply_test_damage(int slot, int amount) {
+        sim::World* w = gate_world();
+        if (w == nullptr || slot < 0 || slot >= static_cast<int>(w->players.size())) return;
+        sim::apply_damage(w->players[static_cast<std::size_t>(slot)].vitals, amount,
+                          sim::HitZone::Chest, w->combat);
+    }
+
+    int get_player_hp(int slot) const {
+        const sim::World* w = gate_world();
+        if (w == nullptr || slot < 0 || slot >= static_cast<int>(w->players.size())) return -1;
+        return w->players[static_cast<std::size_t>(slot)].vitals.health;
+    }
+
     Array drain_events() {
         Array out;
         sim::SimEvent event;
@@ -331,6 +356,18 @@ public:
     PackedColorArray get_colors() const { return m_colors; }
     PackedInt32Array get_indices() const { return m_indices; }
 
+private:
+    sim::World* gate_world() {
+        if (sim::NetServer* srv = m_net.server()) return &srv->world();
+        if (!m_net.active()) return &m_world;
+        return nullptr;
+    }
+    const sim::World* gate_world() const {
+        if (const sim::NetServer* srv = m_net.server()) return &srv->world();
+        if (!m_net.active()) return &m_world;
+        return nullptr;
+    }
+
 protected:
     static void _bind_methods() {
         ClassDB::bind_method(D_METHOD("load_map", "map_path", "data_path"), &SimWorld::load_map);
@@ -341,6 +378,9 @@ protected:
         ClassDB::bind_method(D_METHOD("get_action_bits"), &SimWorld::get_action_bits);
         ClassDB::bind_method(D_METHOD("step"), &SimWorld::step);
         ClassDB::bind_method(D_METHOD("drain_events"), &SimWorld::drain_events);
+        ClassDB::bind_method(D_METHOD("apply_test_damage", "slot", "amount"),
+                             &SimWorld::apply_test_damage);
+        ClassDB::bind_method(D_METHOD("get_player_hp", "slot"), &SimWorld::get_player_hp);
         ClassDB::bind_method(D_METHOD("host", "port", "players"), &SimWorld::host);
         ClassDB::bind_method(D_METHOD("join", "host", "port"), &SimWorld::join);
         ClassDB::bind_method(D_METHOD("reconnect"), &SimWorld::reconnect);

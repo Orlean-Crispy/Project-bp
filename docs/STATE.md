@@ -5,7 +5,7 @@
 > 历史过程 → `docs/PROGRESS.md`；待办 → `docs/DEBT.md`；预算 → `docs/budgets.md`；
 > 设计待定与功能缺口 → `docs/BACKLOG.md`；**这一段工作的叙事交接 → `docs/HANDOFF.md`**（不重复本文件的数字）。
 
-**更新**：2026-10-24 · S69 · 维护者：谢政霖
+**更新**：2026-10-24 · S70 · 维护者：谢政霖
 
 ---
 
@@ -13,9 +13,9 @@
 
 | 项 | 值 |
 |---|---|
-| 里程碑 | **M6 进行中**：射击链路已贯通（M6.6/M6.7 框架）；剩 HUD 断言、死亡重生、后坐力、表现层 |
+| 里程碑 | **M6 进行中**：射击链路 + 两端 HUD 已通；剩死亡重生、后坐力、hitmarker、验收 |
 | 契约 | `docs/contracts/M6.md`（**active**） |
-| 本阶段 | 射击链路贯通：俯仰进命令包、弹药/换弹/射速、`[damage]` 闸门；下一个是 M6.8 HUD 断言 |
+| 本阶段 | M6.8 完成（伤害经快照进对端 HUD）；曳光与敌方红轮廓已上线；下一个是 M6.9 死亡重生 |
 | 协议版本 | **v7**（命令带 pitch；Weapon 组接真值并加 reserve/reload） |
 | 宿主 | Godot **4.5**（计划书目标 4.7，DEBT-15，M7 前必须有结论） |
 | 分支 | `main` · 工作区 `G:\自制游戏` · 工具链 `C:\bp-toolchain` |
@@ -32,12 +32,12 @@
 
 | # | ID | 一句话 |
 |---|---|---|
-| 0 | M6.8 | 伤害进快照 → 两端 HUD 断言（关 AUD-16） |
-| 1 | M6.9 | 死亡与重生（`alive` 位、输入忽略、回出生点） |
-| 2 | M6.10 | 后坐力查表 + `punch` 增量（不进快照，A4） |
-| 3 | M6.11 | 表现层：hitmarker、伤害数字、枪口火光（最小实现） |
-| 4 | M6.12 | E1–E9 回归与验收（含 TTK 扫描表） |
-| 5 | DESIGN-09 | 眼高 1.278 > 头段起点 1.164 → 平射必中头；先拍板再调 TTK |
+| 0 | M6.9 | 死亡与重生（`alive` 位、输入忽略、回出生点） |
+| 1 | M6.10 | 后坐力查表 + `punch` 增量（不进快照，A4） |
+| 2 | M6.11 | 表现层剩余：hitmarker、伤害数字、枪口火光 |
+| 3 | M6.12 | E1–E9 回归与验收（含 TTK 扫描表） |
+| 4 | DESIGN-09 | 眼高 1.278 > 头段起点 1.164 → 平射必中头；先拍板再调 TTK |
+| 5 | — | *（M6 收尾时补充分配）* |
 
 ## 3. 闸门基线（**写数字，不写"全绿"**）
 
@@ -56,6 +56,8 @@
 | 回溯 | `[rewind] window 6 at-6 1 current-miss 1 interp 1 clamp 1` | `--test-hitscan` |
 | 穿透 | `[penetrate] walls 2 one 1 two 2 scale 0.49 pistol 1 concrete 1 open 1` | `--test-hitscan` |
 | 射击链路 | `[damage] body 4 rounds armour 10 head 125 wall hits 0 reload 30` | `--test-damage` |
+| 伤害进 HUD | 房主打 30 → 客户端打 `hud hp=70` | `godot_check.ps1` |
+| 曳光 | 按住扳机 1 s 得到 `tracer events=14` | `godot_check.ps1` |
 | 协议往返 | 10 人满编 873 B（86 B/人）；空 delta 15 B | `--test-snapshot` |
 | 文档一致性 | 0 fail / 0 warn | `python tools\doc_check.py` |
 

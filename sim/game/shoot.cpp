@@ -1,6 +1,7 @@
 #include "sim/game/shoot.h"
 
 #include "sim/game/combat.h"
+#include "sim/core/event.h"
 #include "sim/game/hitscan.h"
 #include "sim/game/rewind.h"
 
@@ -22,7 +23,8 @@ int damage_for(float base, HitZone zone, const MovementParams& params, float pen
 
 void update_weapon(PlayerState& shooter, int shooter_index, const MoveInput& input,
                    const WeaponDef& def, World& world, const HitboxHistory* histories,
-                   int history_count, uint32_t tick, float rewind, ShotReport* report) {
+                   int history_count, uint32_t tick, float rewind, ShotReport* report,
+                   EventQueue* events) {
     // Timers first: a cooldown that ends this tick may fire this tick.
     if (shooter.fire_cooldown > 0) --shooter.fire_cooldown;
     if (shooter.reload_left > 0) {
@@ -58,6 +60,25 @@ void update_weapon(PlayerState& shooter, int shooter_index, const MoveInput& inp
     const Vec3 dir = view_forward(shooter.yaw, input.pitch);
     const ShotResult shot = hitscan_penetrating(world.collision, frame, count, eye, dir, def.range,
                                                 penetration, shooter_index);
+
+    // The tracer is presentation only, and it leaves before the damage branch:
+    // a shot that hits a wall (or nothing) still drew a line.
+    if (events != nullptr) {
+        SimEvent event;
+        event.tick = tick;
+        event.type = EventType::Shot;
+        event.entity_id = static_cast<uint16_t>(shooter_index);
+        event.a = eye;
+        if (shot.hit.hit) {
+            event.b = shot.hit.point;
+        } else {
+            event.b = Vec3(eye.x + dir.x * def.range, eye.y + dir.y * def.range,
+                           eye.z + dir.z * def.range);
+        }
+        event.param = def.slot;
+        events->push(event);
+    }
+
     if (!shot.hit.is_player) return;
     if (shot.hit.entity < 0 || shot.hit.entity >= static_cast<int>(world.players.size())) return;
     if (shot.hit.entity == shooter_index) return;

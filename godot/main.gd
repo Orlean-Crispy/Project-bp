@@ -6,7 +6,11 @@ const TICK := 1.0 / 64.0
 const SENSITIVITY := 0.0022
 
 # SimEvent::type -> display name (plan 3.4). M6 adds muzzle/impact/etc.
-const EVENT_NAMES := { 1: "jump", 2: "land" }
+const EVENT_NAMES := { 1: "jump", 2: "land", 3: "shot" }
+# Must match sim::EventType::Shot.
+const EVENT_SHOT := 3
+# A tracer lives for this long; long enough to see, short enough to not smoke up a fight.
+const TRACER_SECONDS := 0.09
 
 # sim key name -> Godot key constant
 const KEYCODES := {
@@ -71,6 +75,16 @@ var interp_done := false
 # snapshot, and this counter is what a gate can look at.
 var dropped_ticks := 0
 var dropped_reported := false
+# M6.8 gate: host damages a slot, client prints hud lines until hp changes.
+var damage_check := false
+var damage_done := false
+# M6.11 gate: hold the trigger offline and count the tracers that come back.
+var fire_check := false
+var fire_reported := false
+var shot_events := 0
+var hud_damage_check := false
+# M6.11: live tracers (node + remaining life in seconds).
+var tracers: Array = []
 
 func _ready() -> void:
 	RenderingServer.set_default_clear_color(Color(0.07, 0.08, 0.1))
@@ -101,6 +115,15 @@ func _ready() -> void:
 			# Render-interpolation gate: proves the bridge exposes the previous tick,
 			# and that it really is a different position while the player moves.
 			interp_check = true
+		elif arg == "--damage-check":
+			# Host side of the M6.8 gate: hurt the joining slot once it is here.
+			damage_check = true
+		elif arg == "--hud-damage-check":
+			# Client side: keep printing hud lines so the script can wait for hp=70.
+			hud_damage_check = true
+		elif arg == "--fire-check":
+			# Offline gate: hold the trigger and count tracer events.
+			fire_check = true
 
 	sim = SimWorld.new()
 	if net_port <= 0:
@@ -415,6 +438,41 @@ func _show_net_menu() -> void:
 	)
 	print("breakpoint: net menu open")
 
+# One tracer per shot: a thin box stretched between muzzle and impact, faded out
+# over TRACER_SECONDS. Presentation only; the sim never reads it back.
+func _spawn_tracer(from: Vector3, to: Vector3) -> void:
+	var length := from.distance_to(to)
+	if length < 0.05:
+		return
+	var node := MeshInstance3D.new()
+	var mesh := BoxMesh.new()
+	mesh.size = Vector3(0.02, 0.02, 1.0)
+	node.mesh = mesh
+	var material := StandardMaterial3D.new()
+	material.albedo_color = Color(1.0, 0.85, 0.35, 0.85)
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	node.material_override = material
+	add_child(node)
+	node.scale = Vector3(1.0, 1.0, length)
+	node.position = from.lerp(to, 0.5)
+	# A box points down -Z after look_at, which is the axis its length runs along.
+	node.look_at(to, Vector3.UP)
+	tracers.append({"node": node, "life": TRACER_SECONDS, "material": material})
+
+func _age_tracers(delta: float) -> void:
+	for i in range(tracers.size() - 1, -1, -1):
+		var entry: Dictionary = tracers[i]
+		entry["life"] = float(entry["life"]) - delta
+		var life: float = float(entry["life"])
+		if life <= 0.0:
+			var dead: MeshInstance3D = entry["node"]
+			dead.queue_free()
+			tracers.remove_at(i)
+		else:
+			var material: StandardMaterial3D = entry["material"]
+			material.albedo_color.a = 0.85 * (life / TRACER_SECONDS)
+
 func _update_remote_players(players: Array) -> void:
 	var alive := {}
 	for entry in players:
@@ -432,6 +490,20 @@ func _update_remote_players(players: Array) -> void:
 			material.albedo_color = Color(0.95, 0.35, 0.25)
 			material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 			node.material_override = material
+			# Enemy outline: a slightly larger hull drawn with front faces culled,
+			# so only its far side shows and the silhouette gets a red rim.
+			# Pre-team M6: every remote player is "the enemy"; M8 teams decide.
+			var outline := MeshInstance3D.new()
+			var shell := CapsuleMesh.new()
+			shell.radius = capsule.radius + 0.025
+			shell.height = capsule.height + 0.05
+			outline.mesh = shell
+			var outline_material := StandardMaterial3D.new()
+			outline_material.albedo_color = Color(1.0, 0.12, 0.08)
+			outline_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			outline_material.cull_mode = BaseMaterial3D.CULL_FRONT
+			outline.material_override = outline_material
+			node.add_child(outline)
 			var nose := MeshInstance3D.new()
 			var nose_mesh := BoxMesh.new()
 			nose_mesh.size = Vector3(0.14, 0.14, 0.5)
@@ -519,6 +591,8 @@ func _process(delta: float) -> void:
 	var tick := int(sim.get_tick())
 	_update_hud()
 	var buttons := _held_buttons()
+	if fire_check and int(sim.get_tick()) < 80:
+		buttons |= int(button_bits.get("Fire", 0))
 	if autoplay:
 		yaw = 0.9  # make remote orientation observable in the headless check
 	if autoplay and tick < 128:
@@ -578,6 +652,24 @@ func _process(delta: float) -> void:
 		]
 		if autoplay:
 			print("event: ", last_event)
+		if int(event["type"]) == EVENT_SHOT:
+			shot_events += 1
+			_spawn_tracer(event["a"], event["b"])
+
+	if fire_check and not fire_reported and int(sim.get_tick()) > 90:
+		fire_reported = true
+		print("tracer events=%d" % shot_events)
+		get_tree().quit()
+
+	_age_tracers(delta)
+
+	if damage_check and not damage_done and sim.is_networked() and sim.get_peer_count() >= 2:
+		damage_done = true
+		sim.apply_test_damage(1, 30)
+		print("breakpoint: damage slot 1 hp=%d" % sim.get_player_hp(1))
+
+	if hud_damage_check and int(sim.get_tick()) % 32 == 0:
+		print("hud hp=%d armor=%d" % [sim.get_hp(), sim.get_armor()])
 
 	# 64 Hz simulation, arbitrary display rate: blend the two newest ticks
 	# instead of snapping to the newest one and holding it two or three frames.
