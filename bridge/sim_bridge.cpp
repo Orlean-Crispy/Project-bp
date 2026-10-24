@@ -30,6 +30,7 @@
 #include "sim/data/config.h"
 #include "sim/core/world.h"
 #include "sim/input/bindings.h"
+#include "sim/input/buttons.h"
 #include "sim/net/ports.h"
 #include "sim/net/session.h"
 
@@ -71,8 +72,15 @@ public:
             ERR_PRINT(String("breakpoint: ") + String(error.c_str()));
             return false;
         }
+        // M6.2: the weapon table is part of the join hash, so the bridge loads it
+        // exactly like the server and the client do.
+        if (!sim::load_weapons_beside(m_data_path, m_world.weapons, error)) {
+            ERR_PRINT(String("breakpoint: ") + String(error.c_str()));
+            return false;
+        }
         m_world.collision.build(map);
-        m_world.params_hash = sim::combined_params_hash(m_world.params, m_world.combat);
+        m_world.params_hash =
+            sim::combined_params_hash(m_world.params, m_world.combat, m_world.weapons);
 
         sim::PlayerState player;
         player.pos = sim::Vec3(-16.0f, 0.0f, 0.05f);
@@ -113,18 +121,27 @@ public:
         return out;
     }
 
-    void set_input(float forward, float right, float yaw, bool jump, bool crouch, bool slide,
-                   bool dash, bool wallrun, bool wallclimb, bool vault) {
+    // M6: buttons travel as the sim's own bitmask (sim/input/buttons.h) instead of
+    // one positional bool per action. Adding fire/reload/aim would otherwise have
+    // grown this signature to thirteen arguments, and their order is invisible at
+    // the GDScript call site.
+    void set_input(float forward, float right, float yaw, int buttons) {
+        m_input = sim::input_from_buttons(static_cast<uint16_t>(buttons));
         m_input.forward = forward;
         m_input.right = right;
         m_input.yaw = yaw;
-        m_input.jump = jump;
-        m_input.crouch = crouch;
-        m_input.slide = slide;
-        m_input.dash = dash;
-        m_input.wallrun = wallrun;
-        m_input.wallclimb = wallclimb;
-        m_input.vault = vault;
+    }
+
+    // Action name -> button bit, for the GDScript side to build the mask from the
+    // same InputMap it registered. Actions the simulation never sees are omitted.
+    Dictionary get_action_bits() const {
+        Dictionary out;
+        for (size_t i = 0; i < sim::kActionCount; ++i) {
+            const sim::Action action = static_cast<sim::Action>(i);
+            const uint16_t bit = sim::button_for_action(action);
+            if (bit != 0) out[String(sim::action_name(action))] = static_cast<int>(bit);
+        }
+        return out;
     }
 
     void step() {
@@ -315,9 +332,9 @@ protected:
         ClassDB::bind_method(D_METHOD("load_map", "map_path", "data_path"), &SimWorld::load_map);
         ClassDB::bind_method(D_METHOD("load_bindings", "path"), &SimWorld::load_bindings);
         ClassDB::bind_method(D_METHOD("get_bindings"), &SimWorld::get_bindings);
-        ClassDB::bind_method(D_METHOD("set_input", "forward", "right", "yaw", "jump", "crouch",
-                                      "slide", "dash", "wallrun", "wallclimb", "vault"),
+        ClassDB::bind_method(D_METHOD("set_input", "forward", "right", "yaw", "buttons"),
                              &SimWorld::set_input);
+        ClassDB::bind_method(D_METHOD("get_action_bits"), &SimWorld::get_action_bits);
         ClassDB::bind_method(D_METHOD("step"), &SimWorld::step);
         ClassDB::bind_method(D_METHOD("drain_events"), &SimWorld::drain_events);
         ClassDB::bind_method(D_METHOD("host", "port", "players"), &SimWorld::host);

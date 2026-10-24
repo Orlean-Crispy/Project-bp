@@ -61,6 +61,9 @@ var reconnect_locked := false
 var force_paused := false
 var autoplay_jumped := false
 var menu_accumulator := 0.0
+# M6: ["bp_Jump", bit] pairs and name -> bit, both filled from the bridge once.
+var action_bits: Array = []
+var button_bits := {}
 var interp_check := false
 var interp_done := false
 # AUD-20: whole ticks thrown away when one frame is longer than the 5-tick cap.
@@ -112,6 +115,7 @@ func _ready() -> void:
 	if not sim.load_bindings(base.path_join("../sim/data/keybinds.toml")):
 		push_warning("cannot load keybinds, using defaults")
 	_build_actions(sim.get_bindings())
+	_build_action_bits()
 	_build_world_mesh()
 	# AUD-13: the bridge is compiled with the same build id as headless_sim, so a
 	# log line says which commit the loaded DLL really is (and which protocol).
@@ -188,6 +192,22 @@ func _update_hud() -> void:
 			else:
 				silent_printed = false
 	status_label.text = "  ".join(parts)
+
+# M6: the sim takes one button bitmask instead of a positional bool per action.
+# The bits come from the bridge (sim/input/buttons.h), so this script never keeps
+# its own copy of them; adding an action is a keybinds.toml + sim change only.
+func _build_action_bits() -> void:
+	var bits: Dictionary = sim.get_action_bits()
+	for action in bits.keys():
+		action_bits.append(["bp_" + String(action), int(bits[action])])
+		button_bits[String(action)] = int(bits[action])
+
+func _held_buttons() -> int:
+	var mask := 0
+	for pair in action_bits:
+		if Input.is_action_pressed(pair[0]):
+			mask |= int(pair[1])
+	return mask
 
 func _build_actions(bindings: Dictionary) -> void:
 	for action_name in bindings.keys():
@@ -319,8 +339,7 @@ func _update_net_state() -> void:
 		print("breakpoint: peers ", last_peer_count)
 	_update_remote_players(sim.get_remote_players())
 
-func _pressed(action: String) -> bool:
-	return Input.is_action_pressed("bp_" + action)
+
 
 func _close_net_menu() -> void:
 	menu_open = false
@@ -471,7 +490,7 @@ func _process(delta: float) -> void:
 		# (the pose is frozen because the camera update below still does not run).
 		accumulator = 0.0
 		if sim.is_networked():
-			sim.set_input(0.0, 0.0, yaw, false, false, false, false, false, false, false)
+			sim.set_input(0.0, 0.0, yaw, 0)
 			menu_accumulator += delta
 			var pumps := 0
 			while menu_accumulator >= TICK and pumps < 5:
@@ -499,7 +518,7 @@ func _process(delta: float) -> void:
 	# change what the demo does (and headless runs at a different rate).
 	var tick := int(sim.get_tick())
 	_update_hud()
-	var jump := _pressed("Jump")
+	var buttons := _held_buttons()
 	if autoplay:
 		yaw = 0.9  # make remote orientation observable in the headless check
 	if autoplay and tick < 128:
@@ -508,18 +527,14 @@ func _process(delta: float) -> void:
 		# An edge, not an equality: a frame can cross two ticks (19 -> 21).
 		if tick >= 20 and not autoplay_jumped:
 			autoplay_jumped = true
-			jump = true
+			buttons |= int(button_bits.get("Jump", 0))
 		if tick >= 40:
 			if tick < 90:
 				forward = 1.0
 			else:
 				right = 1.0
 
-	sim.set_input(
-		forward, right, yaw,
-		jump, _pressed("Crouch"), _pressed("Slide"), _pressed("Dash"),
-		_pressed("WallRun"), _pressed("WallClimb"), _pressed("Vault")
-	)
+	sim.set_input(forward, right, yaw, buttons)
 
 	accumulator += delta
 	var ticks := 0

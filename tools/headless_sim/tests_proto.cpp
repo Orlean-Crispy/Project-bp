@@ -57,6 +57,11 @@ int run_snapshot_check() {
     src.vault_rise = 0.3f;
     src.vitals.health = 63;
     src.vitals.armor = 25;
+    // M6.2: the trigger/reload/aim bits are held states, so they must survive the
+    // wire like every other piece of state that steers the next tick.
+    src.firing = true;
+    src.reloading = true;
+    src.ads = true;
 
     sim::Snapshot full_snap;
     full_snap.tick = 100;
@@ -74,6 +79,8 @@ int run_snapshot_check() {
                            round.vault_was_down == src.vault_was_down &&
                            round.impulses == src.impulses && round.state == src.state &&
                            round.state_ticks == src.state_ticks &&
+                           round.firing == src.firing && round.reloading == src.reloading &&
+                           round.ads == src.ads &&
                            near(round.speed_coefficient, src.speed_coefficient);
     failures += check(fields_ok, "a movement field no longer survives the wire");
     failures += check(vitals_ok, "hp/armor do not survive the wire (kFieldVitals)");
@@ -93,6 +100,24 @@ int run_snapshot_check() {
                           decoded_delta.players.size() == 1 && decoded_delta.players[0].hp == 55 &&
                           decoded_delta.players[0].armor == 25;
     failures += check(delta_ok, "a hp-only delta is lost (mask no longer fits 16 bits)");
+
+    // 2b. Releasing the trigger must travel too. The bits share the flags word
+    //     with on_ground/crouched, so if the Status group ever stops covering
+    //     them a remote player would stay frozen mid-burst.
+    sim::Snapshot trigger_before = full_snap;
+    sim::Snapshot trigger_after = full_snap;
+    trigger_after.tick = 102;
+    trigger_after.players[0].flags = static_cast<uint16_t>(trigger_after.players[0].flags &
+                                                           ~(1u << 7));
+    const std::vector<uint8_t> trigger_delta =
+        sim::encode_snapshot(trigger_after, &trigger_before);
+    sim::Snapshot trigger_out;
+    const bool trigger_ok = sim::decode_snapshot(trigger_delta.data(), trigger_delta.size(),
+                                                 &trigger_before, trigger_out) &&
+                            trigger_out.players.size() == 1 &&
+                            (trigger_out.players[0].flags & (1u << 7)) == 0 &&
+                            (trigger_out.players[0].flags & (1u << 9)) != 0;
+    failures += check(trigger_ok, "releasing the trigger does not survive a delta");
 
     // 3. The flags word is 16 bits wide on the wire too. Bits 7..10 are reserved
     //    for M6 (firing/reloading/ads/alive); an 8-bit field would truncate them.

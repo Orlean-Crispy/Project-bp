@@ -6,6 +6,7 @@
 #include <filesystem>
 
 #include "sim/data/config.h"
+#include "sim/input/buttons.h"
 
 namespace sim {
 namespace {
@@ -30,6 +31,8 @@ const ActionEntry kActions[] = {
     {Action::WallRun, "WallRun", "actions.wallrun"},
     {Action::WallClimb, "WallClimb", "actions.wallclimb"},
     {Action::Vault, "Vault", "actions.vault"},
+    {Action::Fire, "Fire", "actions.fire"},
+    {Action::Aim, "Aim", "actions.aim"},
     {Action::Reload, "Reload", "actions.reload"},
     {Action::Interact, "Interact", "actions.interact"},
     {Action::Scoreboard, "Scoreboard", "actions.scoreboard"},
@@ -87,6 +90,8 @@ Bindings::Bindings() {
     set_key(Action::WallClimb, Key::V);
     set_key(Action::Vault, Key::C);
     set_key(Action::Dash, Key::X);
+    set_key(Action::Fire, Key::MouseLeft);
+    set_key(Action::Aim, Key::MouseRight);
     set_key(Action::Reload, Key::R);
     set_key(Action::Interact, Key::E);
     set_key(Action::Scoreboard, Key::Tab);
@@ -196,24 +201,39 @@ std::vector<std::string> Bindings::unbound() const {
     return result;
 }
 
+uint16_t button_for_action(Action action) {
+    switch (action) {
+        case Action::Jump: return kButtonJump;
+        case Action::Crouch: return kButtonCrouch;
+        case Action::Slide: return kButtonSlide;
+        case Action::Dash: return kButtonDash;
+        case Action::WallRun: return kButtonWallRun;
+        case Action::WallClimb: return kButtonWallClimb;
+        case Action::Vault: return kButtonVault;
+        case Action::Fire: return kButtonFire;
+        case Action::Aim: return kButtonAds;
+        case Action::Reload: return kButtonReload;
+        default: return 0;
+    }
+}
+
+uint16_t held_buttons(const Bindings& bindings, const KeyState& keys) {
+    uint16_t bits = 0;
+    for (size_t i = 0; i < kActionCount; ++i) {
+        const Action action = static_cast<Action>(i);
+        const uint16_t bit = button_for_action(action);
+        if (bit != 0 && bindings.down(action, keys)) bits |= bit;
+    }
+    return bits;
+}
+
 MoveInput build_move_input(const Bindings& bindings, const KeyState& keys, float yaw) {
-    MoveInput in;
+    MoveInput in = input_from_buttons(held_buttons(bindings, keys));
     in.yaw = yaw;
-
-    const float forward = (bindings.down(Action::MoveForward, keys) ? 1.0f : 0.0f) -
-                          (bindings.down(Action::MoveBack, keys) ? 1.0f : 0.0f);
-    const float right = (bindings.down(Action::MoveRight, keys) ? 1.0f : 0.0f) -
-                        (bindings.down(Action::MoveLeft, keys) ? 1.0f : 0.0f);
-    in.forward = forward;
-    in.right = right;
-
-    in.jump = bindings.down(Action::Jump, keys);
-    in.crouch = bindings.down(Action::Crouch, keys);
-    in.slide = bindings.down(Action::Slide, keys);
-    in.dash = bindings.down(Action::Dash, keys);
-    in.wallrun = bindings.down(Action::WallRun, keys);
-    in.wallclimb = bindings.down(Action::WallClimb, keys);
-    in.vault = bindings.down(Action::Vault, keys);
+    in.forward = (bindings.down(Action::MoveForward, keys) ? 1.0f : 0.0f) -
+                 (bindings.down(Action::MoveBack, keys) ? 1.0f : 0.0f);
+    in.right = (bindings.down(Action::MoveRight, keys) ? 1.0f : 0.0f) -
+               (bindings.down(Action::MoveLeft, keys) ? 1.0f : 0.0f);
     return in;
 }
 

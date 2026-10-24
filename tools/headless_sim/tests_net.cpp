@@ -501,15 +501,25 @@ int run_config_test() {
     sim::CombatParams other_combat = server.world().combat;
     other_combat.max_health += 1;
     sim::ConfigBlob combat_wrong = config;
-    combat_wrong.params_hash = sim::combined_params_hash(server.world().params, other_combat);
+    combat_wrong.params_hash = sim::combined_params_hash(server.world().params, other_combat,
+                                                        server.world().weapons);
     const bool combat_refused = refuses(combat_wrong);
 
-    std::printf("  [config] chunks %u same %d matched %d refused %d combat %d full_state %d ticks %d retrans %d\n",
+    // M6.2: the weapon half too. A host with a different weapons.toml must be
+    // refused, or a client would predict shots the server does not take.
+    sim::WeaponParams other_weapons = server.world().weapons;
+    if (!other_weapons.weapons.empty()) other_weapons.weapons[0].damage_near += 1.0f;
+    sim::ConfigBlob weapon_wrong = config;
+    weapon_wrong.params_hash = sim::combined_params_hash(server.world().params,
+                                                         server.world().combat, other_weapons);
+    const bool weapon_refused = refuses(weapon_wrong);
+
+    std::printf("  [config] chunks %u same %d matched %d refused %d combat %d weapons %d full_state %d ticks %d retrans %d\n",
                 static_cast<unsigned>(client.config_chunks()), same ? 1 : 0, matched ? 1 : 0,
-                refused ? 1 : 0, combat_refused ? 1 : 0, joined ? 1 : 0, ticks,
-                srv.retransmits());
-    if (!ready || !same || !matched || !refused || !combat_refused || !joined ||
-        !retransmitted) {
+                refused ? 1 : 0, combat_refused ? 1 : 0, weapon_refused ? 1 : 0, joined ? 1 : 0,
+                ticks, srv.retransmits());
+    if (!ready || !same || !matched || !refused || !combat_refused || !weapon_refused ||
+        !joined || !retransmitted) {
         std::printf("FAIL: A2 configstring over the reliable stream failed\n");
         return 1;
     }
@@ -914,6 +924,103 @@ int run_net_alloc_check(const std::string& data_path) {
     return 0;
 }
 
+// M6.2: the trigger has to survive the whole chain - client input -> command
+// packet -> server -> snapshot. The bits are held states on purpose: a one-tick
+// pulse would be erased by a single lost packet, and a remote player would freeze
+// mid-burst. This drives a real client against a real server and samples both
+// sides; the snapshot half of the wire is pinned by --test-snapshot's flags
+// round-trip, and a mismatch here would show up as a rollback correction.
+int run_fire_flag_check(const std::string& data_path) {
+    const std::string map_path = "sim/data/maps/metrics_flat.map";
+    std::string error;
+
+    sim::NetServer server;
+    if (!server.init(map_path, data_path, 1, error)) {
+        std::printf("FAIL: fireflag server init: %s\n", error.c_str());
+        return 1;
+    }
+    sim::LoopbackTransport to_server(sim::NetConditions{}, 41);
+    sim::LoopbackTransport to_client(sim::NetConditions{}, 42);
+    server.add_client(&to_server, &to_client, 0);
+
+    sim::NetClient client;
+    if (!client.init(&to_server, &to_client, 0, map_path, data_path, error)) {
+        std::printf("FAIL: fireflag client init: %s\n", error.c_str());
+        return 1;
+    }
+
+    auto tick_once = [&](const sim::MoveInput& in) {
+        client.send_input(in);
+        client.step_local();
+        server.receive();
+        server.step();
+        server.send();
+        to_server.advance(0);
+        to_client.advance(0);
+        client.receive();
+    };
+
+    // Join and settle first: the first commands are spent on FULL_STATE.
+    for (int i = 0; i < 120; ++i) tick_once(sim::MoveInput{});
+    if (!client.joined()) {
+        std::printf("FAIL: fireflag client did not join\n");
+        return 1;
+    }
+
+    sim::MoveInput holding;
+    holding.fire = true;
+    holding.reload = true;
+    sim::MoveInput released;
+
+    int held_seen = 0;
+    int held_total = 0;
+    int released_seen = 0;
+    int released_total = 0;
+    int agree = 0;
+    int compared = 0;
+
+    // The client stamps its commands kInputLead (4) ticks ahead, so for the first
+    // few ticks after a change the server is still executing the previous input.
+    // That transient is the design, not a bug: skip it and sample the steady state.
+    constexpr int kWarmup = 8;
+
+    for (int i = 0; i < 100; ++i) {
+        tick_once(holding);
+        if (i < kWarmup) continue;
+        const sim::PlayerState& srv = server.world().players[0];
+        ++held_total;
+        if (srv.firing && srv.reloading) ++held_seen;
+        ++compared;
+        if (client.predicted().firing == srv.firing) ++agree;
+    }
+    for (int i = 0; i < 60; ++i) {
+        tick_once(released);
+        if (i < kWarmup) continue;
+        const sim::PlayerState& srv = server.world().players[0];
+        ++released_total;
+        if (!srv.firing && !srv.reloading) ++released_seen;
+        ++compared;
+        if (client.predicted().firing == srv.firing) ++agree;
+    }
+
+    std::printf("  [fireflags] held %d/%d released %d/%d agree %d/%d\n", held_seen, held_total,
+                released_seen, released_total, agree, compared);
+    int failures = 0;
+    if (held_seen != held_total) {
+        std::printf("FAIL: the server did not see the held trigger every tick\n");
+        ++failures;
+    }
+    if (released_seen != released_total) {
+        std::printf("FAIL: releasing the trigger did not reach the server\n");
+        ++failures;
+    }
+    if (agree != compared) {
+        std::printf("FAIL: client prediction and server disagree about the trigger\n");
+        ++failures;
+    }
+    return failures;
+}
+
 int run_net_test(const Options& opt) {
     int failures = 0;
 
@@ -935,6 +1042,7 @@ int run_net_test(const Options& opt) {
     failures += run_reliable_test();
     failures += run_ticket_test();
     failures += run_timeout_test();
+    failures += run_fire_flag_check(opt.data_path);
 
     // v0.4 5.2: duplicates, late and far commands never enter the queue twice.
     {

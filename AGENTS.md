@@ -101,7 +101,7 @@ v0.1 定义：**两个人、局域网、1 张 40×40 图、对枪 10 分钟不�
 
 **只在 `docs/STATE.md` 有一份**（覆盖式更新，带命令与数字）。这里不复制，只给三句定位：
 
-- 里程碑：M0–M5 已关闭；M6 进行中（M6.0 规则、M6.1 武器数据完成，hitscan 未开始）。
+- 里程碑：M0–M5 已关闭；M6 进行中（M6.0 规则、M6.1 武器数据、M6.2 开火输入完成，hitscan 未开始）。
 - 宿主实际是 **Godot 4.5**（godot-cpp 上限；计划书目标 4.7 = DEBT-15，M7 前必须有结论）。
 - 闸门数量、p99、丢包回滚、协议版本一律看 STATE §3 / §0——那里的数字有命令可复现。
 
@@ -112,8 +112,8 @@ v0.1 定义：**两个人、局域网、1 张 40×40 图、对枪 10 分钟不�
 
 ## 3. 下一步（严格按计划书顺序，禁止跳步）
 
-1. **M6 射击**（契约 `docs/contracts/M6.md`）：D1–D5 已定（ADR 0006 + 契约 §4），下一步 M6.2 开火输入，
-   之后 hitscan → 回溯 → 穿透 → 三段伤害 → 弹药 → 伤害进快照 → 死亡重生 → 后坐力 → 表现层 → 验收。**一次只做一个任务。**
+1. **M6 射击**（契约 `docs/contracts/M6.md`）：D1–D5 已定（ADR 0006 + 契约 §4），下一步 M6.3 hitscan，
+   之后 回溯 → 穿透 → 三段伤害 → 弹药 → 伤害进快照 → 死亡重生 → 后坐力 → 表现层 → 验收。**一次只做一个任务。**
 2. M7/M8：音频、第三人称动画、第一人称视角模型。
 3. 未解决项与债只看 `docs/DEBT.md`（32 条）；设计待定与功能缺口看 `docs/BACKLOG.md`。
 
@@ -130,6 +130,7 @@ v0.1 定义：**两个人、局域网、1 张 40×40 图、对枪 10 分钟不�
   可靠流用 512 B 分块。
 - **键位**：只在 sim/input 与 keybinds.toml；sim 只认 MoveInput。
 - **路径**：工具链在 C:\bp-toolchain（ASCII）；ld 输出必须相对路径；文件用 u8path。
+- **许可**：GPL/AGPL 代码不进仓库（含注释）；只读事实、自写实现，台账见 docs/assets-licenses.md（ADR 0007）。
 - **命名**：对外 IMPULSE / IMP，对内 Project Bp / `bp` 前缀；代码里只有一个东西叫 impulse（移动资源），破坏叫 breach。
   **不做全局重命名（已结案）**：一直用内部代号开发，名字不影响正确性，只保证没有 bug。
 
@@ -165,6 +166,7 @@ powershell -File tools\run_demo.ps1     # Godot demo
 | docs/AUDIT.md | 审计**索引**（每轮一个文件，证据在 docs/audits/） |
 | docs/backup.md | GitHub / bundle / 恢复步骤 |
 | docs/pitfalls/ | 事故案例（5 篇） |
-| docs/decisions/ | ADR 0003 护甲 · 0004 网络时间轴 · 0005 命名 · 0006 穿透/护甲结算/热重载 |
+| docs/decisions/ | ADR 0003 护甲 · 0004 网络时间轴 · 0005 命名 · 0006 穿透/护甲结算/热重载 · 0007 许可与净室 |
+| docs/assets-licenses.md | 素材许可台账 + 「只读参考」（读过哪些 GPL 源、取了哪条事实） |
 | docs/keymap.md / docs/demo-format.md | 键位 / demo 格式 |
 | docs/archive/ | 只读历史（HANDOFF、GAPS、8.3 专章）；**不再维护，别当现状读** |

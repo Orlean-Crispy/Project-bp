@@ -9,6 +9,7 @@
 
 #include "sim/core/hash.h"
 #include "sim/game/combat.h"
+#include "sim/game/weapon.h"
 
 namespace sim {
 namespace {
@@ -139,11 +140,12 @@ bool load_toml_file(const std::string& path, TomlTable& out, std::string& error)
     return parse_toml(text, out, error);
 }
 
-uint64_t combined_params_hash(const MovementParams& movement, const CombatParams& combat) {
-    // Fold the two rule sets instead of XOR-ing them: a change in either half
-    // must move the result, and a collision needs both halves to drift together.
+uint64_t combined_params_hash(const MovementParams& movement, const CombatParams& combat,
+                              const WeaponParams& weapons) {
+    // Fold the three rule sets instead of XOR-ing them: a change in any half must
+    // move the result, and a collision needs all of them to drift together.
     Hasher h;
-    h.u64(movement.hash()).u64(combat.hash());
+    h.u64(movement.hash()).u64(combat.hash()).u64(weapons.hash());
     return h.value();
 }
 

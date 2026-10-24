@@ -15,6 +15,7 @@
 #include "sim/core/world.h"
 #include "sim/demo/demo.h"
 #include "sim/input/bindings.h"
+#include "sim/input/buttons.h"
 #include "sim/game/combat.h"
 #include "sim/net/fragment.h"
 #include "sim/net/admission.h"
@@ -760,6 +761,21 @@ int run_keybind_test(const Options& opt) {
         if (bindings.key(a) == sim::Key::E) e_free = false;
     }
     check("E is reserved for interact", e_free);
+
+    // M6.2: the trigger and the aim key are part of the same table, so they are
+    // remappable like everything else, and the held buttons become the sim's
+    // bitmask (one bit per action) that the command packet carries.
+    check("fire is on mouse left", bindings.key(sim::Action::Fire) == sim::Key::MouseLeft);
+    check("aim is on mouse right", bindings.key(sim::Action::Aim) == sim::Key::MouseRight);
+
+    sim::KeyState held;
+    held.set(sim::Key::MouseLeft, true);
+    held.set(sim::Key::Space, true);
+    const uint16_t mask = sim::held_buttons(bindings, held);
+    check("held buttons become the sim mask",
+          (mask & sim::kButtonFire) != 0 && (mask & sim::kButtonJump) != 0 &&
+              (mask & sim::kButtonAds) == 0);
+    check("the button mask round-trips", sim::buttons_from_input(sim::input_from_buttons(mask)) == mask);
 
     sim::KeyState keys;
     keys.set(sim::Key::W, true);

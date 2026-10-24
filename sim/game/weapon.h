@@ -48,4 +48,11 @@ struct WeaponParams {
 bool load_weapon_params(const std::string& path, WeaponParams& out,
                         std::vector<std::string>& warnings, std::string& error);
 
+// weapons.toml sits next to movement.toml. A missing file leaves the table empty
+// instead of failing: the movement gates and move_metrics run from data
+// directories that have no weapons, and M6.3 refuses to fire without a weapon
+// rather than inventing one.
+bool load_weapons_beside(const std::string& movement_path, WeaponParams& out,
+                         std::string& error);
+
 }  // namespace sim

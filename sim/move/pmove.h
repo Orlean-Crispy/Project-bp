@@ -17,6 +17,12 @@ struct MoveInput {
     bool wallrun = false;
     bool wallclimb = false;
     bool vault = false;
+    // M6 combat inputs. They are held states, not one-tick edges: a lost snapshot
+    // must not turn "still holding the trigger" into "released" (the same reason
+    // the parkour edges ride in the flags).
+    bool fire = false;
+    bool reload = false;
+    bool ads = false;
 };
 
 // Timed abilities are counted in whole ticks, never in accumulated float time
@@ -49,6 +55,13 @@ struct PlayerState {
     bool slide_was_down = false;
     bool dash_was_down = false;
     bool vault_was_down = false;
+    // M6: the trigger, the reload key and the aim state as of the tick that just
+    // ran. Mirrors MoveInput (iron law C: state leaves the sim through the
+    // snapshot), and gives the fire cadence the previous trigger state it needs
+    // to tell a held trigger from a fresh press.
+    bool firing = false;
+    bool reloading = false;
+    bool ads = false;
     Vec3 vault_dir;      // horizontal direction of the vault in progress
     float vault_rise = 0.0f;  // metres to climb during the vault
 

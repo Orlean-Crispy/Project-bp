@@ -28,7 +28,7 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 它和根目录 AGENTS.md §2、HANDOFF、PROGRESS 各写一遍，四处互相矛盾。2026-10-23 起删掉，只留结论：
 
 - M0–M5 已关闭（M4 的跨机比对仍缺第二台机器 = DEBT-14）。
-- M6 已开工：M6.0 规则落地（ADR 0006）、M6.1 武器数据层完成；**hitscan 判定还没开始**（M6.3）。
+- M6 已开工：M6.0 规则落地、M6.1 武器数据层、M6.2 开火输入完成；**hitscan 判定还没开始**（M6.3）。
 
 ### 0.3 现在能跑什么
 
@@ -91,7 +91,7 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 
 ### H — 内容许可（2026-10-18，代价 = 素材混入不可用授权）
 
-- 素材进仓库前登记 docs/assets-licenses.md（尚未创建，第一个素材时建）。
+- 素材进仓库前登记 docs/assets-licenses.md（已建立；含「只读参考」表）。
 - CC BY-NC-ND 的资产（如 TacZ 模型）**不得进构建产物**。
 
 ### I — 手感数值（2026-10-18，代价 = 调参要重编）
@@ -105,6 +105,14 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 - 键位只允许出现在 sim/data/keybinds.toml 与 sim/input/；
   sim 内部**不得**出现 Key/Action，只认 MoveInput。
 - 判据：`headless_sim --test-bindings`；grep sim/ 不应命中 Key 枚举。
+
+### K — 许可与净室（2026-10-24，代价 = GPL 传染整个仓库）
+
+- 不复制、不链接、不逐行改写 GPL/AGPL 代码；GPL 文件不进仓库（含注释）。
+- GPL 源只用于确认**事实**（需要哪些参数、算法属于哪一类），实现按本项目自己的规格从零写；
+  读过的文件登记在 `docs/assets-licenses.md` 的「只读参考」。
+- 数值自己推导；"像某游戏"只指结构，不指数值。资产只允许 CC0 / CC-BY。
+- 判据：`tools/check_sources.ps1` 扫到 GPL/AGPL 头就红；台账有登记。详见 `decisions/0007`。
 
 ---
 
@@ -166,8 +174,8 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
    SERVER SILENT 1 s）、重连按钮、A5 网络网关拆分全部实测通过。第三人称动画与 5v5 选边
    按计划书属于 M7，不在此条。
 2. **v0.4 的 M5 增量** — A1/A2/A5 全部接入并实测；configstring 带真实哈希且失配拒局。**已关闭**。
-3. **M6 射击** — M6.0/M6.1 已完成（护甲按部位、武器数据层）；hitscan、后坐力表、穿透、
-   伤害衰减、hitmarker 仍未做。范围与顺序见 `docs/contracts/M6.md` §6 的 M6.2–M6.12（一次只做一个）。
+3. **M6 射击** — M6.0–M6.2 已完成（护甲按部位、武器数据层、开火输入进快照）；hitscan、
+   后坐力表、穿透、伤害衰减、hitmarker 仍未做。顺序见 `docs/contracts/M6.md` §6 的 M6.3–M6.12（一次只做一个）。
 4. **Godot 版本** — 计划书写 4.7 Mono，但 godot-cpp 最高只有 4.5，现用 4.5。
    lead：M7（Godot-Locomotion 绑定 4.7.2）之前必须解决。
 5. **跨机 demo 比对** — 工具与流程就绪（docs/demo-format.md），缺第二台机器。
@@ -304,7 +312,10 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HA
 
 ### 8.3 键位（sim/input/*）
 
-- 默认布局：C 翻越 / Q 墙跑 / **V 爬墙** / X 冲刺 / **E 交互**；Shift 滑铲、Ctrl 蹲。
+- M6 起输入走 **按钮位掩码**（`sim/input/buttons.h`）：`MoveInput` 的十个布尔 ↔ 一个 u16，
+  命令包和 GDExtension 边界用同一份，加按钮不再加位置参数。桥的 `set_input(f, r, yaw, buttons)`，
+  GDScript 用 `get_action_bits()` 建表。
+- 默认布局：左键开火 / 右键开镜 / R 换弹；C 翻越 / Q 墙跑 / **V 爬墙** / X 冲刺 / **E 交互**；Shift 滑铲、Ctrl 蹲。
   E 原本是爬墙，S60 让给交互（下包/拆包/门）；改动越晚越贵（要重录 parkour 基线、改教程）。
   闸门：`--test-bindings` 的 `E is reserved for interact`。动作名 `Interact` ↔ toml `actions.interact`。
 - 改 sim/data/keybinds.toml 即可；Bindings 支持运行时 set_key/save。
@@ -316,7 +327,8 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HA
 - 快照 delta 以「客户端最近 ack 的快照」为 baseline。**协议 v6**（S60）：mask 与 flags 都是 16 位，
   PlayerSnap 带全部四个按下沿、`recharge_progress`、`speed_coefficient`，以及 Vitals 组
   （hp/armor，真值）与 Weapon 组（weapon_id/ammo/cooldown，**恒 0，M6.7 才填**）。
-  mask 的第 8 组与 flags 的 7–10 位（firing/reloading/ads/alive）已经在协议里，M6 加字段不用再升版本。
+  mask 的第 8 组与 flags 的 7–10 位已经在协议里，M6 加字段不用再升版本。S65 起 7/8/9 有生产者：
+  `firing` / `reloading` / `ads` 是**按住状态**（不是一 tick 脉冲），`alive`(bit10) 仍留给 M6.9。
 - 客户端：本地预测 + 128 tick 历史 + 回滚重放；命令包带最近 4 个输入。
 - 时间轴：客户端 = 服务器 tick + 4（单程 30 ms ≈ 2 tick + 2 tick 前瞻）；初始化时
   预跑 4 个空 tick，复刻服务器在首个命令到达前的状态。
@@ -499,8 +511,12 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HA
 - `sim/data/weapons.toml`：`[weapon.<id>]`，当前 rifle / pistol。字段按任务分批（契约 D5）：
   伤害与衰减（M6.6）、rpm/弹匣/备弹/换弹（M6.7）、射程（M6.3）、穿透层数与每层 ×0.7（M6.5）。
   后坐力随 M6.10、ADS/曳光随 M6.11 再加；**没有使用者的字段不许先写**。
-- `WeaponParams::hash()` 是独立哈希：只覆盖武器表，调枪不会让 movement 哈希变。
-  它进 join 哈希是 M6.2 的事（届时 `combined_params_hash` 折三份）。
+- `WeaponParams::hash()` 只覆盖武器表（调枪不会让 movement 哈希变），并由 M6.2 起折进
+  `combined_params_hash(movement, combat, weapons)`：两侧枪表不一致 → 拒绝入局。
+- **加一把枪 = 加一段 `[weapon.<id>]`，不改代码**（`--test-weapons` 的
+  "a new gun is one new section" 钉住）。数字 id 进快照（Weapon 组）在 M6.7 落，届时用显式 slot。
+- **枪的“类型”用数据表达，不用 C++ 继承/分支**：霰弹 = `bullet_amount > 1`，狙击 = 弹道
+  （M8 FEAT-12），开镜 = `ads_*` 字段。加一种枪 = 加一个字段 + 它的消费者，不是加一个 subclass。
 - 加载规则只在 `load_weapon_params` 一处：缺键 → 警告 + 用编译默认值；拼错的键 → "unknown key"；
   不能模拟的值（rpm 0、弹匣 0、damage_far > damage_near、穿透系数不在 (0,1]）→ 直接报错。
 - TOML 解析拒绝重复键（复制粘贴一节只会生效一半），并容忍 UTF-8 BOM。
@@ -545,8 +561,8 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HA
 
 ## 11. 下一步（严格按计划书顺序，不要跳）
 
-1. **M6 射击**：D1–D5 已定（ADR 0006 + 契约 §4），契约 active。M6.0/M6.1 已完成，
-   下一步 M6.2 开火输入 → hitscan → 回溯 → 穿透 → 三段伤害 → 弹药 → 伤害进快照 → 死亡重生 →
+1. **M6 射击**：D1–D5 已定（ADR 0006 + 契约 §4），契约 active。M6.0–M6.2 已完成，
+   下一步 M6.3 hitscan → 回溯 → 穿透 → 三段伤害 → 弹药 → 伤害进快照 → 死亡重生 →
    后坐力 → 表现层 → 验收。**一次只做一个任务。**
 2. **M7 / M8**：动画、视角模型、音频垂直定位（§9.2 的楼层低通）。
 3. 代码体检：A1–A7、AUD-01…19、R1–R19 已完成；S60 关掉了 AUD-20/23/26/27，

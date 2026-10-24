@@ -17,6 +17,15 @@ void step_player(PlayerState& player, const MoveInput& input, const CollisionWor
     // a jump (wrong sound, wrong HUD, wrong statistics).
     const bool jump_pressed = input.jump && !player.jump_was_down;
     pmove(player, input, collision, params, dt);
+
+    // M6: the trigger is replicated state, not a one-tick pulse. A lost snapshot
+    // must not turn "still holding fire" into "released" (same reason the parkour
+    // edges ride in the flags), so the last input is mirrored here, once, for the
+    // local step and the rollback replay alike.
+    player.firing = input.fire;
+    player.reloading = input.reload;
+    player.ads = input.ads;
+
     if (events == nullptr) return;
 
     if (!was_ground && player.on_ground && fall_speed < -1.0f) {
@@ -74,7 +83,10 @@ uint64_t World::state_hash() const {
         h.u32(p.jump_was_down ? 1u : 0u)
             .u32(p.slide_was_down ? 1u : 0u)
             .u32(p.dash_was_down ? 1u : 0u)
-            .u32(p.vault_was_down ? 1u : 0u);
+            .u32(p.vault_was_down ? 1u : 0u)
+            .u32(p.firing ? 1u : 0u)
+            .u32(p.reloading ? 1u : 0u)
+            .u32(p.ads ? 1u : 0u);
         h.vec3(p.wall_normal).vec3(p.vault_dir).f32(p.vault_rise);
         h.f32(p.speed_coefficient).f32(p.slow_factor);
         h.u32(static_cast<uint32_t>(p.recharge_progress));

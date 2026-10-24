@@ -115,7 +115,12 @@ struct TomlBinder {
 // headshot multiplier also change what a client predicts, so the one params hash
 // that the join handshake and the configstring carry folds both in.
 struct CombatParams;
-uint64_t combined_params_hash(const MovementParams& movement, const CombatParams& combat);
+struct WeaponParams;
+// M6.2: weapons join the handshake hash. Tuning a gun changes what a client
+// predicts, so a host and a client with different weapons.toml must refuse to
+// play instead of diverging silently.
+uint64_t combined_params_hash(const MovementParams& movement, const CombatParams& combat,
+                              const WeaponParams& weapons);
 
 // Combat rules live next to movement.toml (same data directory). A missing file
 // means "compiled defaults", so a bare movement.toml stays usable.

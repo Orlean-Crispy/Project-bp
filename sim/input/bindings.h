@@ -25,6 +25,8 @@ enum class Action : uint8_t {
     WallRun,
     WallClimb,
     Vault,
+    Fire,    // M6: the trigger
+    Aim,     // M6: aim down sights
     Reload,
     // E is the interact key (CS/Valorant); wall climb moved to V so that the
     // bomb/defuse key is free before M6/M8 need it.
@@ -71,6 +73,14 @@ public:
 private:
     std::array<Key, kActionCount> m_keys{};
 };
+
+// M6: the sim-visible bit for an action (see sim/input/buttons.h). Actions the
+// simulation never sees (the four move axes, Interact, Scoreboard) return 0.
+uint16_t button_for_action(Action action);
+
+// Every sim-visible button currently held. One table scans all actions, so the
+// keymap stays the only place a bind exists.
+uint16_t held_buttons(const Bindings& bindings, const KeyState& keys);
 
 MoveInput build_move_input(const Bindings& bindings, const KeyState& keys, float yaw);
 

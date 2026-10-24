@@ -1,6 +1,11 @@
 # weapons.toml - the gun numbers (plan 6.2). Read at startup; hashed on its own
 # (WeaponParams::hash), so tuning a gun never moves the movement params hash.
 #
+# ADDING A GUN = ADDING ONE SECTION. Nothing in the code enumerates weapons; the
+# loader discovers [weapon.<id>] in file order and the gate proves a third section
+# simply becomes a third gun (--test-weapons). Tuning a number here changes the
+# weapon hash, and therefore who may join a match, but never the movement hash.
+#
 # The field set is staged on purpose (contract D5): a field only exists once an
 # M6 task consumes it.
 #   range                -> M6.3 hitscan (spread arrives with M6.10)

@@ -2258,3 +2258,39 @@ smoke 20 项 + bench ALL GREEN；`sources ok: 28`；`doc_check` 0 fail。
 - 武器表还没进 `World`，也还没进 join 哈希：M6.2 做（两台机器枪数据不一致必须拒绝入局）。
 - `headshot_mult` / `legshot_mult` 仍在 `movement.toml`，M6.6 定唯一归属，不许两份都活。
 - 下一步 **M6.2 开火输入**（三个按下沿 + flags 7–9）；做完停下，等下一句"继续"。
+## S65 · 2026-10-24 · M6.2 开火输入 + 许可边界（ADR 0007）
+
+### 1. 做了什么
+
+- **按钮位掩码**：`sim/input/buttons.*` 定义 10 个按钮位（jump/crouch/slide/dash/wallrun/
+  wallclimb/vault/fire/reload/ads）。命令包、桥的 `set_input(f, r, yaw, buttons)`、
+  GDScript 的 `get_action_bits()` 共用这一份——加按钮不再加一个位置参数。
+- **开火链路**：`MoveInput` 加 fire/reload/ads；`PlayerState` 加同名按住状态（不是一 tick 脉冲：
+  丢一个包不该把“还在扣扳机”读成“松手”）；进 `state_hash` 与快照 flags 7–9（v6 预留位，未升版本）。
+  左键开火 / 右键开镜 / R 换弹进 keybinds.toml 与 Bindings 默认值。
+- **枪表进 join 哈希**：`World::weapons` + `load_weapons_beside`；`combined_params_hash(m, c, w)`
+  在服务器、客户端、桥、headless 四处一致。两侧枪数据不同 → 拒绝入局。
+- **许可边界**（ADR 0007）：GPL 只读事实、实现自写；台账 `docs/assets-licenses.md`（含
+  「只读参考」表：RE2/TacZ/OpenArena/Xonotic 各取了哪条事实）；铁律 K；`check_sources.ps1`
+  扫到 GPL/AGPL 头就红。
+- weapons.toml 头部写清“加一把枪 = 加一段”；闸门新增两条：加第三把枪不改代码、加枪会动哈希。
+
+### 2. 判据
+
+`[fireflags] held 92/92 released 52/52 agree 144/144`；`[config] … weapons 1`（枪表不同被拒）；
+`--test-snapshot` 的 trigger 位往返 + `--test-bindings` 的 fire/aim + 掩码往返；
+`[weapons] … rejects 5` 且“a new gun is one new section”为 ok。smoke 20 项 + bench ALL GREEN。
+
+### 3. 失败与修正
+
+- `[fireflags]` 第一版直接逐 tick 比服务器与客户端：`held 94/100`、`agree 148/160`。
+  不是 bug——客户端把命令提前 4 tick 盖戳，切换后的前几 tick 服务器还在执行旧输入。
+  改成跳过 8 tick 的暖机段再采样，数字变成 92/92、52/52、144/144；暖机原因写进注释。
+- 桥的 `set_input` 原本要把 10 个 bool 变 13 个；改成传掩码，GDScript 建一次表。
+  这条不是顺手：再加两个动作，参数顺序就没人记得住了。
+
+### 4. 边界 / 下一步
+
+- 数字 id 进快照（Weapon 组）留给 M6.7，届时 `weapons.toml` 加显式 `slot`（现在按 id 字符串认）。
+- 后坐力、扩散矩阵、ADS 仍按任务分批；仿 TacZ 只仿结构，数值自己推导（ADR 0007）。
+- 下一步 **M6.3 静态 hitscan**（射线 vs 玩家盒 + 世界，E1 命中/不中）；做完停下。

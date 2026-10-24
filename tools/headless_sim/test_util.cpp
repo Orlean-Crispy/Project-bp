@@ -21,9 +21,10 @@ bool load_world_from(const std::string& map_path, const std::string& data_path, 
     if (!sim::load_movement_params(data_path, world.params, warnings, error)) return false;
     for (const std::string& w : warnings) std::fprintf(stderr, "warning: %s\n", w.c_str());
     if (!sim::load_combat_beside(data_path, world.combat, error)) return false;
+    if (!sim::load_weapons_beside(data_path, world.weapons, error)) return false;
 
     world.collision.build(map);
-    world.params_hash = sim::combined_params_hash(world.params, world.combat);
+    world.params_hash = sim::combined_params_hash(world.params, world.combat, world.weapons);
     return true;
 }
 

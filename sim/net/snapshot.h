@@ -16,10 +16,11 @@ struct PlayerSnap {
     float yaw = 0.0f;
     // Protocol v6: 16 bits, not 8. bit0 on_ground, bit1 crouched, bit2 active,
     // bit3 jump_was_down, bit4 slide_was_down, bit5 dash_was_down,
-    // bit6 vault_was_down; bit7 firing, bit8 reloading, bit9 ads and bit10 alive
-    // are reserved for M6 combat and have no producer yet, so they stay clear.
-    // The four *_was_down bits are input edges from the previous tick: without
-    // them a rollback replays a held slide/dash/vault as a fresh press.
+    // bit6 vault_was_down; bit7 firing, bit8 reloading, bit9 ads (M6 inputs);
+    // bit10 alive is still reserved for M6.9. The four *_was_down bits are input
+    // edges from the previous tick: without them a rollback replays a held
+    // slide/dash/vault as a fresh press. firing/reloading/ads are held states for
+    // the same reason: a lost snapshot must not read as "released".
     uint16_t flags = 0;
     uint8_t impulses = 0;
     uint8_t state = 0;

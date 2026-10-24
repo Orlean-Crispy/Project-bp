@@ -6,6 +6,7 @@
 #include "sim/collision/trace.h"
 #include "sim/core/event.h"
 #include "sim/game/combat.h"
+#include "sim/game/weapon.h"
 #include "sim/move/pmove.h"
 
 namespace sim {
@@ -15,6 +16,7 @@ struct World {
     std::vector<PlayerState> players;
     MovementParams params;
     CombatParams combat;  // R8: the non-movement rules that must match to join
+    WeaponParams weapons;  // M6.2: the weapon table, folded into params_hash below
     uint64_t params_hash = 0;
     uint32_t tick = 0;
 

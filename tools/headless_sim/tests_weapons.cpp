@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -141,6 +142,30 @@ int run_weapon_test(const Options& opt) {
     sim::load_weapon_params(typo, typo_out, typo_warnings, typo_error);
     check("a typo is reported as an unknown key",
           typo_written && mentions(typo_warnings, "damgae_near: unknown key"));
+
+    // The module's whole point: a new gun is a new section, not new code. Take the
+    // shipped file, append a complete section, and it must simply be a third gun.
+    const std::string shipped_path = "build/weapons_third.toml";
+    std::string shipped;
+    {
+        std::ifstream in(std::filesystem::u8path(real), std::ios::binary);
+        shipped.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+    }
+    shipped += "\n[weapon.smg]\n"
+               "damage_near = 18.0\ndamage_far = 12.0\nfalloff_start = 15.0\n"
+               "falloff_end = 35.0\nrpm = 900.0\nrange = 60.0\nmagazine = 35\n"
+               "reserve_ammo = 140\nreload_seconds = 1.6\npenetration_count = 0\n"
+               "penetration_damage_scale = 0.7\n";
+    sim::WeaponParams grown;
+    std::vector<std::string> grown_warnings;
+    std::string grown_error;
+    const bool grown_ok = write_text(shipped_path, shipped) &&
+                          sim::load_weapon_params(shipped_path, grown, grown_warnings, grown_error);
+    const sim::WeaponDef* smg = grown.find("smg");
+    check("a new gun is one new section, no code change",
+          grown_ok && grown.weapons.size() == 3 && smg != nullptr && smg->magazine == 35 &&
+              smg->rpm == 900.0f);
+    check("adding a gun moves the weapon hash", grown_ok && grown.hash() != params.hash());
 
     // Windows editors save UTF-8 with a BOM; a data file that opens in the editor
     // must still load, or the first save silently breaks the game.

@@ -9,6 +9,7 @@ sim/game/combat.cpp
 sim/game/hitbox.cpp
 sim/game/weapon.cpp
 sim/input/bindings.cpp
+sim/input/buttons.cpp
 sim/input/keycodes.cpp
 sim/move/pmove.cpp
 sim/net/fragment.cpp

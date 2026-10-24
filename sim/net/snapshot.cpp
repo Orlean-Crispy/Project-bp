@@ -45,7 +45,8 @@ constexpr uint16_t kFieldsUsed = kFieldPos | kFieldVel | kFieldStatus | kFieldTi
                                  kFieldYaw | kFieldExtra | kFieldCharge | kFieldVitals |
                                  kFieldWeapon;
 constexpr uint16_t kFlagsUsed = kFlagOnGround | kFlagCrouched | kFlagActive | kFlagJumpWasDown |
-                                kFlagSlideWasDown | kFlagDashWasDown | kFlagVaultWasDown;
+                                kFlagSlideWasDown | kFlagDashWasDown | kFlagVaultWasDown |
+                                kFlagFiring | kFlagReloading | kFlagAds;
 static_assert((kFieldsUsed & ~kFieldAll) == 0, "kFieldAll does not cover every field group");
 static_assert(kFieldAll != 0xFFFF, "field mask is full: widen it to uint32");
 static_assert((kFlagsUsed & ~kFlagsAll) == 0, "kFlagsAll does not cover every used flag bit");
@@ -88,7 +89,10 @@ PlayerSnap to_snap(const PlayerState& p) {
                                     (p.jump_was_down ? kFlagJumpWasDown : 0) |
                                     (p.slide_was_down ? kFlagSlideWasDown : 0) |
                                     (p.dash_was_down ? kFlagDashWasDown : 0) |
-                                    (p.vault_was_down ? kFlagVaultWasDown : 0));
+                                    (p.vault_was_down ? kFlagVaultWasDown : 0) |
+                                    (p.firing ? kFlagFiring : 0) |
+                                    (p.reloading ? kFlagReloading : 0) |
+                                    (p.ads ? kFlagAds : 0));
     s.impulses = static_cast<uint8_t>(p.impulses);
     s.state = static_cast<uint8_t>(p.state);
     s.state_ticks = static_cast<uint16_t>(p.state_ticks);
@@ -121,6 +125,9 @@ void from_snap(const PlayerSnap& s, PlayerState& p) {
     p.slide_was_down = (s.flags & kFlagSlideWasDown) != 0;
     p.dash_was_down = (s.flags & kFlagDashWasDown) != 0;
     p.vault_was_down = (s.flags & kFlagVaultWasDown) != 0;
+    p.firing = (s.flags & kFlagFiring) != 0;
+    p.reloading = (s.flags & kFlagReloading) != 0;
+    p.ads = (s.flags & kFlagAds) != 0;
     p.recharge_progress = s.recharge;
     p.speed_coefficient = s.speed_coefficient;
     p.wall_normal = s.wall_normal;

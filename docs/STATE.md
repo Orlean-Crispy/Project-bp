@@ -5,7 +5,7 @@
 > 历史过程 → `docs/PROGRESS.md`；待办 → `docs/DEBT.md`；预算 → `docs/budgets.md`；
 > 设计待定与功能缺口 → `docs/BACKLOG.md`；**这一段工作的叙事交接 → `docs/HANDOFF.md`**（不重复本文件的数字）。
 
-**更新**：2026-10-24 · S64 · 维护者：谢政霖
+**更新**：2026-10-24 · S65 · 维护者：谢政霖
 
 ---
 
@@ -13,9 +13,9 @@
 
 | 项 | 值 |
 |---|---|
-| 里程碑 | **M6 进行中**：D1–D5 已定；M6.0/M6.1 完成，按 M6.2 → M6.12 逐个推进 |
+| 里程碑 | **M6 进行中**：D1–D5 已定；M6.0–M6.2 完成，按 M6.3 → M6.12 逐个推进 |
 | 契约 | `docs/contracts/M6.md`（**active**） |
-| 本阶段 | M6.1 武器数据层完成（weapons.toml + WeaponDef + 独立哈希）；下一个是 M6.2 开火输入 |
+| 本阶段 | M6.2 开火输入完成（按钮掩码 + flags 7–9 + weapon hash 进 join 哈希）；下一个是 M6.3 hitscan |
 | 协议版本 | **v6**（16 位 mask/flags，Vitals 已接，Weapon 预留） |
 | 宿主 | Godot **4.5**（计划书目标 4.7，DEBT-15，M7 前必须有结论） |
 | 分支 | `main` · 工作区 `G:\自制游戏` · 工具链 `C:\bp-toolchain` |
@@ -32,12 +32,12 @@
 
 | # | ID | 一句话 |
 |---|---|---|
-| 0 | M6.2 | 开火输入（firing/reloading/ads 边沿）→ MoveInput → 快照 flags 7–9；顺带把 weapon hash 折进 `combined_params_hash` |
-| 1 | M6.3 | 静态 hitscan（射线 vs 玩家盒 + 世界）；E1 命中/不中 |
-| 2 | M6.4 | hitbox 回溯（6 tick 窗口 + 帧间插值） |
-| 3 | M6.5 | 地图 `_penetrable` + 穿透（ADR 0006 D1：武器决定、地图否决） |
-| 4 | M6.6 | 三段伤害：部位倍率 × 距离衰减 → `apply_damage(zone)`；定下倍率的唯一归属 |
-| 5 | M6.7 | 弹匣/换弹/开火冷却（Weapon 组填值） |
+| 0 | M6.3 | 静态 hitscan（射线 vs 玩家盒 + 世界）；E1 命中/不中 |
+| 1 | M6.4 | hitbox 回溯（6 tick 窗口 + 帧间插值） |
+| 2 | M6.5 | 地图 `_penetrable` + 穿透（ADR 0006 D1：武器决定、地图否决） |
+| 3 | M6.6 | 三段伤害：部位倍率 × 距离衰减 → `apply_damage(zone)`；定下倍率的唯一归属 |
+| 4 | M6.7 | 弹匣/换弹/开火冷却（Weapon 组填值） |
+| 5 | M6.8 | 伤害进快照 → HUD 真实值（关 AUD-16） |
 
 ## 3. 闸门基线（**写数字，不写"全绿"**）
 
@@ -50,7 +50,8 @@
 | 5% 丢包 60 s | 修正 0 次 | `--test-net` |
 | 加入 / 重连偏差 | 0.00000 m | `--test-net` |
 | 源文件 lint | `sources ok: 28` | `tools\check_sources.ps1` |
-| 武器数据 | 2 把枪、0 警告、5 类坏值被拒 | `--test-weapons` |
+| 武器数据 | 2 把枪、0 警告、5 类坏值被拒、加枪只加一节 | `--test-weapons` |
+| 开火链路 | 92/92 按住、52/52 松开、144/144 预测一致 | `--test-net` 的 `[fireflags]` |
 | 协议往返 | 10 人满编 833 B；空 delta 15 B | `--test-snapshot` |
 | 文档一致性 | 0 fail / 0 warn | `python tools\doc_check.py` |
 
@@ -75,11 +76,11 @@
 
 ## 6. 上次会话结论（三行）
 
-- **做成了**：S64 完成 M6.1（`weapons.toml` 两把枪 + `WeaponDef` 加载 + 独立哈希 + 第 20 项闸门）；
-  D4/D5 按 §4 建议定稿（弹道转 FEAT-12、字段分批）。
-- **没做成**：hitscan 一行没写（M6.3 才开）；武器哈希还没进 join 哈希（M6.2 做）；
+- **做成了**：S65 完成 M6.2（按钮位掩码 + firing/reloading/ads 进状态与快照 + weapon hash 进 join 哈希）；
+  许可边界定稿（ADR 0007 + 台账 + lint），“加一把枪 = 加一段数据”由闸门钉住。
+- **没做成**：hitscan 一行没写（M6.3 才开）；后坐力表与 ADS 表现仍是 M6.10/M6.11；
   可靠流（DEBT-20）与热重载（DEBT-22）仍是债。
-- **下一件事**：M6.2 开火输入（三个按下沿 + weapon hash 折进 `combined_params_hash`）；做完停下。
+- **下一件事**：M6.3 静态 hitscan（射线 vs 玩家盒 + 世界，E1）；做完停下。
 
 ## 7. 本里程碑禁改清单（M6 范围内不碰）
 

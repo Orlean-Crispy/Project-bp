@@ -42,6 +42,21 @@ try {
     }
     Write-Host 'ports ok: literals only in sim/net/ports.h'
 
+    # Licence hygiene (ADR 0007): GPL code must never enter the build. A pasted
+    # file usually keeps its header, so the header is what we look for. This script
+    # is skipped because it contains the pattern itself.
+    $gplPattern = 'GNU (Lesser |Affero )?General Public License|SPDX-License-Identifier:\s*(GPL|AGPL)'
+    $gplScan = @($code | Where-Object { $_ -ne 'tools/check_sources.ps1' })
+    $gplHits = @($gplScan |
+        Select-String -Pattern $gplPattern -ErrorAction SilentlyContinue |
+        ForEach-Object { "$(Split-Path $_.Path -Leaf):$($_.LineNumber)" })
+    if ($gplHits.Count -gt 0) {
+        Write-Host 'GPL/AGPL source in the tree (ADR 0007: read facts, write our own code):' -ForegroundColor Red
+        $gplHits | ForEach-Object { Write-Host ("  " + $_) }
+        exit 1
+    }
+    Write-Host 'licences ok: no GPL/AGPL source headers in the tree'
+
     # Iron law A/B/C: the three rules that are cheap to check mechanically. They
     # were only in the docs, so nothing failed when the bridge did its own unit
     # conversion (2026-10-20).

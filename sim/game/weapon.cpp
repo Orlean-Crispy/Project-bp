@@ -1,6 +1,7 @@
 #include "sim/game/weapon.h"
 
 #include <cstddef>
+#include <filesystem>
 #include <utility>
 
 #include "sim/core/hash.h"
@@ -144,6 +145,19 @@ bool load_weapon_params(const std::string& path, WeaponParams& out,
 
     out = std::move(params);
     return true;
+}
+
+bool load_weapons_beside(const std::string& movement_path, WeaponParams& out,
+                         std::string& error) {
+    namespace fs = std::filesystem;
+    const fs::path sibling = fs::u8path(movement_path).parent_path() / "weapons.toml";
+    std::error_code ec;
+    if (!fs::exists(sibling, ec)) {
+        out = WeaponParams{};
+        return true;
+    }
+    std::vector<std::string> warnings;
+    return load_weapon_params(sibling.u8string(), out, warnings, error);
 }
 
 }  // namespace sim

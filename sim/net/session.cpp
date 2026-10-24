@@ -1,6 +1,7 @@
 #include "sim/net/session.h"
 
 #include "sim/core/tick.h"
+#include "sim/input/buttons.h"
 #include "sim/net/bytes.h"
 #include "sim/net/netchan.h"
 #include "sim/net/reliable_transport.h"
@@ -10,39 +11,9 @@ namespace {
 
 constexpr float kDt = tick_seconds();
 
-enum InputFlag : uint16_t {
-    kJump = 1u << 0,
-    kCrouch = 1u << 1,
-    kSlide = 1u << 2,
-    kDash = 1u << 3,
-    kWallRun = 1u << 4,
-    kWallClimb = 1u << 5,
-    kVault = 1u << 6,
-};
-
-uint16_t encode_flags(const MoveInput& in) {
-    uint16_t f = 0;
-    if (in.jump) f |= kJump;
-    if (in.crouch) f |= kCrouch;
-    if (in.slide) f |= kSlide;
-    if (in.dash) f |= kDash;
-    if (in.wallrun) f |= kWallRun;
-    if (in.wallclimb) f |= kWallClimb;
-    if (in.vault) f |= kVault;
-    return f;
-}
-
-MoveInput decode_flags(uint16_t f) {
-    MoveInput in;
-    in.jump = (f & kJump) != 0;
-    in.crouch = (f & kCrouch) != 0;
-    in.slide = (f & kSlide) != 0;
-    in.dash = (f & kDash) != 0;
-    in.wallrun = (f & kWallRun) != 0;
-    in.wallclimb = (f & kWallClimb) != 0;
-    in.vault = (f & kVault) != 0;
-    return in;
-}
+// The button bits live in sim/input/buttons.h: the packet and the bridge use the
+// same mask, so a new button is one header change instead of another positional
+// argument at the GDExtension boundary.
 
 // Plan 7.9: every packet repeats the last few inputs, so one lost packet does
 // not turn into a lost tick on the server.
@@ -67,7 +38,7 @@ std::vector<uint8_t> encode_commands(const std::deque<InputCmd>& cmds) {
         w.f32(cmd.input.forward);
         w.f32(cmd.input.right);
         w.f32(cmd.input.yaw);
-        w.u16(encode_flags(cmd.input));
+        w.u16(buttons_from_input(cmd.input));
     }
     return w.data();
 }
@@ -81,9 +52,9 @@ bool decode_commands(const uint8_t* data, size_t size, std::vector<InputCmd>& ou
         cmd.input.forward = r.f32();
         cmd.input.right = r.f32();
         cmd.input.yaw = r.f32();
-        const uint16_t flags = r.u16();
+        const uint16_t buttons = r.u16();
         if (!r.ok()) return false;
-        const MoveInput decoded = decode_flags(flags);
+        const MoveInput decoded = input_from_buttons(buttons);
         cmd.input.jump = decoded.jump;
         cmd.input.crouch = decoded.crouch;
         cmd.input.slide = decoded.slide;
@@ -91,6 +62,9 @@ bool decode_commands(const uint8_t* data, size_t size, std::vector<InputCmd>& ou
         cmd.input.wallrun = decoded.wallrun;
         cmd.input.wallclimb = decoded.wallclimb;
         cmd.input.vault = decoded.vault;
+        cmd.input.fire = decoded.fire;
+        cmd.input.reload = decoded.reload;
+        cmd.input.ads = decoded.ads;
         out.push_back(cmd);
     }
     return r.ok();
@@ -179,10 +153,12 @@ bool NetServer::init(const std::string& map_path, const std::string& params_path
     std::vector<std::string> warnings;
     if (!load_movement_params(params_path, m_world.params, warnings, error)) return false;
     if (!load_combat_beside(params_path, m_world.combat, error)) return false;
+    if (!load_weapons_beside(params_path, m_world.weapons, error)) return false;
     m_world.collision.build(map);
-    // R8: the join hash covers movement *and* combat, so a host and a client
-    // on different combat rules refuse to play instead of silently diverging.
-    m_world.params_hash = combined_params_hash(m_world.params, m_world.combat);
+    // R8 + M6.2: the join hash covers movement, combat *and* weapons, so a host
+    // and a client on different rules refuse to play instead of diverging.
+    m_world.params_hash =
+        combined_params_hash(m_world.params, m_world.combat, m_world.weapons);
 
     m_world.players.clear();
     for (int i = 0; i < player_count; ++i) {
@@ -443,8 +419,10 @@ bool NetClient::init(Transport* outgoing, Transport* incoming, int player_index,
     std::vector<std::string> warnings;
     if (!load_movement_params(params_path, m_local.params, warnings, error)) return false;
     if (!load_combat_beside(params_path, m_local.combat, error)) return false;
+    if (!load_weapons_beside(params_path, m_local.weapons, error)) return false;
     m_local.collision.build(map);
-    m_local.params_hash = combined_params_hash(m_local.params, m_local.combat);
+    m_local.params_hash =
+        combined_params_hash(m_local.params, m_local.combat, m_local.weapons);
 
     m_local.players.clear();
     PlayerState p;
