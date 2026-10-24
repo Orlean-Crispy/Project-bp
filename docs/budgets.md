@@ -75,7 +75,7 @@ static_assert(kFlagsAll != 0xFFFF, "flags 已满，必须扩到 uint32");
 
 | 资源 | 值 | 说明 |
 |---|---|---|
-| smoke 闸门数 | **20** | 加一项必须同步：`STATE §3`、`budgets`（本行）、`AGENTS.md`、`docs/AGENTS.md` |
+| smoke 闸门数 | **21** | 加一项必须同步：`STATE §3`、`budgets`（本行）、`AGENTS.md`、`docs/AGENTS.md` |
 | `tests_*.cpp` 体量 | 单文件 ≤ 70 KB | 2026-10-23 把 `tests_net.cpp`（81 KB）按主题拆成 transport / lobby / net 三份 |
 | 文档体积 | — | `PROGRESS` ≤150 KB / 单文件；`STATE` ≤120 行；`DEBT` ≤400 行 |
 | 会话读入 | 60 KB | 超了 = 任务该切，不是该硬读 |
@@ -88,6 +88,7 @@ static_assert(kFlagsAll != 0xFFFF, "flags 已满，必须扩到 uint32");
 | 2026-10-23 | v6 落地：mask/flags 16 位，Vitals 接真实值，Weapon 预留；实测 82 B/玩家、833 B 满编 | S60 | P0-1 |
 | 2026-10-23 | 闸门 17 → 19（协议往返 + 文档一致性）；tick 实测 2.40 µs | S60 | M6 入口条件 |
 | 2026-10-24 | 闸门 19 → 20（武器数据）；sim 源文件 27 → 28 | S64 | M6.1 |
+| 2026-10-24 | 闸门 20 → 21（命中判定）；sim 源文件 28 → 30 | S66 | M6.3 |
 
 ---
 

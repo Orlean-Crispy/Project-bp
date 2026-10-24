@@ -2294,3 +2294,34 @@ smoke 20 项 + bench ALL GREEN；`sources ok: 28`；`doc_check` 0 fail。
 - 数字 id 进快照（Weapon 组）留给 M6.7，届时 `weapons.toml` 加显式 `slot`（现在按 id 字符串认）。
 - 后坐力、扩散矩阵、ADS 仍按任务分批；仿 TacZ 只仿结构，数值自己推导（ADR 0007）。
 - 下一步 **M6.3 静态 hitscan**（射线 vs 玩家盒 + 世界，E1 命中/不中）；做完停下。
+## S66 · 2026-10-24 · M6.3 静态 hitscan
+
+### 1. 做了什么
+
+- **`sim/game/hitscan.*`**：`hitscan(world, boxes, count, origin, dir, max_distance, ignore_entity)`。
+  先扫世界（`trace_box` 零尺寸 = 点射线），再逐玩家 AABB 求交，**最近者胜**——墙挡人。
+  方向在函数内部归一化：传 (10,0,0) 和 (1,0,0) 得到同一个距离；零向量算未命中，不是 NaN。
+- **玩家体积复用 `HitboxSample`**：所以 M6.4 的回溯只是把“当前帧”换成“回溯帧”，签名不变；
+  M6.6 用 `hit_zone_at(sample, point.z)` 就得到部位。
+- 判定形状是 **AABB**，和 `hitbox_contains` 完全一致：判定与可视体积不能各说一套。
+- 第 21 项闸门 `--test-hitscan`，14 条检查（E1 的“必中/必不中”在里面）。
+
+### 2. 判据
+
+`[hitscan] chest 1 face 1 wide 1 edge 1 crouch 1 wall 1 range 1`；smoke 21 项 + bench ALL GREEN。
+**闸门能红**（这次真做了变异验证）：把世界检测短路掉，`a wall between them stops the shot`
+立刻 FAIL、退出码 1；改回来再绿。
+
+### 3. 失败与修正
+
+- 读 `.map` 才发现薄墙只覆盖 y ∈ [-2, 2]（不是整张图）。第一版差点把“瞄准点偏一个盒宽”的测试
+  放在 y=0 的车道上——那条射线会先打到墙，测试会“通过”但它证明的是墙，不是盒宽。
+  现在玩家测试全在 y=5 的开阔道，墙测试单独在 y=0。
+- 0.40 中 / 0.41 不中这一对是故意加的：只测“偏 0.81 不中”无法区分“盒宽正确”和“判定偏小”。
+
+### 4. 边界 / 下一步
+
+- **还没有俯仰**：`MoveInput` 只有 yaw，`hitscan` 接的是显式方向。谁生成方向（以及 pitch 进命令包
+  要不要升协议 v7）在 M6.6 决定——这条已经写进契约那一行，不会漏。
+- M6.5 的穿透需要知道“打到了哪个 brush”，届时给 `ShotHit` 加 `const Brush*`（现在加了没人用）。
+- 下一步 **M6.4 hitbox 回溯**（6 tick 窗口 + 帧间插值）；做完停下。

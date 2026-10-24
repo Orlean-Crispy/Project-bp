@@ -5,7 +5,7 @@
 > 历史过程 → `docs/PROGRESS.md`；待办 → `docs/DEBT.md`；预算 → `docs/budgets.md`；
 > 设计待定与功能缺口 → `docs/BACKLOG.md`；**这一段工作的叙事交接 → `docs/HANDOFF.md`**（不重复本文件的数字）。
 
-**更新**：2026-10-24 · S65 · 维护者：谢政霖
+**更新**：2026-10-24 · S66 · 维护者：谢政霖
 
 ---
 
@@ -13,9 +13,9 @@
 
 | 项 | 值 |
 |---|---|
-| 里程碑 | **M6 进行中**：D1–D5 已定；M6.0–M6.2 完成，按 M6.3 → M6.12 逐个推进 |
+| 里程碑 | **M6 进行中**：D1–D5 已定；M6.0–M6.3 完成，按 M6.4 → M6.12 逐个推进 |
 | 契约 | `docs/contracts/M6.md`（**active**） |
-| 本阶段 | M6.2 开火输入完成（按钮掩码 + flags 7–9 + weapon hash 进 join 哈希）；下一个是 M6.3 hitscan |
+| 本阶段 | M6.3 静态 hitscan 完成（射线 vs 世界 + 玩家盒，闸门 14 项）；下一个是 M6.4 回溯 |
 | 协议版本 | **v6**（16 位 mask/flags，Vitals 已接，Weapon 预留） |
 | 宿主 | Godot **4.5**（计划书目标 4.7，DEBT-15，M7 前必须有结论） |
 | 分支 | `main` · 工作区 `G:\自制游戏` · 工具链 `C:\bp-toolchain` |
@@ -32,18 +32,18 @@
 
 | # | ID | 一句话 |
 |---|---|---|
-| 0 | M6.3 | 静态 hitscan（射线 vs 玩家盒 + 世界）；E1 命中/不中 |
-| 1 | M6.4 | hitbox 回溯（6 tick 窗口 + 帧间插值） |
-| 2 | M6.5 | 地图 `_penetrable` + 穿透（ADR 0006 D1：武器决定、地图否决） |
-| 3 | M6.6 | 三段伤害：部位倍率 × 距离衰减 → `apply_damage(zone)`；定下倍率的唯一归属 |
-| 4 | M6.7 | 弹匣/换弹/开火冷却（Weapon 组填值） |
-| 5 | M6.8 | 伤害进快照 → HUD 真实值（关 AUD-16） |
+| 0 | M6.4 | hitbox 回溯（6 tick 窗口 + 帧间插值） |
+| 1 | M6.5 | 地图 `_penetrable` + 穿透（ADR 0006 D1：武器决定、地图否决） |
+| 2 | M6.6 | 三段伤害：部位倍率 × 距离衰减 → `apply_damage(zone)`；定下倍率的唯一归属 |
+| 3 | M6.7 | 弹匣/换弹/开火冷却（Weapon 组填值） |
+| 4 | M6.8 | 伤害进快照 → HUD 真实值（关 AUD-16） |
+| 5 | M6.9 | 死亡与重生（`alive` 位、输入忽略、回出生点） |
 
 ## 3. 闸门基线（**写数字，不写"全绿"**）
 
 | 闸门 | 基线 | 采集命令 |
 |---|---|---|
-| smoke | 20 项，全过 | `tools\smoke.ps1` |
+| smoke | 21 项，全过 | `tools\smoke.ps1` |
 | 单 tick p99 / max | 2.40 / 4.20 µs（10 玩家） | `headless_sim.exe --bench 1000 --players 10` |
 | 分配 | 0 allocs/tick | 同上，输出 `allocs 0.00 / tick` |
 | 30% 丢包回滚 | 51 / 2000 tick | `--test-net` |
@@ -52,6 +52,7 @@
 | 源文件 lint | `sources ok: 28` | `tools\check_sources.ps1` |
 | 武器数据 | 2 把枪、0 警告、5 类坏值被拒、加枪只加一节 | `--test-weapons` |
 | 开火链路 | 92/92 按住、52/52 松开、144/144 预测一致 | `--test-net` 的 `[fireflags]` |
+| 命中判定 | 14 项全过；`[hitscan] chest 1 face 1 wide 1 edge 1 crouch 1 wall 1 range 1` | `--test-hitscan` |
 | 协议往返 | 10 人满编 833 B；空 delta 15 B | `--test-snapshot` |
 | 文档一致性 | 0 fail / 0 warn | `python tools\doc_check.py` |
 
@@ -76,11 +77,11 @@
 
 ## 6. 上次会话结论（三行）
 
-- **做成了**：S65 完成 M6.2（按钮位掩码 + firing/reloading/ads 进状态与快照 + weapon hash 进 join 哈希）；
-  许可边界定稿（ADR 0007 + 台账 + lint），“加一把枪 = 加一段数据”由闸门钉住。
-- **没做成**：hitscan 一行没写（M6.3 才开）；后坐力表与 ADS 表现仍是 M6.10/M6.11；
+- **做成了**：S66 完成 M6.3 静态 hitscan（世界点扫掠 + 玩家 AABB，最近者胜，14 项闸门）；
+  闸门做过变异验证（去掉世界检测后 `wall` 项立刻红）。
+- **没做成**：还没有任何东西真的“开枪”（伤害、弹药、后坐力在 M6.6–M6.10）；
   可靠流（DEBT-20）与热重载（DEBT-22）仍是债。
-- **下一件事**：M6.3 静态 hitscan（射线 vs 玩家盒 + 世界，E1）；做完停下。
+- **下一件事**：M6.4 hitbox 回溯（6 tick 窗口 + 帧间插值）；做完停下。
 
 ## 7. 本里程碑禁改清单（M6 范围内不碰）
 

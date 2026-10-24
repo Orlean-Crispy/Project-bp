@@ -64,6 +64,7 @@ add_executable(headless_sim
   tools/headless_sim/tests_proto.cpp
   tools/headless_sim/tests_demo.cpp
   tools/headless_sim/tests_weapons.cpp
+  tools/headless_sim/tests_hitscan.cpp
   tools/headless_sim/tests_move.cpp
   tools/headless_sim/test_util.cpp)
 target_link_libraries(headless_sim PRIVATE sim)

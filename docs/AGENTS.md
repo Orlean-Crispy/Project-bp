@@ -28,11 +28,11 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 它和根目录 AGENTS.md §2、HANDOFF、PROGRESS 各写一遍，四处互相矛盾。2026-10-23 起删掉，只留结论：
 
 - M0–M5 已关闭（M4 的跨机比对仍缺第二台机器 = DEBT-14）。
-- M6 已开工：M6.0 规则落地、M6.1 武器数据层、M6.2 开火输入完成；**hitscan 判定还没开始**（M6.3）。
+- M6 已开工：M6.0 规则、M6.1 武器数据、M6.2 开火输入、M6.3 静态命中判定完成；回溯（M6.4）未开始。
 
 ### 0.3 现在能跑什么
 
-- `headless_sim` 与 Godot 桥检查合计 **20 项闸门** + bench（数量与数字见 STATE §3，清单见 §3）
+- `headless_sim` 与 Godot 桥检查合计 **21 项闸门** + bench（数量与数字见 STATE §3，清单见 §3）
 - Godot demo：`demo.bat` 或 `powershell -File tools/run_demo.ps1`，可走跑跳滑铲墙跑爬墙翻越
 - 手感数值可改 sim/data/movement.toml 后重跑，不用改代码
 
@@ -133,7 +133,7 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 
 ---
 
-## 3. 判据清单（tools/smoke.ps1 串起 20 项闸门 + bench）
+## 3. 判据清单（tools/smoke.ps1 串起 21 项闸门 + bench）
 
 | # | 判据 | 阈值 | 命令 |
 |---|---|---|---|
@@ -157,6 +157,7 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 | 18 | Godot 桥加载 | 扩展真的加载、HUD 打印 vertices>0 与 ports.h 的默认端口、上一 tick 位置可读、两进程重连回原槽且第二次调用被拒、暂停菜单 7 s 不掉线 | tools/godot_check.ps1 |
 | 19 | 文档一致性 | 协议版本、闸门数、DEBT 守恒、路径、STATE 质量 0 fail；`--selftest` 能红 | python tools/doc_check.py |
 | 20 | 武器数据 | 两把枪加载 0 警告、缺键/拼错都报警、坏值被拒、改一个数哈希变、武器表不动 movement 哈希、BOM 可读 | --test-weapons |
+| 21 | 命中判定 | 正对躯干必中、偏一个盒宽必不中、0.40 中 / 0.41 不中、蹲下躲过、墙挡人、射程截断、自伤忽略、最近者胜 | --test-hitscan |
 
 当前全部 PASS（第 18 项在没装 Godot 或桥 DLL 未构建时打印 SKIP 并返回 3，smoke 视为跳过而不是绿 = DEBT-10）。
 **bench 也是判据**：p99 > 4 ms 或出现任何分配，`--bench` 返回 1（S59 之前它只打印）。
@@ -174,8 +175,8 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
    SERVER SILENT 1 s）、重连按钮、A5 网络网关拆分全部实测通过。第三人称动画与 5v5 选边
    按计划书属于 M7，不在此条。
 2. **v0.4 的 M5 增量** — A1/A2/A5 全部接入并实测；configstring 带真实哈希且失配拒局。**已关闭**。
-3. **M6 射击** — M6.0–M6.2 已完成（护甲按部位、武器数据层、开火输入进快照）；hitscan、
-   后坐力表、穿透、伤害衰减、hitmarker 仍未做。顺序见 `docs/contracts/M6.md` §6 的 M6.3–M6.12（一次只做一个）。
+3. **M6 射击** — M6.0–M6.3 已完成（护甲按部位、武器数据层、开火输入进快照、命中判定）；
+   回溯、后坐力表、穿透、伤害衰减、hitmarker 仍未做。顺序见契约 §6 的 M6.4–M6.12（一次只做一个）。
 4. **Godot 版本** — 计划书写 4.7 Mono，但 godot-cpp 最高只有 4.5，现用 4.5。
    lead：M7（Godot-Locomotion 绑定 4.7.2）之前必须解决。
 5. **跨机 demo 比对** — 工具与流程就绪（docs/demo-format.md），缺第二台机器。
@@ -227,7 +228,7 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 ```powershell
 powershell -File tools\setup_toolchain.ps1   # 仅首次：下载 GCC/CMake/Ninja（无 7z 依赖，版本已锁）
 powershell -File tools\build.ps1             # 配置 + 全量构建（headless_sim, move_metrics）
-powershell -File tools\smoke.ps1             # 20 项闸门 + bench，退出码 0 才算过
+powershell -File tools\smoke.ps1             # 21 项闸门 + bench，退出码 0 才算过
 powershell -File tools\build_bridge.ps1      # 重建 GDExtension DLL（与 CMake 同一套标志）
 powershell -File tools\godot_check.ps1       # 只跑桥：--hud-check + 两进程重连
 powershell -File tools\run_demo.ps1          # 构建桥 + 启动 Godot demo
@@ -522,6 +523,17 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HA
 - TOML 解析拒绝重复键（复制粘贴一节只会生效一半），并容忍 UTF-8 BOM。
 - 判据：`--test-weapons`（18 项检查，smoke 第 20 项）。
 
+### 8.11 命中判定（sim/game/hitscan.*，M6.3）
+
+- `hitscan(world, boxes, count, origin, dir, max_distance, ignore_entity)`：一条射线，先扫世界
+  （`trace_box` 零尺寸 = 点），再逐玩家 AABB 求交，**最近者胜**（墙挡人）。方向内部归一化，
+  零向量算未命中而不是 NaN。
+- 玩家体积就是 `HitboxSample`（pos/height/radius），所以 M6.4 只要把当前帧换成回溯帧，
+  签名不变；M6.6 用 `hit_zone_at(sample, point.z)` 得到部位。
+- 玩家盒是 AABB（和 `hitbox_contains` 同一个形状），不是圆柱：判定与可视体积不能各说一套。
+- 判据：`--test-hitscan`（14 项，smoke 第 21 项）：躯干必中、偏一盒宽必不中、0.40 中 / 0.41 不中、
+  蹲下躲过、墙挡人、射程截断、自伤可忽略、最近者胜、非单位方向同距离、零向量未命中。
+
 ---
 
 ## 9. 开场 / 收尾协议
@@ -531,7 +543,7 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HA
 ```
 1. 读 docs/STATE.md（唯一的"现在"）+ docs/AGENTS.md（本文件）
 2. 读 docs/DEBT.md 的未解决表；PROGRESS 最后一节按需
-3. 跑 tools\build.ps1，再跑 tools\smoke.ps1，确认 20 项闸门 + bench 全绿（数字抄 STATE §3）
+3. 跑 tools\build.ps1，再跑 tools\smoke.ps1，确认 21 项闸门 + bench 全绿（数字抄 STATE §3）
 4. 只改一个关注点；大文件只做精确 edit；越界问题记一行进 DEBT
 5. 改完立刻 commit（一个功能一个 commit）
 6. 更新 STATE（WIP/数字）+ PROGRESS（四段）+ DEBT 状态 + `python tools\doc_check.py` 退出码 0
@@ -561,8 +573,8 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HA
 
 ## 11. 下一步（严格按计划书顺序，不要跳）
 
-1. **M6 射击**：D1–D5 已定（ADR 0006 + 契约 §4），契约 active。M6.0–M6.2 已完成，
-   下一步 M6.3 hitscan → 回溯 → 穿透 → 三段伤害 → 弹药 → 伤害进快照 → 死亡重生 →
+1. **M6 射击**：D1–D5 已定（ADR 0006 + 契约 §4），契约 active。M6.0–M6.3 已完成，
+   下一步 M6.4 回溯 → 穿透 → 三段伤害 → 弹药 → 伤害进快照 → 死亡重生 →
    后坐力 → 表现层 → 验收。**一次只做一个任务。**
 2. **M7 / M8**：动画、视角模型、音频垂直定位（§9.2 的楼层低通）。
 3. 代码体检：A1–A7、AUD-01…19、R1–R19 已完成；S60 关掉了 AUD-20/23/26/27，

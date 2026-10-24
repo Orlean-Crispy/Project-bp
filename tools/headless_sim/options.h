@@ -22,6 +22,7 @@ struct Options {
     bool test_net = false;
     bool test_health = false;
     bool test_weapons = false;
+    bool test_hitscan = false;
     bool test_hitbox = false;
     bool test_events = false;
     bool test_snapshot = false;

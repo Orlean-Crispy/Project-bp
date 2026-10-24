@@ -44,6 +44,12 @@ try {
     & $exe --test-weapons
     if ($LASTEXITCODE -ne 0) { throw 'weapon data test failed' }
 
+    Write-Host '== hitscan ==' -ForegroundColor Cyan
+    # E1: a shot aimed at the chest must hit the hull, one box width off must miss,
+    # and a wall in between must win. No rewind yet - that is M6.4.
+    & $exe --test-hitscan
+    if ($LASTEXITCODE -ne 0) { throw 'hitscan test failed' }
+
     Write-Host '== protocol wire ==' -ForegroundColor Cyan
     # The snapshot format is the one thing both sides must agree on byte for byte;
     # it gets its own step so a mask that narrows again fails here, not in a match.
