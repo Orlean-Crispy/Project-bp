@@ -22,22 +22,22 @@
 
 | ID | 级别 | 症状 | 证据 / 位置 | verify | status | lead |
 |---|---|---|---|---|---|---|
-| AUD-21 | P2 | 序列化/接收热路径每 tick 约 4-8 次堆分配；`[netalloc]` 只统计 session 三步，所以永远 0 | session.cpp encode/wrap/recv | `headless_sim --test-net` 输出 `[netalloc] per_tick 0` 且统计覆盖 encode/decode | open | M6 |
-| AUD-22 | P2 | 可靠流 `seq <= ack` / `seq > m_next` 不是 u16 回绕安全的；第 65536 个包后静默死 | reliable.cpp:67,99 | 推 70000 个 rel 包仍完整交付（新闸门） | open | M6 |
-| AUD-24 | P2 | admission 的 approve 队列无 TTL/上限：走过 TCP 但不发 HELLO 的 id 永久留在 deque | admission.h:17-29 | 过期（120 s 或容量上限）后 `admission.pending()==0` | open | M6 |
+| AUD-21 | P2 | 序列化/接收热路径每 tick 约 4-8 次堆分配；`[netalloc]` 只统计 session 三步，所以永远 0 | session.cpp encode/wrap/recv | `headless_sim --test-net` 输出 `[netalloc] per_tick 0` 且统计覆盖 encode/decode | open | M7 |
+| AUD-22 | P2 | 可靠流 `seq <= ack` / `seq > m_next` 不是 u16 回绕安全的；第 65536 个包后静默死 | reliable.cpp:67,99 | 推 70000 个 rel 包仍完整交付（新闸门） | open | M7 |
+| AUD-24 | P2 | admission 的 approve 队列无 TTL/上限：走过 TCP 但不发 HELLO 的 id 永久留在 deque | admission.h:17-29 | 过期（120 s 或容量上限）后 `admission.pending()==0` | open | M7 |
 | AUD-25 | P3 | `ReliableTransport` 的 now_ms 只在 advance 更新，recv 在 advance 之前时 RTT 采样少一 tick | reliable_transport.cpp:46,56-60 | loopback RTT 采样等于 1-2 tick | open | 顺手 |
-| DEBT-23 | P2 | 服务器的回溯固定用 1 tick（`rewind_ticks(0)`）：没有测 RTT，§9.1 的公式只算了插值那一项。30 ms 局域网内偏差 ≤2 tick，跨网段会明显偏 | session.cpp:NetServer::step | 服务器测单程延迟并传给 `update_weapon`；60 ms 链路上 rewind > 1.5 tick 且射击仍落在旧位置 | open | M6 |
-| DEBT-01 | P2 | 包头 `ack_bits` 恒 0、`Snapshot::acked_cmd` 解出无人读：第二套 ack 的残骸 | netchan.h；snapshot.cpp | 要么删字段（需再升协议）要么真填，二者都要闸门 | open | M6 |
-| DEBT-20 | P2 | 真实链路的可靠流没接：bridge 只 `set_configstring`，从不 `add_client(..., rel)`，所以 configstring 从没真正下发（docs 曾写"已走可靠流"，本轮改正） | net_gateway.cpp:70,186 | 真实链路 `[config] chunks>=1` 且 `configstring 已下发` 出现在 host 日志 | open | M6 |
+| DEBT-23 | P2 | 服务器的回溯固定用 1 tick（`rewind_ticks(0)`）：没有测 RTT，§9.1 的公式只算了插值那一项。30 ms 局域网内偏差 ≤2 tick，跨网段会明显偏 | session.cpp:NetServer::step | 服务器测单程延迟并传给 `update_weapon`；60 ms 链路上 rewind > 1.5 tick 且射击仍落在旧位置 | open | M7 |
+| DEBT-01 | P2 | 包头 `ack_bits` 恒 0、`Snapshot::acked_cmd` 解出无人读：第二套 ack 的残骸 | netchan.h；snapshot.cpp | 要么删字段（需再升协议）要么真填，二者都要闸门 | open | M7 |
+| DEBT-20 | P2 | 真实链路的可靠流没接：bridge 只 `set_configstring`，从不 `add_client(..., rel)`，所以 configstring 从没真正下发（docs 曾写"已走可靠流"，本轮改正） | net_gateway.cpp:70,186 | 真实链路 `[config] chunks>=1` 且 `configstring 已下发` 出现在 host 日志 | open | M7 |
 
 ## 2. 模拟 / 移动（sim/move、collision、data）
 
 | ID | 级别 | 症状 | 证据 / 位置 | verify | status | lead |
 |---|---|---|---|---|---|---|
-| AUD-28 | P2 | 仍有一批影响手感的常量是字面量：地面探测 0.02、墙探测 -0.05/+0.15、滑铲结束 0.5×、攀爬接受 0.05、墙跑内推 0.2、翻越前进 0.55、kClipEpsilon 1e-3、可行走法线 0.7（腿倍率已在 S60 挪进 toml） | pmove.cpp:9-11,137,242,383,389；trace.cpp:11,235 | `grep` 这些字面量只出现在 config.h 默认值 | open | M6 |
+| AUD-28 | P2 | 仍有一批影响手感的常量是字面量：地面探测 0.02、墙探测 -0.05/+0.15、滑铲结束 0.5×、攀爬接受 0.05、墙跑内推 0.2、翻越前进 0.55、kClipEpsilon 1e-3、可行走法线 0.7（腿倍率已在 S60 挪进 toml） | pmove.cpp:9-11,137,242,383,389；trace.cpp:11,235 | `grep` 这些字面量只出现在 config.h 默认值 | open | M7 |
 | AUD-33 | P2 | trace 注释与闸门仍把 step_len 当"防穿墙"依据；真正防穿是连续扫掠，>38.4 m/s 时 step_len 会超墙厚 | trace.h:43-47；tests_move.cpp:212-219 | 注释改对，或闸门覆盖 45 m/s 仍 0 穿透 | open | M7 |
 | DEBT-02 | P2 | `move_metrics` 用 `world.params.hash()`（只 movement）且不读 combat.toml，与 headless_sim 的 combined hash 不一致 | tools/move_metrics/main.cpp | 输出 hash 与 `--selftest` 的 params_hash 相同 | open | 顺手 |
-| AUD-30 | P2 | demo 初始状态不完整（缺 state/timers/沿），只能从 spawn 录；从局中录第 0 tick 分叉 | demo.h DemoPlayerInit | 补齐初始字段或 record 拒绝非 spawn 状态 | open | M6 |
+| AUD-30 | P2 | demo 初始状态不完整（缺 state/timers/沿），只能从 spawn 录；从局中录第 0 tick 分叉 | demo.h DemoPlayerInit | 补齐初始字段或 record 拒绝非 spawn 状态 | open | M7 |
 
 ## 3. 桥 / Godot 表现层
 
@@ -48,7 +48,7 @@
 | AUD-35 | P2 | 主循环每帧最多 5 tick：持续 <13 fps 时丢弃的 tick 现在计数并打印（S60），但没有独立闸门 | godot/main.gd | 10 fps 跑 10 s 后 tick 落后 < 1 tick/s | open | M7 |
 | DEBT-03 | P2 | 左右 Ctrl/Shift 在 KEYCODES 里映射到同一个键，且 InputEventKey 没设 location | godot/main.gd KEYCODES | 用侧别键码，或加载时拒绝侧别绑定 | open | M7 |
 | DEBT-04 | P3 | tick 秒数写死 `1.0/64` 三处：main.gd、sim_bridge.cpp、remote_sampling.h | 三处常量 | 桥暴露 get_tick_seconds()，C++ 统一用 sim::tick_seconds() | open | 顺手 |
-| DEBT-05 | P2 | movement.toml/keybinds.toml 的 warnings 收集后不打印：拼错键名静默用默认值 | sim_bridge.cpp:98-101 | 故意写错键名，启动日志出现一条警告 | open | M6 |
+| DEBT-05 | P2 | movement.toml/keybinds.toml 的 warnings 收集后不打印：拼错键名静默用默认值 | sim_bridge.cpp:98-101 | 故意写错键名，启动日志出现一条警告 | open | M7 |
 | DEBT-06 | P2 | 桥每帧新建 `std::vector<PlayerSnap>` + Dictionary | sim_bridge.cpp get_remote_players | 复用成员 vector；测量每帧 0 分配 | open | M7 |
 | DEBT-07 | P2 | 只有 template_debug DLL 与 editor/debug 键；没有 release 导出路径 | breakpoint.gdextension | 决定"v0.1 只跑编辑器"，或补 release 构建 + 导出验证 | open | M7 |
 | DEBT-08 | P3 | `godot/main.tscn` 的 uid 是 12 字符，其余 .uid 是 13 位 | main.tscn:1 | 打开工程无 invalid uid 警告，或重写 uid | open | 待核实 |
@@ -57,10 +57,10 @@
 
 | ID | 级别 | 症状 | 证据 / 位置 | verify | status | lead |
 |---|---|---|---|---|---|---|
-| DEBT-09 | P1 | `setup_toolchain.ps1` 只装 GCC/CMake/Ninja；Godot、godot-cpp 仍要手工，而 smoke 第 19 项还需要 `python`（doc_check） | tools/setup_toolchain.ps1 头部；smoke.ps1 的 docs 步 | 干净机器一条命令后 smoke 全绿（含 python 与 Godot） | open | M6 |
+| DEBT-09 | P1 | `setup_toolchain.ps1` 只装 GCC/CMake/Ninja；Godot、godot-cpp 仍要手工，而 smoke 第 19 项还需要 `python`（doc_check） | tools/setup_toolchain.ps1 头部；smoke.ps1 的 docs 步 | 干净机器一条命令后 smoke 全绿（含 python 与 Godot） | open | M7 |
 | DEBT-10 | P2 | Godot 未安装时第 19 项 SKIP 返回 3，smoke 仍打 ALL GREEN | smoke.ps1 的 skip 分支 | SKIP 视为非绿，或 setup 保证 Godot 存在 | open | 与 DEBT-09 同批 |
 | DEBT-11 | P1 | 没有 CI：全部闸门靠本机手工跑 | 仓库无 .github/workflows | push 上跑 build + smoke（headless 部分） | open | v0.1 前 |
-| DEBT-12 | P2 | 编译标志在两处各写一遍（CMakeLists.txt / build_bridge.ps1） | CMakeLists.txt:14；build_bridge.ps1 | 单一 flags 清单 | open | M6 |
+| DEBT-12 | P2 | 编译标志在两处各写一遍（CMakeLists.txt / build_bridge.ps1） | CMakeLists.txt:14；build_bridge.ps1 | 单一 flags 清单 | open | M7 |
 | DEBT-13 | P3 | check_sources 只扫 *.cpp/*.h/*.gd/*.ps1；.bat/project.godot/.gdextension 不在范围 | tools/check_sources.ps1 | 扩展扫描范围 + 一条故意违规的自测 | open | 顺手 |
 | DEBT-14 | P2 | 跨机 demo 比对缺第二台机器：`--compare` 的跨机路径从未真跑 | docs/demo-format.md | 两台机器各录一份，偏差 < 0.01 m | blocked | 需要硬件 |
 | DEBT-15 | P2 | 计划书目标 Godot 4.7 Mono，实际 4.5（godot-cpp 上限） | AGENTS §4 | 升级到 4.7 跑全绿，或修订计划书 | blocked | 等 godot-cpp |
