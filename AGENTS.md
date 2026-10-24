@@ -115,7 +115,7 @@ v0.1 定义：**两个人、局域网、1 张 40×40 图、对枪 10 分钟不�
 1. **M7 打磨**（契约 `docs/contracts/M7.md`，已签）：M7.1 枪感旋钮 → M7.2 音频骨架 → M7.3 脚步声/楼层低通 →
    M7.5 远端姿态 → M7.6 视角模型。**一次只做一个任务。**
 2. **M8**：爆破目标、比分、视角模型收尾。
-3. 未解决项与债只看 `docs/DEBT.md`（32 条）；设计待定与功能缺口看 `docs/BACKLOG.md`。
+3. 未解决项与债只看 `docs/DEBT.md`（33 条）；设计待定与功能缺口看 `docs/BACKLOG.md`。
 
 ---
 
@@ -160,7 +160,7 @@ powershell -File tools\run_demo.ps1     # Godot demo
 | docs/contracts/M7.md | M7 里程碑契约（`active`）：音频 / 动画 / 视角模型 / 枪感净室 |
 | docs/budgets.md | 有限资源台账（协议位 / MTU / tick / 闸门 / 文档体积，80% 报警） |
 | docs/AGENTS.md | 铁律、判据清单、实现速查（§8）、环境事实、文件地图 |
-| docs/DEBT.md | **未解决问题与技术债的唯一入口**（32 条，状态四值 + verify 命令） |
+| docs/DEBT.md | **未解决问题与技术债的唯一入口**（33 条，状态四值 + verify 命令） |
 | docs/BACKLOG.md | 设计待定与功能缺口（FEAT-01…16；FEAT-03 已完成，15/16 属 M7） |
 | docs/HANDOFF.md | 这一段工作的**叙事交接**（为什么这样做、坑在哪、怎么接手）；不写状态数字 |
 | docs/PROGRESS.md | 进度日志（S 短条目 + 末尾详细开发日志） |
@@ -170,4 +170,5 @@ powershell -File tools\run_demo.ps1     # Godot demo
 | docs/decisions/ | ADR 0003 护甲 · 0004 网络时间轴 · 0005 命名 · 0006 穿透/护甲结算/热重载 · 0007 许可与净室 |
 | docs/assets-licenses.md | 素材许可台账 + 「只读参考」（读过哪些 GPL 源、取了哪条事实） |
 | docs/keymap.md / docs/demo-format.md | 键位 / demo 格式 |
+| docs/map-authoring.md | 地图制作：Blender → `.map` 的导出器、单位/凸体/朝向三条约定、材质与标志位 |
 | docs/archive/ | 只读历史（HANDOFF、GAPS、8.3 专章）；**不再维护，别当现状读** |

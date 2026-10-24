@@ -13,7 +13,7 @@
 - **lead**：M6 / M7 / 顺手，只表示排期，不是状态。状态与排期分两列，是为了能统计。
 - **verify**：一条命令 + 期望输出。**没有 verify 的条目不许进 open**（想法去 BACKLOG）。
 
-**当前计数**：未解决 **32** 条（P1 2 / P2 21 / P3 9）；关闭记录 **8** 条；设计待定与功能缺口见 BACKLOG。
+**当前计数**：未解决 **33** 条（P1 2 / P2 22 / P3 9）；关闭记录 **8** 条；设计待定与功能缺口见 BACKLOG。
 改表就要改这个数字——`tools/doc_check.py` 会核对它和实际行数。
 
 ---
@@ -51,6 +51,7 @@
 | DEBT-05 | P2 | movement.toml/keybinds.toml 的 warnings 收集后不打印：拼错键名静默用默认值 | sim_bridge.cpp:98-101 | 故意写错键名，启动日志出现一条警告 | open | M7 |
 | DEBT-06 | P2 | 桥每帧新建 `std::vector<PlayerSnap>` + Dictionary | sim_bridge.cpp get_remote_players | 复用成员 vector；测量每帧 0 分配 | open | M7 |
 | DEBT-07 | P2 | 只有 template_debug DLL 与 editor/debug 键；没有 release 导出路径 | breakpoint.gdextension | 决定"v0.1 只跑编辑器"，或补 release 构建 + 导出验证 | open | M7 |
+| DEBT-24 | P2 | 地图专用闸门在 `--map` 指向别的图时给出误导性 FAIL：`--test-wall` 走的根本不是那堵 0.1 m 墙（S79 用 Blender 导出的 40×40 房实测 `penetrations=100`） | tests_move.cpp 的 wall/step/parkour 用例 | 传了显式 `--map` 且不是该用例绑定的图时打印 `SKIP` 并返回 3 | open | M7 |
 | DEBT-08 | P3 | `godot/main.tscn` 的 uid 是 12 字符，其余 .uid 是 13 位 | main.tscn:1 | 打开工程无 invalid uid 警告，或重写 uid | open | 待核实 |
 
 ## 4. 工具 / 构建 / 可恢复性

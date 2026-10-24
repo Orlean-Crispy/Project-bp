@@ -269,8 +269,8 @@ sim/game/        combat：HP 100 + 三种护甲；weapon：WeaponDef 数据层�
 sim/data/        movement.toml、combat.toml、weapons.toml、keybinds.toml、maps/*.map
 bridge/          GDExtension 桥（唯一跨边界层）
 godot/           project.godot / main.tscn / main.gd / breakpoint.gdextension
-tools/           headless_sim（所有闸门）、move_metrics、net_loop（两进程联机）、run_net_demo（双实例）、build/smoke/build_bridge/run_demo/setup 脚本
-docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HANDOFF.md（叙事交接）、contracts/、budgets.md、DEBT.md、BACKLOG.md、PROGRESS.md、AUDIT.md（索引）+ audits/、pitfalls/、decisions/、keymap.md、demo-format.md、计划书_v0.3.md、IMPULSE_命名方案.md、archive/（S01–S59 的 HANDOFF、GAPS、8.3 专章）
+tools/           headless_sim（所有闸门）、move_metrics、net_loop（两进程联机）、run_net_demo（双实例）、build/smoke/build_bridge/run_demo/setup 脚本、blender/bp_export_map.py（Blender → .map）
+docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HANDOFF.md（叙事交接）、contracts/、budgets.md、DEBT.md、BACKLOG.md、PROGRESS.md、AUDIT.md（索引）+ audits/、pitfalls/、decisions/、keymap.md、demo-format.md、map-authoring.md（Blender → .map）、计划书_v0.3.md、IMPULSE_命名方案.md、archive/（S01–S59 的 HANDOFF、GAPS、8.3 专章）
 ```
 
 ### 7.1 地图
@@ -667,7 +667,7 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HA
 1. **M7 打磨**：M7.1 枪感旋钮 → M7.2 音频骨架 → M7.3 脚步材质/楼层低通 → M7.5 远端姿态 → M7.6 视角模型。
 2. **M8**：爆破目标、比分、视角模型收尾。
 3. 代码体检：A1–A7、AUD-01…19、R1–R19 已完成；S60 关掉了 AUD-20/23/26/27，
-   其余见 docs/DEBT.md（32 条）与 docs/BACKLOG.md（设计待定/功能缺口）。
+   其余见 docs/DEBT.md（33 条）与 docs/BACKLOG.md（设计待定/功能缺口）。
 
 ---
 

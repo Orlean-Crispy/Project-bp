@@ -1174,3 +1174,40 @@ soak 的输出（600 s 跑完才有意义）：`soak 600s joins=2 accepted=… l
 - “大地图”在 v0.1 的定义是**一张 40×40 可玩图**（两层、层间 ≥2 条路径、出生点、掩体），不是美术成品。
   贴图/天空盒/道具是 M8 之后。
 - 人物动画最难的不是“有模型”，是**墙跑/爬墙/翻越**这三段 CC0 包里几乎没有，必须程序化或自己 K。
+## S80 · 2026-10-24 · Blender → .map 管道打通（地图开工的第一步）
+
+### 1. 做了什么
+
+- 查清**地图设计原文要求**（计划书 §8.4/§8.5/§5.7）：v0.1 是 **40×40、1 个目标点**；最多 **2.5 层**；
+  楼层**必须**用材质/色调区分；层间**至少 2 条路径**；最小墙厚 **0.15 m**；表面属性
+  `surface/climbable/wallrunnable/penetrable` **默认全关**。
+- 回答“找一个调用 Blender 的插件”：**没有现成能用的**。Godot 的 glTF 导入只能拿外观（碰撞是 mesh，
+  与 brush 判定冲突）；`io_scene_map` 是 GPL 且停在 Blender 2.66；TrenchBroom 才是 .map 的原生工具。
+  所以按 ADR 0007 自己写了 `tools/blender/bp_export_map.py`（约 250 行）。
+- 导出器做了三件必须做的事：**单位换算**（米 → Quake unit）、**凸体校验**（不凸直接报错，不产坏图）、
+  **朝向校验**（用 Blender 面法线验 `cross(a-b, c-b)`，反了就换点序）。标志位按实体分组写出。
+
+### 2. 判据（实测）
+
+```
+bp_export: 9 objects -> build\blender_test.map (9 brushes)
+map       build\blender_test.map
+entities  3       brushes   9
+bounds    mins (-21.000, -21.000, -1.000)  maxs (21.000, 21.000, 9.000)  [metres]
+PASS: 120 ticks identical on both runs      (--selftest --map build\blender_test.map)
+```
+
+9 个盒体（地板/天花板/四面墙/平台/可穿薄墙 ×0.17 m/可爬墙）导出成 3 个实体块，
+碰撞世界加载后确定性照旧。**管道从 Blender 5.0 到 sim 全程跑通。**
+
+### 3. 失败与修正
+
+- 第一版 worldspawn 块**忘了写收尾的 `}`**，解析器把下一个实体的 `"classname"` 当成 "expected a plane"。
+  报错位置在第 62 行、真正的问题在第 57 行——**括号类错误总是报在下一次读到的内容上**。
+- 顺手发现一个坑并记成 DEBT-24：`--test-wall` 之类**绑定在专用测试图**上，用 `--map` 指到别的图会给出
+  误导性的 FAIL（实测 `penetrations=100`，其实走的是空地）。
+
+### 4. 下一步
+
+- 用这个管道做 **40×40 两层 blockout**（M7.4）：先出“能走通、能对枪”的骨架，再谈细节。
+- 贴图/天空盒/烘焙光仍然没有——那是 M8 之后。
