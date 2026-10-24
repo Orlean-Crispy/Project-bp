@@ -43,6 +43,7 @@ unsigned long long allocation_count();
 #include "tests_move.h"
 #include "tests_net.h"
 #include "tests_proto.h"
+#include "tests_weapons.h"
 
 namespace {
 
@@ -112,6 +113,7 @@ void usage() {
         "  --test-jump       holding space must jump once, tapping must jump each time\n"
         "  --test-net        client/server over a 30%% loss link: prediction converges\n"
         "  --test-health     HP 100 + 25 / 25 regen / 50 armour damage and regen rules\n"
+        "  --test-weapons    weapons.toml loads, hashes independently, rejects bad values\n"
         "  --test-hitbox     verify the 64-tick hitbox history and the 3-zone multipliers\n"
         "  --test-events     event channel: jump/land emission, determinism, ring overflow\n"
         "  --test-snapshot   protocol wire: 16-bit mask/flags, vitals, delta economy, MTU\n"
@@ -223,6 +225,8 @@ int main(int argc, char** argv) {
             opt.test_net = true;
         } else if (arg == "--test-health") {
             opt.test_health = true;
+        } else if (arg == "--test-weapons") {
+            opt.test_weapons = true;
         } else if (arg == "--test-hitbox") {
             opt.test_hitbox = true;
         } else if (arg == "--test-events") {
@@ -271,6 +275,7 @@ int main(int argc, char** argv) {
     if (opt.test_hitbox) return run_hitbox_test(opt);
     if (opt.test_events) return run_event_test(opt);
     if (opt.test_health) return run_health_test(opt);
+    if (opt.test_weapons) return run_weapon_test(opt);
     if (opt.test_net) return run_net_test(opt);
     if (opt.test_jump) return run_jump_test(opt);
     if (opt.test_soak) return run_soak_test(opt);

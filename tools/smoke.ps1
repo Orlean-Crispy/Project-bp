@@ -38,6 +38,12 @@ try {
     & $exe --test-health
     if ($LASTEXITCODE -ne 0) { throw 'health test failed' }
 
+    Write-Host '== weapons ==' -ForegroundColor Cyan
+    # The weapon table is the first thing a designer edits. A typo there, or an
+    # rpm of zero, must fail here instead of becoming a silent default in a match.
+    & $exe --test-weapons
+    if ($LASTEXITCODE -ne 0) { throw 'weapon data test failed' }
+
     Write-Host '== protocol wire ==' -ForegroundColor Cyan
     # The snapshot format is the one thing both sides must agree on byte for byte;
     # it gets its own step so a mask that narrows again fails here, not in a match.

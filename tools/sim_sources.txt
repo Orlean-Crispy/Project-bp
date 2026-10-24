@@ -7,6 +7,7 @@ sim/data/config.cpp
 sim/demo/demo.cpp
 sim/game/combat.cpp
 sim/game/hitbox.cpp
+sim/game/weapon.cpp
 sim/input/bindings.cpp
 sim/input/keycodes.cpp
 sim/move/pmove.cpp

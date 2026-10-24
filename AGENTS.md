@@ -101,7 +101,7 @@ v0.1 定义：**两个人、局域网、1 张 40×40 图、对枪 10 分钟不�
 
 **只在 `docs/STATE.md` 有一份**（覆盖式更新，带命令与数字）。这里不复制，只给三句定位：
 
-- 里程碑：M0–M5 已关闭，M6 的 7 条入口条件已在 S60 清掉，射击功能未开工。
+- 里程碑：M0–M5 已关闭；M6 进行中（M6.0 规则、M6.1 武器数据完成，hitscan 未开始）。
 - 宿主实际是 **Godot 4.5**（godot-cpp 上限；计划书目标 4.7 = DEBT-15，M7 前必须有结论）。
 - 闸门数量、p99、丢包回滚、协议版本一律看 STATE §3 / §0——那里的数字有命令可复现。
 
@@ -112,7 +112,8 @@ v0.1 定义：**两个人、局域网、1 张 40×40 图、对枪 10 分钟不�
 
 ## 3. 下一步（严格按计划书顺序，禁止跳步）
 
-1. **M6 射击**（契约 `docs/contracts/M6.md`）：D1/D2/D3 已定（ADR 0006），按 §6 的 M6.1–M6.12 一次一个任务推进。
+1. **M6 射击**（契约 `docs/contracts/M6.md`）：D1–D5 已定（ADR 0006 + 契约 §4），下一步 M6.2 开火输入，
+   之后 hitscan → 回溯 → 穿透 → 三段伤害 → 弹药 → 伤害进快照 → 死亡重生 → 后坐力 → 表现层 → 验收。**一次只做一个任务。**
 2. M7/M8：音频、第三人称动画、第一人称视角模型。
 3. 未解决项与债只看 `docs/DEBT.md`（32 条）；设计待定与功能缺口看 `docs/BACKLOG.md`。
 
@@ -138,7 +139,7 @@ v0.1 定义：**两个人、局域网、1 张 40×40 图、对枪 10 分钟不�
 
 ~~~powershell
 powershell -File tools\build.ps1        # 全量构建（-Werror）
-powershell -File tools\smoke.ps1        # 19 项闸门 + bench，退出码 0 才算过
+powershell -File tools\smoke.ps1        # 20 项闸门 + bench，退出码 0 才算过
 powershell -File tools\build_bridge.ps1 # GDExtension DLL（与 CMake 同一套标志）
 powershell -File tools\godot_check.ps1  # 只跑桥：--hud-check + 两进程重连（3 = SKIP）
 powershell -File tools\run_demo.ps1     # Godot demo
@@ -158,7 +159,7 @@ powershell -File tools\run_demo.ps1     # Godot demo
 | docs/budgets.md | 有限资源台账（协议位 / MTU / tick / 闸门 / 文档体积，80% 报警） |
 | docs/AGENTS.md | 铁律、判据清单、实现速查（§8）、环境事实、文件地图 |
 | docs/DEBT.md | **未解决问题与技术债的唯一入口**（32 条，状态四值 + verify 命令） |
-| docs/BACKLOG.md | 设计待定（ADR 0006 之后余 5 条）与功能缺口（FEAT-01…11） |
+| docs/BACKLOG.md | 设计待定（ADR 0006 之后余 5 条）与功能缺口（FEAT-01…13） |
 | docs/HANDOFF.md | 这一段工作的**叙事交接**（为什么这样做、坑在哪、怎么接手）；不写状态数字 |
 | docs/PROGRESS.md | 进度日志（S 短条目 + 末尾详细开发日志） |
 | docs/AUDIT.md | 审计**索引**（每轮一个文件，证据在 docs/audits/） |

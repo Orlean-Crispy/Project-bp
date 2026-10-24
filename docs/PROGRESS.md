@@ -2220,3 +2220,41 @@ ADS 灵敏度（L1018–1032）、追击终结（L1080–1113）、`rng_at` 使�
 ### 4. 下一步
 
 拍板上面 1–4 → 改契约 §6 与 §2 out → M6.1（`weapons.toml` 待建 + WeaponDef + `--test-weapons`）。
+
+## S64 · 2026-10-24 · M6.1 武器数据层
+
+### 1. 做了什么
+
+- **D4/D5 定稿**（按契约 §4 的建议默认执行）：高速弹道不进 M6（v0.1 全是 hitscan，没有使用者）→
+  `BACKLOG FEAT-12`；`WeaponDef` 按任务分批，没有使用者的字段不先写。
+- **`sim/data/weapons.toml`**：rifle / pistol 两把，11 个字段——伤害近/远、衰减起止、rpm、射程、
+  弹匣、备弹、换弹秒数、穿透层数、每层伤害系数。pistol 的用途是给 M6.5 做对照（步枪能穿、手枪被挡）。
+- **`sim/game/weapon.{h,cpp}`**：`WeaponDef` / `WeaponParams`（`find`、`hash`）/ `load_weapon_params`。
+  加载规则只写在一处：缺键警告并用编译默认值、拼错报 unknown key、不能模拟的值直接报错。
+- **`TomlBinder` 提出来共用**：原来是 `load_movement_params` 里的匿名结构，现在在 `sim/data/config.h`，
+  两个加载器共用一份"读一个数、类型不对就警告"的逻辑——两份就会漂。
+- 数据层硬化：TOML 解析拒绝重复键、容忍 UTF-8 BOM（原因见 §3）。
+- 新闸门 `--test-weapons`（18 项检查），smoke 第 20 项；`tools/sim_sources.txt` 28 个 sim 源文件。
+
+### 2. 判据
+
+`[weapons] weapons 2 clean 1 stable 1 independent 1 defaults 1 rejects 5`；
+smoke 20 项 + bench ALL GREEN；`sources ok: 28`；`doc_check` 0 fail。
+反证（闸门能红）：把 `damage_near` 拼成 `damgae_near` 的一份数据放进 `--data` 同目录，
+闸门打印 `clean 0` 并退出 1——不是靠"我看它绿了"。
+
+### 3. 失败与修正
+
+- 首次构建红在 `-Wmissing-field-initializers`（`TomlBinder{t, w}` 少给 `used`）：加构造函数，不改警告等级。
+- "缺键保留默认值"一开始用 `damage_near = 10`，撞上编译默认的 `damage_far = 18`，被校验拒了。
+  不是 bug，是校验对了——改成 30，并在测试里写清为什么。
+- 用 PowerShell 改 toml 做反证时，`Set-Content -Encoding UTF8` 在文件头写了 BOM，
+  解析器在第 1 行报 `expected key = value`（真正的病根看不见）。顺手让 `load_toml_file` 容忍 BOM，
+  并加一条闸门钉住；这不是放水：编辑器存 BOM 是常态，报错应该指向真问题。
+- 顺带发现重复 `[section]` 会静默只生效一半（`find` 取第一个），现在解析器直接报 `duplicate key`。
+
+### 4. 边界 / 下一步
+
+- 武器表还没进 `World`，也还没进 join 哈希：M6.2 做（两台机器枪数据不一致必须拒绝入局）。
+- `headshot_mult` / `legshot_mult` 仍在 `movement.toml`，M6.6 定唯一归属，不许两份都活。
+- 下一步 **M6.2 开火输入**（三个按下沿 + flags 7–9）；做完停下，等下一句"继续"。

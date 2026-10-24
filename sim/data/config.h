@@ -91,6 +91,26 @@ struct TomlTable {
 bool parse_toml(const std::string& text, TomlTable& out, std::string& error);
 bool load_toml_file(const std::string& path, TomlTable& out, std::string& error);
 
+// Binds values from a parsed table onto fields while remembering which keys were
+// consumed, so a typo in a data file is reported instead of silently keeping the
+// default. Every loader (movement, weapons) uses this one implementation: two
+// copies of "read a number, warn on the wrong type" is how the warnings drift.
+struct TomlBinder {
+    TomlBinder(const TomlTable& t, std::vector<std::string>& w) : table(t), warnings(w) {}
+
+    const TomlTable& table;
+    std::vector<std::string>& warnings;
+    std::vector<std::string> used;
+
+    bool number(const std::string& key, float& target);
+    bool integer(const std::string& key, int& target);
+    bool boolean(const std::string& key, bool& target);
+
+    // Reports every unconsumed key starting with 'prefix' as unknown. The prefix
+    // keeps the report scoped when several sections share one flat table.
+    void report_unknown(const std::string& prefix) const;
+};
+
 // R8: movement is not the only rule set. The combat rules (HP/armour) and the
 // headshot multiplier also change what a client predicts, so the one params hash
 // that the join handshake and the configstring carry folds both in.

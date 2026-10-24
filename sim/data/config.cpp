@@ -6,7 +6,6 @@
 #include <filesystem>
 #include <fstream>
 #include <sstream>
-#include <unordered_set>
 
 #include "sim/core/hash.h"
 #include "sim/game/combat.h"
@@ -107,7 +106,16 @@ bool parse_toml(const std::string& text, TomlTable& out, std::string& error) {
             error = "line " + std::to_string(line_no) + ": cannot parse value";
             return false;
         }
-        out.entries.emplace_back(section.empty() ? key : section + "." + key, value);
+        const std::string full_key = section.empty() ? key : section + "." + key;
+        // Duplicate keys are invalid TOML, and find() returns the first one: a
+        // copy-pasted section would load half its values and say nothing.
+        for (const auto& entry : out.entries) {
+            if (entry.first == full_key) {
+                error = "line " + std::to_string(line_no) + ": duplicate key " + full_key;
+                return false;
+            }
+        }
+        out.entries.emplace_back(full_key, value);
     }
     return true;
 }
@@ -120,7 +128,15 @@ bool load_toml_file(const std::string& path, TomlTable& out, std::string& error)
     }
     std::ostringstream buffer;
     buffer << file.rdbuf();
-    return parse_toml(buffer.str(), out, error);
+    std::string text = buffer.str();
+    // Windows editors happily save UTF-8 with a BOM. Without this the parser dies
+    // on line 1 with "expected key = value", which names the wrong problem.
+    if (text.size() >= 3 && static_cast<unsigned char>(text[0]) == 0xEF &&
+        static_cast<unsigned char>(text[1]) == 0xBB &&
+        static_cast<unsigned char>(text[2]) == 0xBF) {
+        text.erase(0, 3);
+    }
+    return parse_toml(text, out, error);
 }
 
 uint64_t combined_params_hash(const MovementParams& movement, const CombatParams& combat) {
@@ -152,51 +168,55 @@ uint64_t MovementParams::hash() const {
     return h.value();
 }
 
-namespace {
-
-struct Binder {
-    const TomlTable& table;
-    std::unordered_set<std::string> used;
-    std::vector<std::string>& warnings;
-
-    bool number(const std::string& key, float& target) {
-        const TomlValue* v = table.find(key);
-        if (!v) return false;
-        used.insert(key);
-        if (v->type != TomlValue::Type::Number) {
-            warnings.push_back(key + ": expected a number, kept default");
-            return false;
-        }
-        target = static_cast<float>(v->number);
-        return true;
+bool TomlBinder::number(const std::string& key, float& target) {
+    const TomlValue* v = table.find(key);
+    if (!v) return false;
+    used.push_back(key);
+    if (v->type != TomlValue::Type::Number) {
+        warnings.push_back(key + ": expected a number, kept default");
+        return false;
     }
+    target = static_cast<float>(v->number);
+    return true;
+}
 
-    bool integer(const std::string& key, int& target) {
-        const TomlValue* v = table.find(key);
-        if (!v) return false;
-        used.insert(key);
-        if (v->type != TomlValue::Type::Number) {
-            warnings.push_back(key + ": expected a number, kept default");
-            return false;
-        }
-        target = static_cast<int>(v->number);
-        return true;
+bool TomlBinder::integer(const std::string& key, int& target) {
+    const TomlValue* v = table.find(key);
+    if (!v) return false;
+    used.push_back(key);
+    if (v->type != TomlValue::Type::Number) {
+        warnings.push_back(key + ": expected a number, kept default");
+        return false;
     }
+    target = static_cast<int>(v->number);
+    return true;
+}
 
-    bool boolean(const std::string& key, bool& target) {
-        const TomlValue* v = table.find(key);
-        if (!v) return false;
-        used.insert(key);
-        if (v->type != TomlValue::Type::Boolean) {
-            warnings.push_back(key + ": expected true/false, kept default");
-            return false;
-        }
-        target = v->boolean;
-        return true;
+bool TomlBinder::boolean(const std::string& key, bool& target) {
+    const TomlValue* v = table.find(key);
+    if (!v) return false;
+    used.push_back(key);
+    if (v->type != TomlValue::Type::Boolean) {
+        warnings.push_back(key + ": expected true/false, kept default");
+        return false;
     }
-};
+    target = v->boolean;
+    return true;
+}
 
-}  // namespace
+void TomlBinder::report_unknown(const std::string& prefix) const {
+    for (const auto& entry : table.entries) {
+        if (entry.first.compare(0, prefix.size(), prefix) != 0) continue;
+        bool known = false;
+        for (const auto& key : used) {
+            if (key == entry.first) {
+                known = true;
+                break;
+            }
+        }
+        if (!known) warnings.push_back(entry.first + ": unknown key");
+    }
+}
 
 bool load_combat_beside(const std::string& movement_path, CombatParams& out,
                         std::string& error) {
@@ -217,7 +237,7 @@ bool load_movement_params(const std::string& path, MovementParams& out,
     if (!load_toml_file(path, table, error)) return false;
 
     MovementParams p;
-    Binder b{table, {}, warnings};
+    TomlBinder b{table, warnings};
 
     b.number("base.base_speed", p.base_speed);
     b.number("base.accel", p.accel);
@@ -265,11 +285,7 @@ bool load_movement_params(const std::string& path, MovementParams& out,
     b.number("damage.headshot_mult", p.headshot_mult);
     b.number("damage.legshot_mult", p.legshot_mult);
 
-    for (const auto& e : table.entries) {
-        if (b.used.find(e.first) == b.used.end()) {
-            warnings.push_back(e.first + ": unknown key");
-        }
-    }
+    b.report_unknown("");
 
     out = p;
     return true;

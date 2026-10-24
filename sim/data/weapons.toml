@@ -1,0 +1,45 @@
+# weapons.toml - the gun numbers (plan 6.2). Read at startup; hashed on its own
+# (WeaponParams::hash), so tuning a gun never moves the movement params hash.
+#
+# The field set is staged on purpose (contract D5): a field only exists once an
+# M6 task consumes it.
+#   range                -> M6.3 hitscan (spread arrives with M6.10)
+#   penetration_*        -> M6.5 (_penetrable owns the veto, ADR 0006 D1)
+#   damage_* / falloff_* -> M6.6 zone damage and distance falloff
+#   rpm / magazine / ... -> M6.7 firing cadence and reload
+# Recoil joins at M6.10, ADS and tracers at M6.11. Draw/put-away, sprint-to-fire,
+# weight and knockback have no task yet, so they are not written here: a field
+# nobody reads is a field nobody keeps correct.
+#
+# These are starting points, not tuned values. COD's numbers assume 60 tick +
+# gamepad + aim assist; this is 64 tick + mouse + no assist.
+# Rifle: 25 damage -> 4 shots on a bare torso (0.3 s theoretical), 6 shots into
+# 50 heavy armour (0.60 s), which is the TTK floor the health gate pins.
+
+[weapon.rifle]
+damage_near           = 25.0
+damage_far            = 18.0
+falloff_start         = 25.0   # metres
+falloff_end           = 60.0   # metres
+rpm                   = 600.0
+range                 = 150.0  # metres; the shot ray stops here
+magazine              = 30
+reserve_ammo          = 90
+reload_seconds        = 1.8
+penetration_count     = 1      # one thin layer (M6.5)
+penetration_damage_scale = 0.7
+
+# Pistol: slower, harder hits, no penetration. It exists so M6.5 can prove a
+# weapon with no penetration is stopped while the rifle passes.
+[weapon.pistol]
+damage_near           = 34.0
+damage_far            = 25.0
+falloff_start         = 12.0
+falloff_end           = 40.0
+rpm                   = 400.0
+range                 = 80.0
+magazine              = 12
+reserve_ammo          = 48
+reload_seconds        = 1.4
+penetration_count     = 0
+penetration_damage_scale = 0.7   # unused while penetration_count is 0
