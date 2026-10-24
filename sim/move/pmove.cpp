@@ -214,7 +214,7 @@ Vec3 view_forward(float yaw, float pitch) {
 
 Vec3 eye_position(const PlayerState& player, const MovementParams& params) {
     const float height = player.crouched ? params.crouch_height : params.stand_height;
-    return Vec3(player.pos.x, player.pos.y, player.pos.z + height * kEyeHeightScale);
+    return Vec3(player.pos.x, player.pos.y, player.pos.z + height * params.eye_height_scale);
 }
 
 void pmove(PlayerState& player, const MoveInput& input, const CollisionWorld& world,

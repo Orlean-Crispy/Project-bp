@@ -13,6 +13,11 @@ jump_velocity = 6.86
 step_height   = 0.46
 stand_height  = 1.42
 crouch_height = 0.91
+# Where the camera and the shot leave from, as a fraction of the hull height.
+# 0.82 keeps a level shot *below* the head band (see [damage] head_band): aiming
+# straight at an equal-height enemy must be a chest hit, or every duel opens
+# with a one-shot headshot and long TTK cannot exist.
+eye_height_scale = 0.82
 player_radius = 0.405    # half of the 0.81 m box
 crouch_speed_scale = 0.4 # fractional max speed while crouched
 
@@ -56,3 +61,8 @@ slow_factor = 0.85          # -15% movement while hit (section 6.10)
 slow_ticks  = 96            # 1.5 s at 64 tick
 headshot_mult = 5.0
 legshot_mult  = 0.7
+# Zone bands as a fraction of hull height. Design rule (DESIGN-09): head_band
+# must sit above eye_height_scale with a margin, so recoil or a small aim error
+# does not silently turn a body shot into a headshot.
+head_band     = 0.88
+chest_band    = 0.45

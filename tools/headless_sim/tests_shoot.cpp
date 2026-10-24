@@ -63,11 +63,33 @@ int run_damage_test(const Options& opt) {
         }
     };
 
-    // A level shot from eye height (0.9 x 1.42 = 1.278 m) lands in the head band
-    // (anything above 0.82 x 1.42 = 1.164 m), so aim down a little for the chest.
+    // DESIGN-09: eye height (0.82 x 1.42 = 1.164 m) sits *below* the head band
+    // (0.88 x 1.42 = 1.25 m), so a level shot is a chest hit. Aiming down a
+    // little keeps the body shot unambiguous; aiming up finds the head.
     sim::MoveInput fire;
     fire.fire = true;
     fire.pitch = -0.05f;
+
+    // Everything below is derived from the data, not from the numbers that
+    // happened to ship: the gate proves the pipeline, tuning moves the table.
+    const int interval = sim::fire_interval_ticks(*rifle);
+    const float shot_range = 8.0f;
+    const int chest_damage =
+        sim::shot_damage(sim::damage_at_range(*rifle, shot_range), sim::HitZone::Chest,
+                         world.params, 1.0f);
+    auto rounds_to_kill = [&](sim::HitZone zone, bool heavy_armor) {
+        sim::PlayerVitals vitals;
+        vitals.health = world.combat.max_health;
+        if (heavy_armor) sim::equip_armor(vitals, sim::ArmorType::Heavy, world.combat);
+        const int per = sim::shot_damage(sim::damage_at_range(*rifle, shot_range), zone,
+                                         world.params, 1.0f);
+        int rounds = 0;
+        while (vitals.health > 0 && rounds < 60) {
+            sim::apply_damage(vitals, per, zone, world.combat);
+            ++rounds;
+        }
+        return rounds;
+    };
 
     // --- chest damage, cadence and ammo ---------------------------------
     reset(shooter, victim);
@@ -82,12 +104,16 @@ int run_damage_test(const Options& opt) {
             history[1].record(world.players[1], world.params, tick + 1);
         }
     };
-    run(40, fire, &report);
+    const int chest_kill = rounds_to_kill(sim::HitZone::Chest, false);
+    const int chest_window = chest_kill * interval;  // just enough rounds to kill
+    const int chest_shots = 1 + (chest_window - 1) / interval;
+    run(chest_window, fire, &report);
     check("chest shots kill a bare player", world.players[1].vitals.health == 0);
-    check("the rifle fired at its cadence", report.shots == 7);
-    check("each round is spent", world.players[0].ammo == 23);
-    // Four rounds kill; the rest pass through the corpse (M6.9), so only four hit.
-    check("body shots stop at the kill", report.hits == 4 && report.damage == 4 * 25);
+    check("the rifle fired at its cadence", report.shots == chest_shots);
+    check("each round is spent", world.players[0].ammo == rifle->magazine - chest_shots);
+    // The kill ends the hits: the rest pass through the corpse (M6.9).
+    check("body shots stop at the kill",
+          report.hits == chest_kill && report.damage == chest_kill * chest_damage);
     std::printf("    chest: shots %d hits %d damage %d hp %d ammo %d\n", report.shots, report.hits,
                 report.damage, world.players[1].vitals.health, world.players[0].ammo);
 
@@ -115,9 +141,10 @@ int run_damage_test(const Options& opt) {
     reset(shooter, armoured);
     tick = 10;
     sim::ShotReport armour_report;
-    run(60, fire, &armour_report);
-    check("50 armour takes two more rounds",
-          world.players[1].vitals.health == 0 && world.players[1].vitals.armor == 0);
+    run(rounds_to_kill(sim::HitZone::Chest, true) * interval + interval, fire, &armour_report);
+    check("armour costs rounds, not rules",
+          world.players[1].vitals.health == 0 && world.players[1].vitals.armor == 0 &&
+              armour_report.shots >= rounds_to_kill(sim::HitZone::Chest, true));
     std::printf("    armour: shots %d hits %d damage %d hp %d armour %d\n", armour_report.shots,
                 armour_report.hits, armour_report.damage, world.players[1].vitals.health,
                 world.players[1].vitals.armor);
@@ -126,13 +153,16 @@ int run_damage_test(const Options& opt) {
     reset(shooter, armoured);
     tick = 10;
     sim::MoveInput head = fire;
-    head.pitch = 0.0f;
+    head.pitch = 0.02f;  // 1.15 deg up: the head band, not a level shot
     sim::ShotReport head_report;
-    run(4, head, &head_report);
-    check("a headshot ignores armour and kills in one round",
+    run(interval, head, &head_report);
+    const int head_damage = sim::shot_damage(sim::damage_at_range(*rifle, shot_range),
+                                             sim::HitZone::Head, world.params, 1.0f);
+    check("a headshot ignores armour",
           world.players[1].vitals.health == 0 && world.players[1].vitals.armor == 50 &&
               head_report.shots == 1);
-    check("the head multiplies by five", head_report.damage == 125);
+    check("the head multiplies by five", head_report.damage == head_damage);
+    check("one headshot is one kill", head_damage >= world.combat.max_health);
 
     // --- a wall between them stops everything ----------------------------
     sim::PlayerState wall_shooter = shooter;
@@ -172,7 +202,7 @@ int run_damage_test(const Options& opt) {
     reset(shooter, victim);
     tick = 10;
     sim::ShotReport kill;
-    run(40, fire, &kill);
+    run(chest_window, fire, &kill);
     check("the victim dies", world.players[1].vitals.health == 0);
 
     world.players[0].vitals.health = 0;
@@ -254,12 +284,13 @@ int run_damage_test(const Options& opt) {
     reset(clean_shooter, victim);
     tick = 10;
     sim::ShotReport hit_report;
-    run(4, fire, &hit_report);  // exactly one round: cadence is 6 ticks
+    run(interval, fire, &hit_report);  // exactly one round at this cadence
     check("a hit is recorded for the hitmarker",
-          world.players[0].hit_serial == 1 && world.players[0].hit_amount == 25 &&
+          world.players[0].hit_serial == 1 &&
+              world.players[0].hit_amount == static_cast<uint16_t>(chest_damage) &&
               world.players[0].hit_target == 1 &&
               world.players[0].hit_zone == static_cast<uint8_t>(sim::HitZone::Chest));
-    run(8, fire, &hit_report);
+    run(interval, fire, &hit_report);
     check("a second hit bumps the serial", world.players[0].hit_serial == 2);
 
     // A miss must not look like a hit: same trigger, nobody in the way.
@@ -305,7 +336,6 @@ int run_damage_test(const Options& opt) {
         {sim::ArmorType::Regen, "regen"},
         {sim::ArmorType::Heavy, "heavy"},
     };
-    const int interval = sim::fire_interval_ticks(*rifle);
     const float ttk_distance = 10.0f;
     int shots_at[4][3] = {};
     const sim::HitZone zones[3] = {sim::HitZone::Head, sim::HitZone::Chest, sim::HitZone::Legs};

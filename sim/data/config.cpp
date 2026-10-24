@@ -175,7 +175,8 @@ uint64_t MovementParams::hash() const {
     Hasher h;
     h.f32(base_speed).f32(accel).f32(air_accel).f32(friction).f32(stop_speed)
      .f32(gravity).f32(jump_velocity).f32(step_height).f32(crouch_height)
-     .f32(stand_height).f32(player_radius).f32(crouch_speed_scale);
+     .f32(stand_height).f32(player_radius).f32(crouch_speed_scale)
+     .f32(eye_height_scale);
     h.u32(static_cast<uint32_t>(max_impulses)).u32(recharge_on_ground ? 1u : 0u)
      .u32(static_cast<uint32_t>(recharge_ticks));
     h.f32(slide_min_speed).f32(slide_friction_scale).f32(slide_jump_boost)
@@ -188,7 +189,7 @@ uint64_t MovementParams::hash() const {
     h.f32(min_wall_thickness).u32(static_cast<uint32_t>(max_slide_steps))
      .u32(static_cast<uint32_t>(max_bumps));
     h.f32(damage_slow_factor).u32(static_cast<uint32_t>(damage_slow_ticks)).f32(headshot_mult)
-        .f32(legshot_mult);
+        .f32(legshot_mult).f32(head_band).f32(chest_band);
     return h.value();
 }
 
@@ -287,6 +288,7 @@ bool load_movement_params(const std::string& path, MovementParams& out,
     b.number("base.step_height", p.step_height);
     b.number("base.crouch_height", p.crouch_height);
     b.number("base.stand_height", p.stand_height);
+    b.number("base.eye_height_scale", p.eye_height_scale);
     b.number("base.player_radius", p.player_radius);
     b.number("base.crouch_speed_scale", p.crouch_speed_scale);
 
@@ -318,6 +320,8 @@ bool load_movement_params(const std::string& path, MovementParams& out,
     b.integer("collision.max_slide_steps", p.max_slide_steps);
     b.integer("collision.max_bumps", p.max_bumps);
 
+    b.number("damage.head_band", p.head_band);
+    b.number("damage.chest_band", p.chest_band);
     b.number("damage.slow_factor", p.damage_slow_factor);
     b.integer("damage.slow_ticks", p.damage_slow_ticks);
     b.number("damage.headshot_mult", p.headshot_mult);

@@ -23,7 +23,9 @@ struct HitboxSample {
     uint32_t tick = 0;
 };
 
-HitZone hit_zone_at(const HitboxSample& sample, float y);
+// Bands come from the tuning (movement.toml [damage] head_band / chest_band), so
+// the geometry is data and the boundary tests can move with it.
+HitZone hit_zone_at(const HitboxSample& sample, float y, const MovementParams& params);
 float zone_multiplier(HitZone zone, const MovementParams& params);
 float hit_multiplier(const HitboxSample& sample, float y, const MovementParams& params);
 bool hitbox_contains(const HitboxSample& sample, const Vec3& point);

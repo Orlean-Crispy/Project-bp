@@ -9,7 +9,7 @@
 |---|---|---|---|
 | E1 | 固定靶：正对躯干必中、偏出 1 个盒宽必不中 | ✅ | `--test-hitscan`：`[hitscan] chest 1 face 1 wide 1 edge 1 crouch 1 wall 1 range 1`（14 项） |
 | E2 | 三段倍率 ×5 / ×1 / ×0.7，误差 0 | ✅ | `--test-damage`：头 `125`、胸 `25`、腿 `18`（25×0.7=17.5→18 整数） |
-| E3 | TTK 落 0.6–1.2 s（躯干，100 HP，三甲复算） | ❌ **未达标** | 见 §2：实测胸 0.28 / 0.38 / 0.47 s，`--test-damage` 的 `[ttk]` 段 |
+| E3 | TTK 落 0.6–1.2 s（躯干，100 HP，三甲复算） | ✅（S75 调参后） | 见 §2：实测胸 0.62 / 0.78 / 0.78 / 1.09 s |
 | E4 | 打 30 伤害后两端 HUD 同步 70 | ✅ | `godot_check`：`death seq: hurt@… dead@… back@…`，客户端 HUD 70→0→100 |
 | E5 | 死亡后输入忽略、重生回出生点 | ✅ 部分 | `--test-damage` 6 项（死后不能开火、重生是新玩家、尸体不挡枪）；**比分留 M8** |
 | E6 | 30% 丢包下射击仍能命中并结算 | ✅ | `--test-net`：`[shotloss] loss 30% dropped 187 target 100->0 hitmark 4/25` |
@@ -17,7 +17,7 @@
 | E8 | `0 allocs/tick`，p99 ≤ 4 ms | ✅ | `--bench 1000 --players 10`：p99 **2.40 µs**、max 6.00 µs、`allocs 0.00 / tick` |
 | E9 | 两人局域网真打 10 分钟不崩、无瞬移 | ⏳ **待手测** | 见 §3 的清单 |
 
-## 2. E3 的差距（唯一没达标的判据）
+## 2. E3：从 0.28 s 调到 0.62 s（S75 定案）
 
 `--test-damage` 打印（10 m，步枪，整数伤害走真实 `apply_damage`）：
 
@@ -25,16 +25,30 @@
 ttk rifle head  none 0.00s/1 light 0.00s/1 regen 0.00s/1 heavy 0.00s/1
 ttk rifle chest none 0.28s/4 light 0.38s/5 regen 0.38s/5 heavy 0.47s/6
 ttk rifle legs  none 0.47s/6 light 0.56s/7 regen 0.56s/7 heavy 0.75s/9
-ttk target 0.60-1.20 s (chest): none 0.28 light 0.38 regen 0.38 heavy 0.47
+ttk rifle head  none 0.00s/1 light 0.00s/1 regen 0.00s/1 heavy 0.00s/1
+ttk rifle chest none 0.62s/5 light 0.78s/6 regen 0.78s/6 heavy 1.09s/8
+ttk rifle legs  none 0.94s/7 light 1.25s/9 regen 1.25s/9 heavy 1.41s/10
+ttk target 0.60-1.20 s (chest): none 0.62 light 0.78 regen 0.78 heavy 1.09
 ```
 
-**问题**：目标下限 0.6 s，实测裸胸 0.28 s —— 快一倍多。原因是两个数没调：`damage_near = 25`
-（4 发致死）与 `rpm = 600`（6 tick 间隔）；而**平射必中头**（`DESIGN-09`：眼高 1.278 落在头段
-1.164 以上）让多数对枪实际是 1 发 125 伤害，比表里的胸还快。
+腿超出 1.2 s（0.94–1.41）是刻意的：打腿本来就该慢，契约的 TTK 目标写的是**躯干**。
 
-**这不是本里程碑能悄悄改的**：它牵涉伤害、射速、部位分段三处，且直接决定 M7 的手感基线。
-已记 `DESIGN-10`（BACKLOG）与 `DESIGN-09`，等拍板后再动数据；`--test-damage` 的断言目前只钉
-**上界 1.2 s 与结构关系**（头 1 发、重甲 > 轻甲 > 无甲、腿比胸多），不假装下限达标。
+**当时的两个问题**：
+
+1. `DESIGN-09`：眼高 1.278 落在头段起点 1.164 **以上**，所以平射必中头 —— 一枪 125，长 TTK 不可能存在。
+2. `DESIGN-10`：`damage_near = 25`（4 发致死）× `rpm = 600`（6 tick）→ 躯干 0.28 s。
+
+**定案（按“长 TTK”的原始设定）**：
+
+- 眼高压到 **0.82×身高 = 1.164 m**，头段起点抬到 **0.88×身高 = 1.25 m**，两者都进了
+  `movement.toml`（`[base] eye_height_scale`、`[damage] head_band/chest_band`）并计入 params_hash。
+  于是**平射是躯干**，抬头 1.15° 才是头；余量 8.6 cm，后坐力抬枪不会把躯干自动变成爆头。
+- 步枪 **21 伤害 / 400 rpm**：躯干 5 发（0.62 s），重甲 8 发（1.09 s），**爆头 105 仍是一发**。
+
+新表（`--test-damage`）：
+
+```
+
 
 ## 3. E9 手测清单（需要两台机器或两个人）
 

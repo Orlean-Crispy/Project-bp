@@ -3,19 +3,14 @@
 #include <cmath>
 
 namespace sim {
-namespace {
-
-// Plan 6.8 thresholds. Kept as ratio-of-height so crouching needs no special case.
-constexpr float kHeadStart = 0.82f;
-constexpr float kChestStart = 0.45f;
-
-}  // namespace
-
-HitZone hit_zone_at(const HitboxSample& sample, float y) {
+HitZone hit_zone_at(const HitboxSample& sample, float y, const MovementParams& params) {
     if (sample.height <= 0.0f) return HitZone::Chest;
+    // Ratios of height, so crouching needs no special case. The thresholds are
+    // tuning data (movement.toml [damage]): DESIGN-09 moved head_band above the
+    // eye so that a level shot is a body shot.
     const float ratio = (y - sample.pos.z) / sample.height;
-    if (ratio > kHeadStart) return HitZone::Head;
-    if (ratio > kChestStart) return HitZone::Chest;
+    if (ratio > params.head_band) return HitZone::Head;
+    if (ratio > params.chest_band) return HitZone::Chest;
     return HitZone::Legs;
 }
 
@@ -35,7 +30,7 @@ float zone_multiplier(HitZone zone, const MovementParams& params) {
 }
 
 float hit_multiplier(const HitboxSample& sample, float y, const MovementParams& params) {
-    return zone_multiplier(hit_zone_at(sample, y), params);
+    return zone_multiplier(hit_zone_at(sample, y, params), params);
 }
 
 bool hitbox_contains(const HitboxSample& sample, const Vec3& point) {

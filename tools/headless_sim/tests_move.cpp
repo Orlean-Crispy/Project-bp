@@ -1061,13 +1061,13 @@ int run_hitbox_test(const Options& opt) {
     // Plan 6.8: head > 0.82 h, chest > 0.45 h. Standing h = 1.42 m.
     const sim::HitboxSample stand = history.at(11);
     check("standing height is 1.42 m", std::fabs(stand.height - 1.42f) < 1e-4f);
-    check("head band", sim::hit_zone_at(stand, 1.30f) == sim::HitZone::Head);
+    check("head band", sim::hit_zone_at(stand, 1.30f, params) == sim::HitZone::Head);
     check("head multiplier is x5", sim::hit_multiplier(stand, 1.30f, params) == 5.0f);
-    check("chest band", sim::hit_zone_at(stand, 0.90f) == sim::HitZone::Chest);
+    check("chest band", sim::hit_zone_at(stand, 0.90f, params) == sim::HitZone::Chest);
     // The zone table was only checked for head and legs; a chest multiplier of 1.5
     // would have passed the "x5 / x1 / x0.7" gate.
     check("chest multiplier is x1", sim::hit_multiplier(stand, 0.90f, params) == 1.0f);
-    check("leg band", sim::hit_zone_at(stand, 0.30f) == sim::HitZone::Legs);
+    check("leg band", sim::hit_zone_at(stand, 0.30f, params) == sim::HitZone::Legs);
     check("leg multiplier is x0.7", sim::hit_multiplier(stand, 0.30f, params) == 0.7f);
     // The value is tuning data now: a changed params must change the result, or
     // it is still a literal wearing a field's name.
@@ -1077,10 +1077,15 @@ int run_hitbox_test(const Options& opt) {
         check("leg multiplier reads movement.toml",
               sim::hit_multiplier(stand, 0.30f, tuned) == 0.55f);
     }
-    check("just above the head line is head", sim::hit_zone_at(stand, 0.84f * 1.42f) ==
-                                                  sim::HitZone::Head);
-    check("just below the head line is chest", sim::hit_zone_at(stand, 0.80f * 1.42f) ==
-                                                   sim::HitZone::Chest);
+    // DESIGN-09: the head band must sit above the eye, so a level shot (at
+    // eye_height_scale) is a chest hit with margin to spare.
+    check("just above the head line is head",
+          sim::hit_zone_at(stand, (params.head_band + 0.01f) * 1.42f, params) == sim::HitZone::Head);
+    check("just below the head line is chest",
+          sim::hit_zone_at(stand, (params.head_band - 0.01f) * 1.42f, params) == sim::HitZone::Chest);
+    check("a level shot is a body shot, not a headshot",
+          sim::hit_zone_at(stand, params.eye_height_scale * 1.42f, params) == sim::HitZone::Chest &&
+              params.eye_height_scale + 0.05f < params.head_band);
 
     // Crouching moves the bands with the hull (0.91 m), no special case.
     p.crouched = true;
@@ -1088,9 +1093,13 @@ int run_hitbox_test(const Options& opt) {
     history.record(p, params, 20);
     const sim::HitboxSample crouch = history.at(20);
     check("crouched height is 0.91 m", std::fabs(crouch.height - 0.91f) < 1e-4f);
-    check("crouched head band", sim::hit_zone_at(crouch, 0.80f) == sim::HitZone::Head);
-    check("crouched chest band", sim::hit_zone_at(crouch, 0.50f) == sim::HitZone::Chest);
-    check("crouched leg band", sim::hit_zone_at(crouch, 0.20f) == sim::HitZone::Legs);
+    check("crouched head band",
+          sim::hit_zone_at(crouch, (params.head_band + 0.02f) * 0.91f, params) ==
+              sim::HitZone::Head);
+    check("crouched chest band",
+          sim::hit_zone_at(crouch, 0.50f, params) == sim::HitZone::Chest);
+    check("crouched leg band",
+          sim::hit_zone_at(crouch, 0.20f, params) == sim::HitZone::Legs);
 
     const sim::Vec3 center = stand.pos;
     check("point inside the hull",

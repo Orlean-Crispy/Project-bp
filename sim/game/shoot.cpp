@@ -100,7 +100,7 @@ void update_weapon(PlayerState& shooter, int shooter_index, const MoveInput& inp
     if (shot.hit.entity == shooter_index) return;
 
     PlayerState& victim = world.players[static_cast<std::size_t>(shot.hit.entity)];
-    const HitZone zone = hit_zone_at(frame[shot.hit.entity], shot.hit.point.z);
+    const HitZone zone = hit_zone_at(frame[shot.hit.entity], shot.hit.point.z, world.params);
     const int damage =
         shot_damage(damage_at_range(def, shot.hit.distance), zone, world.params, shot.damage_scale);
     if (damage <= 0) return;

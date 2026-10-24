@@ -287,6 +287,7 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HA
 
 ### 8.1 pmove（sim/move/pmove.cpp）
 
+- 眼高 = `[base] eye_height_scale × 身高`（默认 0.82 → 1.164 m），相机与弹道共用；不要写死。
 - 顺序：dash 冷却 → 地面探测 → 滑铲起手 → 墙跑/爬墙状态 → 能力起手 → 摩擦/加速/重力
   → dash 施加 → step_slide_move → 落地判定/回充。
 - 跳跃：**按下沿**（jump_was_down），slide 起跳 ×1.15。
@@ -467,7 +468,7 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HA
   胸/腿先扣护甲池（`absorb_percent = 100`），扣完溢出才扣 HP。
 - `apply_damage(vitals, damage, zone, params)`；`HitZone` 定义在 `combat.h`（伤害概念），
   `hitbox` 只负责判断高度落在哪一段。
-- 爆头 25×5 = 125 → 一枪击杀（有甲无甲都一样）；重甲躯干 6 发 = 0.60 s（TTK 下限）。
+- 爆头 21×5 = 105 → 一枪击杀（有甲无甲都一样）；躯干 5 发 = 0.62 s、重甲 8 发 = 1.09 s（S75 长 TTK 定案）。
 - 伤害用整数运算；返回实际扣血。判据：`--test-health`（13 项，含爆头真伤与腿部走护甲）。
 
 ### 8.6 demo（sim/demo/*，docs/demo-format.md）
@@ -480,8 +481,10 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HA
 ### 8.7 hitbox 历史（sim/game/hitbox.*）
 
 - 每 tick 一条 HitboxSample（脚点 / 高 / 半径 / 蹲），64 帧环形；服务器与客户端都记。
-- 三段按高度比例：>0.82 头 ×5、>0.45 胸 ×1、其余腿 ×`movement.toml [damage] legshot_mult`
-  （默认 0.7，S60 从字面量挪进数据）；蹲下高度变，分档自动跟随。
+- 三段按高度比例，**阈值也在数据里**：`[damage] head_band = 0.88`、`chest_band = 0.45`；
+  头 ×5、胸 ×1、腿 ×0.7（`legshot_mult`）。蹲下高度变，分档自动跟随。
+  **设计规则（DESIGN-09，S75）**：`head_band` 必须高于 `eye_height_scale` 且留余量，
+  否则平射同身高对手必中头 —— 一枪 125，长 TTK 玩法不存在。
 - 回溯取相邻两帧按 frac 插值（v0.4 §9.2），不取整帧；没有下一帧就不外推。
 - 判据：--test-hitbox（25 项）；--test-net 顺带断言服务器每 tick 一条、newest == tick。
 
@@ -561,12 +564,12 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HA
 - 开火那一步：从 `eye_position` 沿 `view_forward(yaw, pitch)` 射出，用 `rewind_frame` 取回溯帧，
   `hitscan_penetrating` 拿 `ShotResult`，`hit_zone_at` 定部位，`damage_at_range` 做距离衰减，
   乘部位倍率与穿透系数，四舍五入成整数后交给 `apply_damage`。烟、后坐力、命中提示都不在这里。
-- 射速/换弹是**整数 tick**：`fire_interval_ticks` = round(60×64/rpm)（600 rpm → 6 tick），
+- 射速/换弹是**整数 tick**：`fire_interval_ticks` = round(60×64/rpm)（400 rpm → 10 tick），
   `reload_ticks` = round(秒×64)。弹匣/备弹/冷却/换弹剩余全在 `PlayerState`，进 state_hash 与
   Weapon 快照组（教训 16）。
 - 默认装备：`equip_weapon` 按 `slot 0` 发枪；服务器、客户端本地世界、headless、桥都在同一处调用。
 - 已知边界：服务器还没有测 RTT，回溯用 1 tick（DEBT-23）；半自动与自动的区分、开镜扩散都还没做。
-- 判据：`--test-damage`（smoke 第 22 项）：`[damage] body 4 rounds armour 10 head 125 wall hits 0 reload 30`。
+- 判据：`--test-damage`（smoke 第 22 项）：`[damage] body 4 rounds armour 9 head 105 wall hits 0 reload 30`。
 
 ### 8.13 表现层：曳光与敌方轮廓（godot/main.gd，S70）
 
@@ -586,7 +589,7 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HA
 - **ADS（S73）**：`ads_recoil_scale`（weapons.toml，0..1）乘在 `recoil_offset` 上；
   FOV 从 75 插值到 55 是纯表现（aim 已经在模拟里）。
 - 判据：`godot_check.ps1` 的 `== tracers ==`（按住扳机 1 s → `tracer events=14`）与
-  `== hitmarker ==`（房主真实开枪命中 → `hitmark serial=1 amount=25 target=1 zone=1`）。
+  `== hitmarker ==`（房主真实开枪命中 → `hitmark serial=1 amount=21 target=1 zone=1`）。
 
 ### 8.14 死亡与重生（sim/game/spawn.*、respawn.*，S71）
 

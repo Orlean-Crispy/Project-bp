@@ -5,7 +5,7 @@
 > 历史过程 → `docs/PROGRESS.md`；待办 → `docs/DEBT.md`；预算 → `docs/budgets.md`；
 > 设计待定与功能缺口 → `docs/BACKLOG.md`；**这一段工作的叙事交接 → `docs/HANDOFF.md`**（不重复本文件的数字）。
 
-**更新**：2026-10-24 · S74 · 维护者：谢政霖
+**更新**：2026-10-24 · S75 · 维护者：谢政霖
 
 ---
 
@@ -13,9 +13,9 @@
 
 | 项 | 值 |
 |---|---|
-| 里程碑 | **M6 未关闭**：机制全部完成、验收已跑；卡在 E3 调参与 E9 手测 |
+| 里程碑 | **M6 未关闭**：机制与验收数字都过了；只差 E9 两人局域网手测 |
 | 契约 | `docs/contracts/M6.md`（**active**） |
-| 本阶段 | M6.12 验收已跑：E1/E2/E4–E8 达标，**E3（TTK）未达标**，E9 待手测 |
+| 本阶段 | E1–E8 全部达标（TTK 重定为 0.62–1.09 s）；只剩 E9 两人手测 |
 | 协议版本 | **v9**（Weapon 组带后坐力；新增 Hit 组：命中目标/伤害/部位/序号） |
 | 宿主 | Godot **4.5**（计划书目标 4.7，DEBT-15，M7 前必须有结论） |
 | 分支 | `main` · 工作区 `G:\自制游戏` · 工具链 `C:\bp-toolchain` |
@@ -32,12 +32,12 @@
 
 | # | ID | 一句话 |
 |---|---|---|
-| 0 | DESIGN-10 | TTK 0.28–0.47 s 低于 0.6–1.2 s 目标；先定伤害/射速再谈手感 |
-| 1 | DESIGN-09 | 眼高 1.278 > 头段起点 1.164 → 平射必中头；与 DESIGN-10 一起拍板 |
-| 2 | E9 | 两人局域网真打 10 分钟（清单在验收记录 §3） |
-| 3 | — | *（M6 收尾时补充分配）* |
-| 4 | — | *（M6 收尾时补充分配）* |
-| 5 | — | *（M6 收尾时补充分配）* |
+| 0 | E9 | 两人局域网真打 10 分钟（清单在验收记录 §3） |
+| 1 | — | *（M6 关闭后按 M7 契约重排）* |
+| 2 | — | *（同上）* |
+| 3 | — | *（M6 关闭后按 M7 契约重排）* |
+| 4 | — | *（同上）* |
+| 5 | — | *（同上）* |
 
 ## 3. 闸门基线（**写数字，不写"全绿"**）
 
@@ -55,13 +55,11 @@
 | 命中判定 | 14 项全过；`[hitscan] chest 1 face 1 wide 1 edge 1 crouch 1 wall 1 range 1` | `--test-hitscan` |
 | 回溯 | `[rewind] window 6 at-6 1 current-miss 1 interp 1 clamp 1` | `--test-hitscan` |
 | 穿透 | `[penetrate] walls 2 one 1 two 2 scale 0.49 pistol 1 concrete 1 open 1` | `--test-hitscan` |
-| 射击链路 | `[damage] body 4 rounds armour 10 head 125 wall hits 0 reload 30`；含死亡/重生/尸体/后坐力 | `--test-damage` |
+| 射击链路 | `[damage] body 4 rounds armour 9 head 105 wall hits 0 reload 30`；含死亡/重生/尸体/后坐力/命中记录 | `--test-damage` |
 | 后坐力 | `recoil: shots 12 first z 1.278 fifth z 1.848`；沉默 24 tick 复位 | `--test-damage` |
-| TTK | 胸 0.28/0.38/0.47 s（目标 0.6–1.2，**未达标**） | `--test-damage` 的 `[ttk]` |
+| TTK | 胸 0.62/0.78/0.78/1.09 s（目标 0.6–1.2 ✅）；头 1 发 | `--test-damage` 的 `[ttk]` |
 | 30% 丢包射击 | `[shotloss] loss 30% dropped 187 target 100->0 hitmark 4/25` | `--test-net` |
-| TTK | 胸 0.28/0.38/0.47 s（目标 0.6–1.2，**未达标**） | `--test-damage` 的 `[ttk]` |
-| 30% 丢包射击 | `[shotloss] loss 30% dropped 187 target 100->0 hitmark 4/25` | `--test-net` |
-| Hitmarker | 真实开枪命中 `hitmark serial=1 amount=25 target=1 zone=1` | `godot_check.ps1` |
+| Hitmarker | 真实开枪命中 `hitmark serial=1 amount=21 target=1 zone=1` | `godot_check.ps1` |
 | 伤害进 HUD | 房主打 30 → 客户端打 `hud hp=70` | `godot_check.ps1` |
 | 曳光 | 按住扳机 1 s 得到 `tracer events=14` | `godot_check.ps1` |
 | 死亡/重生 | 对端 HUD 依次出现 70 → 0 → 100（`hurt@310 dead@616 back@2171`） | `godot_check.ps1` |

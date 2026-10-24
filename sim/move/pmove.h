@@ -101,9 +101,6 @@ struct PlayerState {
     PlayerVitals vitals;
 };
 
-// The camera sits at this fraction of the hull height; the bridge draws from it
-// and a shot leaves from it, so the two can never disagree about where "the eye" is.
-constexpr float kEyeHeightScale = 0.9f;
 
 // Direction the player looks in, from yaw (0 = +X) and pitch (+ = up). The single
 // definition of "forward" for shots and for the camera.

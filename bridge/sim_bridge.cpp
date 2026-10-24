@@ -469,7 +469,7 @@ private:
     float eye_height_for(bool crouched) const {
         // One source for "where the eye is" (pmove.h): shots start there too.
         const float height = crouched ? m_world.params.crouch_height : m_world.params.stand_height;
-        return height * sim::kEyeHeightScale;
+        return height * m_world.params.eye_height_scale;
     }
 
     // Called before every step: the tick that is about to be simulated becomes

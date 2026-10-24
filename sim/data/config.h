@@ -68,6 +68,12 @@ struct MovementParams {
     // Leg multiplier. It was a literal 0.7 in hitbox.cpp, which is exactly the
     // kind of feel value iron law I says must live in the data file.
     float legshot_mult = 0.7f;
+    // Eye height as a fraction of the hull (camera and shot origin), and the zone
+    // bands as fractions of the hull height. DESIGN-09: a level shot must land in
+    // the chest, so head_band stays above eye_height_scale.
+    float eye_height_scale = 0.82f;
+    float head_band = 0.88f;
+    float chest_band = 0.45f;
 
     // FNV-1a over every field in declaration order.
     uint64_t hash() const;
