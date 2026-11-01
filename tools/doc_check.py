@@ -24,6 +24,7 @@ Deliberately English-only output: Windows PowerShell 5.1 mangles CJK here.
 import argparse
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -303,6 +304,31 @@ SIZE_LIMITS = {
 }
 
 
+def check_assets(root: Path):
+    """The asset gate (docs/asset-pipeline.md) runs here so every smoke exercises it.
+
+    It is not a separate smoke gate on purpose: a gate over an empty assets/ folder
+    would be vacuously green, and this one already proves its rules bite through
+    tools/check_assets.py --selftest.
+    """
+    script = root / "tools" / "check_assets.py"
+    if not script.exists():
+        record(FAIL, "ASSET", "tools/check_assets.py is missing")
+        return
+    try:
+        proc = subprocess.run([sys.executable, str(script)], cwd=root,
+                              capture_output=True, text=True, timeout=120)
+    except (OSError, subprocess.SubprocessError) as exc:
+        record(FAIL, "ASSET", f"could not run the asset check: {exc}")
+        return
+    tail = (proc.stdout or "").strip().splitlines()
+    summary = tail[-1] if tail else "no output"
+    if proc.returncode != 0:
+        record(FAIL, "ASSET", summary)
+    else:
+        record(OK, "ASSET", summary)
+
+
 def check_sizes(root: Path):
     for rel, (limit, unit) in SIZE_LIMITS.items():
         p = root / rel
@@ -427,6 +453,7 @@ def main():
     check_debt(root)
     check_protocol(root)
     check_gates(root)
+    check_assets(root)
     check_sizes(root)
     check_state_quality(root)
 

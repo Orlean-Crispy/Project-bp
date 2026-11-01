@@ -1732,5 +1732,43 @@ ALL GREEN (23 gates + bench, no skips)
 
 第二遍没有发现**行为** bug——上一遍抓到的接收侧回绕（AUD-22）仍然是这两天唯一一个真 bug。
 留下的都是「没有人读」的代码，而这类东西只会越积越多。
+## S97 · 2026-11-01 · 资产管线：把「以后怎么建模」写下来
+
+### 1. 做了什么
+
+- **`docs/asset-pipeline.md`**：视觉不进判定（换模型不改 `geometry_hash`）、三类资产三条路、
+  预算（角色 15k / 地图 150k / 贴图 1024²-2048² / 材质 ≤3）、Blender 导出设置（米、+Y up、pivot 在脚底、
+  apply transforms）、素材来源与三个许可陷阱、以及「动画时长服从 toml，不反过来」。
+- **`tools/check_assets.py`**：扫 `assets/**/*.glb`，查台账行、许可（禁 NC/ND）、类别尺寸、
+  pivot 在 Y=0、节点 scale=1、面数上限。`--selftest` 用合成 GLB 证明 7 个用例各有结论。
+- **接进 `doc_check` 的 `ASSET` 检查**：不新增闸门编号（空 `assets/` 上的独立闸门是空绿），
+  但每次 smoke 都会跑到，且**真的会红**——往 `assets/` 丢一个未登记的 glb，doc_check 立刻退 1。
+
+### 2. 判据
+
+```
+python tools/check_assets.py --selftest
+  ok sk_char_good.glb      clean
+  ok sm_prop_nolicense.glb no row in docs/assets-licenses.md
+  ok wp_nc.glb             licence says NC, which iron law H forbids
+  ok sm_prop_cm.glb        size 140.000 m outside sm_prop_ range
+  ok sk_char_pivot.glb     lowest point is Y=0.900, pivot must sit on Y=0
+  ok sm_prop_scaled.glb    scale [2,2,2] (apply transforms before export)
+  ok sm_prop_big.glb       250000 triangles, over the 200000 hard cap
+asset selftest: 7 cases, 0 wrong
+
+-- 真实跑一次：塞入未登记 glb → doc_check [FAIL] ASSET，删掉 → [OK]
+```
+
+### 3. 为什么不用单独闸门
+
+`assets/` 现在是空的，一个独立闸门在空目录上永远绿——那就是教训 15 说的装饰。
+放进 `doc_check` 后至少满足两条：**每次都会跑**，且**第一条真实资产进来时它就会开始说话**。
+
+### 4. 现状
+
+- 地图：`.map` 管线已有；`.glb` 一条都还没有。
+- 角色/武器：M7.5 / M7.6。枪模来源的结论是：**M7.4 之前不买**，先用 CC0 占位；
+  M7.6 再买带 FP 手臂与换弹动画的包，永远不碰 CS 扒模与 NC/ND。
 - 登记表是手写的：新增字段要自己加一行。`--test-fields` 会打印 `sizeof(PlayerState)`（现 156），
   变了就提醒人去看 —— 但**它不会替你想**，这条只能靠 review。

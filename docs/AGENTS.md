@@ -157,7 +157,7 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 | 16 | hitbox 历史 | 64 tick 环形、帧间插值、三段 ×5/×1/×0.7（腿倍率来自 toml）、蹲下自动跟随 | --test-hitbox |
 | 17 | 事件通道 | 跳跃/落地事件带 tick、可复现、环形溢出丢最旧 | --test-events |
 | 18 | Godot 桥 | 扩展真的加载、HUD 打印 vertices>0 与默认端口、上一 tick 可读、按住扳机产出 `tracer events>0`、两进程重连回原槽且第二次被拒、暂停菜单 7 s 不掉线、房主 30+100 伤害后客户端 HUD 依次 70→0→100、房主真实开枪命中后打出 `hitmark serial=…` | tools/godot_check.ps1 |
-| 19 | 文档一致性 | 协议版本、闸门数、DEBT 守恒、路径、STATE 质量 0 fail；`--selftest` 能红 | python tools/doc_check.py |
+| 19 | 文档一致性 | 协议版本、闸门数、DEBT 守恒、路径、STATE 质量 0 fail、**资产台账与单位**（`ASSET`）；`--selftest` 能红 | python tools/doc_check.py |
 | 20 | 武器数据 | 两把枪加载 0 警告、缺键/拼错都报警、坏值被拒、改一个数哈希变、武器表不动 movement 哈希、BOM 可读 | --test-weapons |
 | 21 | 命中判定 | 正对躯干必中、偏一个盒宽必不中、0.40 中 / 0.41 不中、蹲下躲过、墙挡人、射程截断、自伤忽略、最近者胜；回溯 6 tick 仍命中当时位置、半 tick 插值、超界不外推 | --test-hitscan |
 | 22 | 射击链路 | 扣扳机 → 扣弹 → 命中 → 掉血；射速节奏、护甲多吃两发、爆头一枪、墙全挡、换弹填满 | --test-damage |
@@ -275,6 +275,7 @@ sim/data/        movement.toml、combat.toml、weapons.toml、keybinds.toml、ma
 bridge/          GDExtension 桥（唯一跨边界层）
 godot/           project.godot / main.tscn / main.gd / breakpoint.gdextension
 tools/           headless_sim（所有闸门）、move_metrics、net_loop（两进程联机）、run_net_demo（双实例）、build/smoke/build_bridge/run_demo/setup 脚本、blender/bp_export_map.py（Blender → .map）
+assets/          GLTF 资产（目前为空）；台账 docs/assets-licenses.md，闸门 tools/check_assets.py
 docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HANDOFF.md（叙事交接）、contracts/、decisions/（0003–0008；0008 = 唯一 game_step）、budgets.md、DEBT.md、BACKLOG.md、PROGRESS.md、AUDIT.md（索引）+ audits/、pitfalls/、keymap.md、demo-format.md、map-authoring.md（Blender → .map）、计划书_v0.3.md、IMPULSE_命名方案.md、archive/（S01–S59 的 HANDOFF、GAPS、8.3 专章）
 ```
 

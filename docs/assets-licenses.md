@@ -1,6 +1,8 @@
 # 素材许可登记
 
 > 铁律 H / K：任何外部素材进仓库**之前**在这里登记；CC BY-NC-ND 的资产不得进仓库、更不得进构建产物。
+> 管线、预算与建模规矩见 `docs/asset-pipeline.md`；`tools/check_assets.py` 会核对每个 `.glb`
+> 在本文件里有一行且不含 NC/ND，缺登记 = `doc_check` 的 `ASSET` 直接红。
 > GPL 源代码只允许"读事实"，实现必须自写（`docs/decisions/0007-licensing-clean-room.md`）。
 
 ## 1. 已入库素材

@@ -171,4 +171,5 @@ powershell -File tools\run_demo.ps1     # Godot demo
 | docs/assets-licenses.md | 素材许可台账 + 「只读参考」（读过哪些 GPL 源、取了哪条事实） |
 | docs/keymap.md / docs/demo-format.md | 键位 / demo 格式 |
 | docs/map-authoring.md | 地图制作：Blender → `.map` 的导出器、单位/凸体/朝向三条约定、材质与标志位 |
+| docs/asset-pipeline.md | 资产管线：视觉不进判定、预算、Blender 导出设置、素材来源与许可陷阱、`check_assets.py` |
 | docs/archive/ | 只读历史（HANDOFF、GAPS、8.3 专章）；**不再维护，别当现状读** |
