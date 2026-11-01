@@ -12,6 +12,10 @@
 # portable toolchain (~1 GB, machine-local)
 /.toolchain/
 
+# python bytecode (checks are scripts, not a package)
+__pycache__/
+*.pyc
+
 # editor / OS
 .vscode/
 *.user
