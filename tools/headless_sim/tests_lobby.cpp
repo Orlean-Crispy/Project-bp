@@ -217,25 +217,40 @@ int run_match_test() {
         }
         // Leaving this scope closes the stream without sending AssetReady.
     }
-    bool released = false;
-    for (int i = 0; i < 400 && !released; ++i) {
-        if (aborted.slot_of(d) < 0) {
-            released = true;
-        } else {
-            std::this_thread::sleep_for(std::chrono::milliseconds(5));
-        }
-    }
-    sim::MatchReply rd2;
-    const bool reclaim = released && sim::match_request("127.0.0.1", aborted.port(), d, nullptr, rd2) &&
-                         rd2.ok && rd2.status == sim::MatchStatus::Accepted && rd2.slot == 0;
+    // AUD-41: the seat is not cleared, it becomes a GHOST. Give the host a moment
+    // to notice the closed stream, then prove the three properties that matter:
+    // the id keeps its seat, a stranger takes the free one first, and the ghost is
+    // reclaimable once nothing else is free.
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    const bool ghost_kept = aborted.slot_of(d) == 0;
+
+    sim::ClientId f{};
+    f[0] = 0x06;
     sim::MatchReply re2;
     const bool second_slot =
         sim::match_request("127.0.0.1", aborted.port(), e, nullptr, re2) && re2.ok &&
         re2.status == sim::MatchStatus::Accepted && re2.slot == 1;
-    aborted.stop();
-    slots_cleared = aborted.slot_of(d) < 0 && aborted.slot_of(e) < 0;
-    release_ok = reserved && released && reclaim && second_slot;
+    sim::MatchReply rf2;
+    const bool ghost_reclaimed =
+        sim::match_request("127.0.0.1", aborted.port(), f, nullptr, rf2) && rf2.ok &&
+        rf2.status == sim::MatchStatus::Accepted && rf2.slot == 0 && aborted.slot_of(d) < 0;
 
+    // d never finished its handshake, so it holds no ticket. Under the AUD-40 rule
+    // a known id without a ticket is a takeover attempt, which is exactly right:
+    // the seat belongs to whoever can prove they own it.
+    sim::MatchReply rd2;
+    // After the eviction d owns nothing: it must not be handed a seat. BadTicket
+    // if it still looks known, RoomFull once its ghost has been taken - either is
+    // a refusal, and "Accepted" would be the bug.
+    const bool reclaim_refused = sim::match_request("127.0.0.1", aborted.port(), d, nullptr, rd2) &&
+                                 rd2.ok && rd2.status != sim::MatchStatus::Accepted;
+
+    aborted.stop();
+    slots_cleared = ghost_reclaimed && reclaim_refused;
+    release_ok = reserved && ghost_kept && second_slot && slots_cleared;
+
+    std::printf("  [ghost] reserved %d kept %d second %d reclaimed %d refused %d\n", reserved,
+                ghost_kept, second_slot, ghost_reclaimed, reclaim_refused);
     std::printf("  [match] accepted %d slot 0 ticket %d resume %d second %d tamper %d "
                 "takeover %d full %d events %d admit %d release %d slots %d\n",
                 accepted, resume, resume, second, tamper, takeover_refused, full,

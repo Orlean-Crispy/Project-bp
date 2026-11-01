@@ -74,13 +74,23 @@ public:
     // R4: a reservation is not an admission. A client that abandons the
     // handshake before MATCH_START must give its slot back, otherwise a few
     // aborted handshakes make the host answer RoomFull to an empty room.
+    //
+    // AUD-41: giving the slot back does not erase the id. The seat becomes a
+    // GHOST for kTicketTtlSeconds: the owner can resume into it (the ticket is
+    // still valid), and anyone else can take it - oldest ghost first - so a room
+    // never stays full because of a seat nobody is using.
     void release(const ClientId& id);
 
 private:
     void run();
     void serve(TcpStream& stream);
+    struct Slot {
+        ClientId id{};
+        uint32_t held_since = 0;  // 0 = occupied (or free when id is empty)
+    };
+
     int slot_of_locked(const ClientId& id) const;
-    int reserve_slot_locked(const ClientId& id);
+    int reserve_slot_locked(const ClientId& id, uint32_t now);
     void push(const MatchEvent& event);
 
     TicketIssuer m_issuer;
@@ -88,7 +98,7 @@ private:
     std::thread m_thread;
     mutable std::mutex m_mutex;
     std::deque<MatchEvent> m_events;
-    std::vector<ClientId> m_slots;
+    std::vector<Slot> m_slots;
     std::atomic<bool> m_stop{false};
     std::atomic<uint32_t> m_server_tick{0};
     std::atomic<int> m_handshakes{0};

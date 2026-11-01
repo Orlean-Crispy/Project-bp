@@ -1418,5 +1418,34 @@ ALL GREEN (23 gates + bench, no skips)
 
 - SIGPIPE 只改了发送侧；POSIX 上 UDP 第二绑定（AUD-42）仍未修 —— 那是端口独占，不是入口校验。
 - 下一个：AUD-41 会话生命周期（5 s 清理 vs 120 s 票据、hub 不清理、ACK 回绕）。
+## S87 · 2026-11-01 · AUD-41（座位半边）：离开不是消失，是变 ghost
+
+### 1. 做了什么
+
+- **`release` 不再抹掉 id**：座位变成 ghost（记 `held_since`）。票据 120 s 内，本人带票据 resume 直接回原位。
+- **新玩家优先占空位**；没有空位时，驱逐**最早离开**的 ghost。所以“房间满了但有人只是掉线”不会再让新人吃 RoomFull。
+- 活跃玩家的座位 `held_since == 0`，**永远不会被驱逐** —— 只有“人已经不在”的座位可抢。
+
+### 2. 判据
+
+```
+[ghost] reserved 1 kept 1 second 1 reclaimed 1 refused 1
+[match] accepted 1 slot 0 ticket 1 resume 1 second 1 tamper 1 takeover 1 full 1 … release 1 slots 1
+```
+
+五个子项各验一件事：随机 HELLO 拿到 0 号位 / 座位被保留成 ghost / 新 id 先拿空位 1 / 第三个 id 抢走 ghost 的 0 号位 / 被抢走后原 id 拿不回座位。
+
+### 3. 失败与修正
+
+- 老测试断言“release 之后 `slot_of(d) < 0`” —— **那正是要改的行为**。改成断言 ghost 语义：
+  座位还在、能被新人抢、被抢后原 id 拿不回。测试跟着设计走，不是反过来。
+- 原 id 被抢后再来，返回的是 `RoomFull` 不是 `BadTicket`（它已经不“known”了）。断言改成
+  “任何**非 Accepted** 的答复都算拒绝”，把两种合法拒绝都容纳进来。
+
+### 4. 边界 / 下一步
+
+- AUD-41 原列三项，本轮只做了座位这一项；hub endpoint 清理与可靠流 ACK 跨回绕**拆成 AUD-47**，
+  不混在同一个 commit 里假装做完。
+- 下一个：AUD-42（POSIX 上 UDP 端口不独占）。
 - 登记表是手写的：新增字段要自己加一行。`--test-fields` 会打印 `sizeof(PlayerState)`（现 156），
   变了就提醒人去看 —— 但**它不会替你想**，这条只能靠 review。

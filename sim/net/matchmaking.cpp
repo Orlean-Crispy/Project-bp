@@ -35,7 +35,7 @@ bool MatchHost::start(uint16_t port, uint8_t players, std::string map, uint32_t 
     m_reserved = reserved > m_players ? m_players : reserved;
     m_map = std::move(map);
     m_seed = seed;
-    m_slots.assign(m_players, ClientId{});
+    m_slots.assign(m_players, Slot{});
     if (!m_listener.listen(port, error)) return false;
     m_port = m_listener.local_port();
     m_stop.store(false);
@@ -50,7 +50,7 @@ void MatchHost::stop() {
     // R4: occupancy belongs to the running host. Once stopped, no slot is
     // reserved, so a stale question about occupancy cannot answer RoomFull.
     const std::lock_guard<std::mutex> lock(m_mutex);
-    m_slots.assign(m_slots.size(), ClientId{});
+    m_slots.assign(m_slots.size(), Slot{});
 }
 
 void MatchHost::run() {
@@ -63,8 +63,9 @@ void MatchHost::run() {
 }
 
 int MatchHost::slot_of_locked(const ClientId& id) const {
+    if (id == ClientId{}) return -1;
     for (std::size_t i = 0; i < m_slots.size(); ++i) {
-        if (m_slots[i] == id) return static_cast<int>(i);
+        if (m_slots[i].id == id) return static_cast<int>(i);
     }
     return -1;
 }
@@ -78,20 +79,49 @@ void MatchHost::release(const ClientId& id) {
     const std::lock_guard<std::mutex> lock(m_mutex);
     const int slot = slot_of_locked(id);
     if (slot < 0 || slot < static_cast<int>(m_reserved)) return;  // host-owned slots stay
-    m_slots[static_cast<std::size_t>(slot)] = ClientId{};
+    Slot& entry = m_slots[static_cast<std::size_t>(slot)];
+    // Keep the id: the seat is a ghost, not free. The owner can resume into it
+    // for as long as the ticket lives, and a stranger may take it - oldest
+    // ghost first - so an empty room never answers RoomFull (AUD-41).
+    entry.held_since = wall_seconds();
+    if (entry.held_since == 0) entry.held_since = 1;  // 0 means "occupied"
 }
 
-// A reconnect keeps its old slot; a fresh client takes the first free one.
-int MatchHost::reserve_slot_locked(const ClientId& id) {
+// A reconnect keeps its old slot; a fresh client takes the first free one, and
+// only if none is free, the oldest ghost (a seat whose owner is gone and whose
+// ticket may already be expired).
+int MatchHost::reserve_slot_locked(const ClientId& id, uint32_t now) {
     const int existing = slot_of_locked(id);
     if (existing >= 0) return existing;
+
     for (std::size_t i = m_reserved; i < m_slots.size(); ++i) {
-        if (m_slots[i] == ClientId{}) {
-            m_slots[i] = id;
+        if (m_slots[i].id == ClientId{}) {
+            m_slots[i].id = id;
+            m_slots[i].held_since = 0;
             return static_cast<int>(i);
         }
     }
-    return -1;
+
+    int oldest = -1;
+    uint32_t oldest_since = 0;
+    for (std::size_t i = m_reserved; i < m_slots.size(); ++i) {
+        const Slot& entry = m_slots[i];
+        if (entry.held_since == 0) continue;  // still occupied: never steal it
+        if (now >= entry.held_since + kTicketTtlSeconds) {
+            // Expired ghost: reclaim it before considering fresher ones.
+            oldest = static_cast<int>(i);
+            oldest_since = entry.held_since;
+            break;
+        }
+        if (oldest < 0 || entry.held_since < oldest_since) {
+            oldest = static_cast<int>(i);
+            oldest_since = entry.held_since;
+        }
+    }
+    if (oldest < 0) return -1;
+    m_slots[static_cast<std::size_t>(oldest)].id = id;
+    m_slots[static_cast<std::size_t>(oldest)].held_since = 0;
+    return oldest;
 }
 
 void MatchHost::push(const MatchEvent& event) {
@@ -176,7 +206,7 @@ void MatchHost::serve(TcpStream& stream) {
             // slot_of() call behind a socket write.
             const std::lock_guard<std::mutex> lock(m_mutex);
             known_id = slot_of_locked(hello.client_id) >= 0;
-            if (!known_id) slot = reserve_slot_locked(hello.client_id);
+            if (!known_id) slot = reserve_slot_locked(hello.client_id, now);
         }
         if (known_id) {
             send_reject(stream, MatchStatus::BadTicket, m_server_tick.load(), error);
