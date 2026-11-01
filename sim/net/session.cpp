@@ -588,11 +588,25 @@ void NetClient::step_local(EventQueue* events) {
 void NetClient::catch_up(uint32_t server_tick) {
     // Same slack a fresh join uses (kJoinSlack), so the two paths land on the
     // same axis instead of two nearly-equal ones.
-    m_clock.align(server_tick + kJoinSlack);
+    const uint32_t target = server_tick + kJoinSlack;
+    const uint32_t gap = target > m_local.tick ? target - m_local.tick : 0;
     // Commands queued for the ticks we are skipping are all Late on arrival.
     m_pending.clear();
-    advance_to_clock();
     ++m_catch_ups;
+
+    if (gap > kMaxCatchUpTicks) {
+        // AUD-43: replaying the whole gap is unbounded work. Re-anchor instead and
+        // let the snapshot that woke us up restore the state; the history and the
+        // hitbox ring describe positions nobody is at any more.
+        ++m_catch_up_skips;
+        m_history.clear();
+        m_hitbox.reset();
+        m_clock.align(target);
+        m_local.tick = m_clock.command_tick();
+        return;
+    }
+    m_clock.align(target);
+    advance_to_clock();
 }
 
 void NetClient::receive() {
@@ -617,7 +631,12 @@ void NetClient::receive() {
         }
     }
     std::vector<uint8_t> packet;
-    while (m_rx->recv(packet)) {
+    // AUD-43: bounded per call. Whatever is left stays in the transport queue for
+    // the next tick instead of turning one snapshot burst into a frame spike.
+    uint32_t budget = kMaxPacketsPerReceive;
+    while (budget > 0 && m_rx->recv(packet)) {
+        --budget;
+        if (budget == 0) ++m_budget_hits;
         PacketHeader header;
         const uint8_t* payload = nullptr;
         size_t size = 0;

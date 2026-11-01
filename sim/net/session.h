@@ -32,6 +32,12 @@ struct InputCmd {
 // 30 ms) + 2 ticks of lookahead, matching 7.0's "1-2 ticks ahead".
 constexpr uint32_t kInputLead = 4;
 
+// AUD-43: per-frame work limits. A frozen client can come back hundreds of ticks
+// behind, and a hostile peer can queue thousands of datagrams; either one used to
+// be able to eat the whole frame (and, on a listen server, everyone else's).
+constexpr uint32_t kMaxCatchUpTicks = 32;   // simulate at most this much per call
+constexpr uint32_t kMaxPacketsPerReceive = 64;  // leave the rest for the next tick
+
 class ServerClock {
 public:
     void align(uint32_t server_tick);
@@ -267,6 +273,10 @@ public:
     // AUD-20: how many times the local tick axis was jumped forward because it
     // had fallen behind the server's (a frame hitch longer than the input lead).
     int catch_ups() const { return m_catch_ups; }
+    // AUD-43: catch-ups that were too large to replay and re-anchored instead.
+    int catch_up_skips() const { return m_catch_up_skips; }
+    // How many receives hit the packet cap (the rest wait for the next tick).
+    int budget_hits() const { return m_budget_hits; }
     uint32_t max_behind() const { return m_behind_max; }
     float max_correction() const { return m_max_correction; }
     bool joined() const { return m_joined; }
@@ -397,6 +407,8 @@ private:
     bool m_skip_next = false;
     int m_clock_skips = 0;
     int m_catch_ups = 0;
+    int m_catch_up_skips = 0;
+    int m_budget_hits = 0;
     uint32_t m_behind_max = 0;
     int m_full_states = 0;
     uint32_t m_join_tick = 0;

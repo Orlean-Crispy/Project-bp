@@ -740,14 +740,19 @@ int run_catch_up_check(const std::string& data_path) {
     const bool moving = client.predicted().pos.x > 0.5f;
     const bool no_rejoin = client.full_states() == 1 && late_frozen >= 0;
 
-    std::printf("  [catchup] freeze %d behind %u catchups %d accepted %d->%d->%d late "
-                "%d->%d settled %d tick %u->%u moved %d\n",
-                kFreeze, client.max_behind(), client.catch_ups(), accepted_before, accepted_early,
-                accepted_late, late_early, late_late, settled ? 1 : 0, tick_before, client.tick(),
-                moving ? 1 : 0);
+    // AUD-43: a 300-tick freeze must not be replayed tick by tick. The budget is
+    // kMaxCatchUpTicks, so a gap this size has to take the re-anchor path.
+    const bool bounded = client.catch_up_skips() >= 1 &&
+                         client.catch_ups() - client.catch_up_skips() <= 1;
+    std::printf("  [catchup] freeze %d behind %u catchups %d skips %d bounded %d accepted "
+                "%d->%d->%d late %d->%d settled %d tick %u->%u moved %d\n",
+                kFreeze, client.max_behind(), client.catch_ups(), client.catch_up_skips(),
+                bounded ? 1 : 0, accepted_before, accepted_early, accepted_late, late_early,
+                late_late, settled ? 1 : 0, tick_before, client.tick(), moving ? 1 : 0);
     int failures = 0;
-    if (!caught || !behind || !advanced || !resumed || !settled || !moving || !no_rejoin) {
-        std::printf("FAIL: a client that fell behind never catches up (AUD-20)\n");
+    if (!caught || !behind || !advanced || !resumed || !settled || !moving || !no_rejoin ||
+        !bounded) {
+        std::printf("FAIL: a client that fell behind never catches up (AUD-20/AUD-43)\n");
         ++failures;
     }
     return failures;

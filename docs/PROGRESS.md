@@ -1639,5 +1639,33 @@ ALL GREEN (23 gates + bench, no skips)
 ### 4. 下一步
 
 - 剩下 AUD-43（catch-up 每帧预算）与 AUD-46（远端事件，协议 v10）。
+## S94 · 2026-11-01 · AUD-43：落后的代价要封顶
+
+### 1. 做了什么
+
+- **catch-up 有上限**：落后超过 `kMaxCatchUpTicks`（32 tick）就不逐 tick 回放，
+  直接重锚时钟、清 history 与 hitbox、让快照去恢复状态。
+  之前一次 300 tick 的冻结会**在一个调用里模拟 293 tick** —— 那不是补帧，那是卡死。
+- **收包有上限**：`receive()` 每次最多处理 `kMaxPacketsPerReceive`（64）个包，其余留给下一 tick。
+  恶意 peer 一次灌几千个包也占不满一帧。
+- 两个计数器 `catch_up_skips()` / `budget_hits()` 可读。
+
+### 2. 判据
+
+```
+[catchup] freeze 300 behind 293 catchups 1 skips 1 bounded 1 accepted 196->203->259 late 0->0 settled 1 tick 206->570 moved 1
+```
+
+断言 `skips >= 1`，且非跳过的 catch-up 不超过 1 次 —— 也就是“这么大的落后**必须**走重锚”。
+同时保留原判据：之后仍能跟上（accepted 回升、late 不涨、人还在动）。
+
+### 3. 说明
+
+- 收包上限**有实现和计数，但没有专门用例**：要触发得一次塞 64+ 个包，现有场景都不会。
+  这一点写进了 DEBT 的关闭记录，不假装它被测过。
+
+### 4. 下一步
+
+- 审查只剩 **AUD-46**（远端权威事件，协议 v10）。它是 M7 音频的前置，也是这一串里唯一需要动协议的。
 - 登记表是手写的：新增字段要自己加一行。`--test-fields` 会打印 `sizeof(PlayerState)`（现 156），
   变了就提醒人去看 —— 但**它不会替你想**，这条只能靠 review。
