@@ -32,6 +32,12 @@ private:
     };
     uint16_t m_window;
     uint16_t m_next_seq = 1;  // 0 means nothing acknowledged
+
+public:
+    // Test hook (AUD-47): reaches the wrap point without sending 65536 packets.
+    void debug_set_next_seq(uint16_t seq) { m_next_seq = seq; }
+
+private:
     std::vector<Entry> m_entries;
     uint32_t m_srtt = 0;
     uint32_t m_rttvar = 0;

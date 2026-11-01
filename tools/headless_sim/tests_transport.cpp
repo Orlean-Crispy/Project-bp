@@ -298,6 +298,33 @@ int run_port_exclusive_check() {
     return 0;
 }
 
+
+// AUD-47: a peer removed from the hub must not keep its inbox. Otherwise a
+// client that reconnects from the same address lands in the old peer, whose
+// queue nobody drains, and the first packets of the new session vanish.
+int run_hub_reuse_check() {
+    sim::UdpPeerHub hub;
+    std::string error;
+    if (!hub.open(0, error)) {
+        std::printf("FAIL: hub reuse: %s\n", error.c_str());
+        return 1;
+    }
+
+    // Compare counters, never freed pointers: the allocator may hand the same
+    // address back, which would make a dangling comparison look "fresh".
+    const bool added = hub.add_peer("127.0.0.1", 40000) != nullptr && hub.peer_count() == 1;
+    hub.remove_peer("127.0.0.1", 40000);
+    const bool removed = hub.peer_count() == 0;
+    const bool fresh = hub.add_peer("127.0.0.1", 40000) != nullptr && hub.peer_count() == 1;
+    std::printf("  [hubreuse] added %d removed %d readded %d\n", added ? 1 : 0,
+                removed ? 1 : 0, fresh ? 1 : 0);
+    if (!added || !removed || !fresh) {
+        std::printf("FAIL: removing a peer did not give the endpoint a clean slate\n");
+        return 1;
+    }
+    return 0;
+}
+
 int run_udp_session_check(const std::string& data_path) {
     const std::string map_path = "sim/data/maps/metrics_flat.map";
     std::string error;

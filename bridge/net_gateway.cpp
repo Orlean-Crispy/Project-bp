@@ -28,6 +28,7 @@ void NetGateway::abort_host() {
     // Drop the departure handler first: it captures this and talks to m_match,
     // both of which are about to go away.
     if (m_server) m_server->set_departure_handler(nullptr);
+    m_peers.clear();
     m_net_client.reset();
     m_frag.reset();
     m_hub.reset();
@@ -67,6 +68,14 @@ bool NetGateway::start_host(const std::string& map, const std::string& data, int
     // otherwise the second match on a two-slot room is refused with RoomFull.
     m_server->set_departure_handler([this](const sim::ClientId& id) {
         if (m_match) m_match->release(id);
+        // AUD-47: drop the hub endpoint too. Otherwise the next HELLO from the same
+        // source address lands in the old peer's inbox, which nobody drains.
+        for (auto it = m_peers.begin(); it != m_peers.end(); ++it) {
+            if (!(it->id == id)) continue;
+            if (m_hub) m_hub->remove_peer(it->host, it->port);
+            m_peers.erase(it);
+            break;
+        }
         std::printf("breakpoint: slot released for a departed client\n");
         std::fflush(stdout);
     });
@@ -207,6 +216,7 @@ void NetGateway::pump(const sim::MoveInput& input, sim::EventQueue* events) {
                 m_match->release(who);  // no player slot for an admitted client
                 continue;
             }
+            m_peers.push_back(HostPeer{who, peer_host, peer_port});
             std::printf("breakpoint: peer joined slot %d\n", slot);
             std::fflush(stdout);
         }

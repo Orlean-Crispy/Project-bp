@@ -57,6 +57,15 @@ private:
     sim::Admission m_admission;
     std::unique_ptr<sim::NetClient> m_net_client;
     std::unique_ptr<sim::UdpPeerHub> m_hub;
+    // AUD-47: the hub keys peers by endpoint, the server keys links by id. Keep
+    // the map so a departed client's peer can actually be removed - without it
+    // the hub entry (and its inbox) lived until the host shut down.
+    struct HostPeer {
+        sim::ClientId id{};
+        std::string host;
+        uint16_t port = 0;
+    };
+    std::vector<HostPeer> m_peers;
     std::unique_ptr<sim::UdpTransport> m_udp;
     // AUD-23: every real-link datagram goes through the fragmenter, so a large
     // snapshot is split here instead of at the IP layer. Declared after m_udp

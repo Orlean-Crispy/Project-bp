@@ -64,6 +64,10 @@ public:
     // one lost fragment costs the whole frame. Small packets pass through.
     Transport* add_peer(const std::string& host, uint16_t port);
     void remove_peer(const std::string& host, uint16_t port);
+    // AUD-47: how many endpoints the hub is currently holding. Used by the reuse
+    // gate; a count is honest where a freed pointer would only look different by
+    // accident.
+    std::size_t peer_count() const { return m_peers.size(); }
 
 private:
     struct Unknown {

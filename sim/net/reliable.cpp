@@ -63,9 +63,16 @@ void ReliableSender::on_ack(uint16_t ack, uint32_t bitmap, uint32_t now_ms) {
     if (ack == 0) return;  // nothing delivered yet
     for (size_t i = 0; i < m_entries.size();) {
         const Entry& e = m_entries[i];
-        const uint16_t delta = static_cast<uint16_t>(e.seq - ack);
-        bool acked = e.seq <= ack;
-        if (!acked && delta <= 32) acked = (bitmap & (1u << (delta - 1))) != 0;
+        // AUD-47: sequence numbers wrap. `e.seq <= ack` means "older than the
+        // ack plot", which is only true while nothing has wrapped: after 65535 a
+        // packet numbered 5 looked ancient next to ack 0xFFF0 and was dropped
+        // instead of being retransmitted. Compare serially.
+        const int16_t relative = static_cast<int16_t>(e.seq - ack);
+        bool acked = relative <= 0;
+        if (!acked) {
+            const uint16_t delta = static_cast<uint16_t>(relative);
+            acked = delta <= 32 && (bitmap & (1u << (delta - 1))) != 0;
+        }
         if (!acked) {
             ++i;
             continue;

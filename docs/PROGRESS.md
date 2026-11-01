@@ -1473,5 +1473,42 @@ ALL GREEN (23 gates + bench, no skips)
 
 - AUD-47：hub endpoint 清理 + 可靠流 ACK 跨 u16 回绕。
 - 之后 M7.0 的正确性硬化就只剩这一条，可以回到 M7 的内容（音频/地图）。
+## S89 · 2026-11-01 · AUD-47：M7.0 的最后一条
+
+### 1. 做了什么
+
+**① hub 真的会删 peer。** 网关现在记下 id → (host, port)，离场回调里 `remove_peer`。
+之前 `remove_peer` 有实现、没调用者，同一个源地址重进会落到旧 peer 的 inbox —— 那个队列没人排空。
+
+**② 可靠流的 ACK 改成序列号比较。**
+
+```cpp
+bool acked = e.seq <= ack;              // 回绕后：刚发的 0 号包 < 0xFFFF 的 ACK → 被当成老的
+bool acked = (int16_t)(e.seq - ack) <= 0;  // 现在：只有真的更旧才算被确认
+```
+
+### 2. 判据
+
+```
+[hubreuse] added 1 removed 1 readded 1
+[reliable] chunks 10 retrans 6 complete 1 same 1 corrupt 1 dead 0 wrap 1
+```
+
+`wrap` 的用例：把发送端停在 0xFFFF，发两个包（第二个回绕到 0x0000），只 ACK 0xFFFF，
+要求回绕的那个**仍然在途并被重传**。**变异验证**：把比较改回 `e.seq <= ack` → `wrap 0` → 红。
+
+### 3. 失败与修正
+
+- 第一版 hub 用例比较的是 `add_peer` 返回的**指针**，而 `remove_peer` 之后那个指针已经悬空，
+  分配器还可能把同一地址再给回来。改成数 `peer_count()`：**悬空指针的比较只能证明分配器的心情**。
+- 可靠流用例一开始把 `next_seq` 设成 0xFFFE，结果两个包是 0xFFFE/0xFFFF，**根本没回绕**；
+  断言“没 ACK 的仍在途”恒真。改成 0xFFFF 才真正跨过零点。
+  这和 S84 那次是同一个教训：**测试没红，先看测试有没有走到那条路上**。
+
+### 4. 结果
+
+**M7.0 正确性硬化完成**：AUD-45（闸门不言谎）、36（唯一 `game_step`）、37（重放不重复交付）、
+39（字段清单）、40（入口硬化）、41（座位变 ghost）、42（端口独占）、47（会话生命周期）全部关闭。
+下一站是 M7 的内容：M7.1 枪感旋钮 → M7.2 音频 → M7.3 脚步 → M7.4 地图。
 - 登记表是手写的：新增字段要自己加一行。`--test-fields` 会打印 `sizeof(PlayerState)`（现 156），
   变了就提醒人去看 —— 但**它不会替你想**，这条只能靠 review。

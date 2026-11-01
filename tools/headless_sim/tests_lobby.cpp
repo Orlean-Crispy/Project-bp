@@ -99,11 +99,35 @@ int run_reliable_test() {
     std::string corrupt_error;
     const bool rejected = !corrupt.add(bad.data(), bad.size(), corrupt_error);
 
+    // AUD-47: a sequence number that has wrapped must still be retransmitted when
+    // it is not acked. Park the sender one short of the wrap, send two chunks, ack
+    // only the pre-wrap one, and require the wrapped packet to still be alive (the
+    // old `seq <= ack` compare dropped it because 5 looks older than 0xFFFF).
+    bool wrap_ok = false;
+    {
+        sim::ReliableSender wrapping(4);  // the default window is 1; two sends need room
+        // First packet 0xFFFF, second wraps to 0x0000 - that second one is what
+        // an ack of 0xFFFF must not swallow.
+        wrapping.debug_set_next_seq(0xFFFF);
+        const std::vector<uint8_t> payload = {1, 2, 3, 4};
+        wrapping.send(payload, 0);
+        wrapping.send(payload, 0);
+        std::vector<std::vector<uint8_t>> packets;
+        // RTO starts at 250 ms, so the first poll has to be past it.
+        wrapping.poll(300, packets);
+        const std::size_t before = packets.size();
+        wrapping.on_ack(0xFFFF, 0u, 300);  // acks the pre-wrap packet only
+        std::vector<std::vector<uint8_t>> after;
+        wrapping.poll(800, after);
+        wrap_ok = before == 2 && after.size() == 1 && wrapping.in_flight() == 1;
+    }
     const bool same = assembler.assemble() == data;
-    std::printf("  [reliable] chunks %zu retrans %d complete %d same %d corrupt %d dead %d\n",
+    std::printf("  [reliable] chunks %zu retrans %d complete %d same %d corrupt %d dead %d "
+                "wrap %d\n",
                 chunks.size(), sender.retransmits(), complete ? 1 : 0, same ? 1 : 0,
-                rejected ? 1 : 0, sender.dead() ? 1 : 0);
-    if (!complete || !same || sender.retransmits() == 0 || !rejected || sender.dead()) {
+                rejected ? 1 : 0, sender.dead() ? 1 : 0, wrap_ok ? 1 : 0);
+    if (!complete || !same || sender.retransmits() == 0 || !rejected || sender.dead() ||
+        !wrap_ok) {
         std::printf("FAIL: A2 reliable stream test failed\n");
         return 1;
     }
