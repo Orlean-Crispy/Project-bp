@@ -1211,6 +1211,72 @@ PASS: 120 ticks identical on both runs      (--selftest --map build\blender_test
 
 - 用这个管道做 **40×40 两层 blockout**（M7.4）：先出“能走通、能对枪”的骨架，再谈细节。
 - 贴图/天空盒/烘焙光仍然没有——那是 M8 之后。
+## 2026-11-01 · 外部审查 → M7.0 收尾（S81–S97 全天总览）
+
+### 起点
+
+外部审查文件 913 行、覆盖 187 个文件，结论是 **3 条 P1 全部复现**，另有 10 条待处理。
+这一天从「复现那 3 条」开始，到「12 条 AUD 全关 + 两遍代码体检 + 资产管线落地」结束。
+19 个提交，全部带判据。
+
+### 时间线（每个提交一条判据）
+
+| 时间 | 提交 | 做了什么 | 判据 |
+|---|---|---|---|
+| 16:35 | `71bfa16` | 审查结论落盘；3 条 P1 修复（换弹顺序、NaN 命中、空历史幽灵） | `[damage] … reload 30`；NaN 三处守卫；`[shotloss] hitmark 5/21` |
+| 16:48 | `86b73b9` | AUD-45：smoke 把 SKIP 与「打印 FAIL 却退出 0」都算失败 | 故意跳过 Godot 闸门 → 退出 1 |
+| 16:54 | `e0e4be7` | AUD-36：唯一 `game_step`（移动→武器→hitbox），`update_weapon` 只剩一个调用者 | `--test-damage` 改走生产顺序后仍绿；smoke 22 项 |
+| 17:01 | `f4b892b` | AUD-37：回滚重放不再交付事件 | `[eventreplay] shots 30 … duplicates 0 rollbacks 6`；改回交付 → `duplicates 5` |
+| 17:55 | `e700779` | AUD-39（字段）：40 字段登记表 + `--test-fields` + `mutants.ps1` | `fields: 40 registered, 37 must hash, 3 must not`；三个 mutant 各自被抓 |
+| 18:14 | `416b52c` | AUD-40：MSG_NOSIGNAL、零长分片、无票据接管 | `[fragment] … zerolen 1`；`[match] … takeover 1` |
+| 18:29 | `9d59c7a` | AUD-41：座位变 ghost（120 s 内可恢复，空位优先，其次驱逐最旧 ghost） | `[ghost] reserved 1 kept 1 second 1 reclaimed 1 refused 1` |
+| 18:40 | `3c7dd8d` | AUD-42：POSIX 不再设 `SO_REUSEADDR` | `[portexclusive] … refused 1`（Windows 侧；Linux 待跑） |
+| 18:58 | `0b10fdc` | AUD-47：hub 删 peer + 可靠流 ACK 串行比较 | `[hubreuse] 1/1/1`；`[reliable] … wrap 1` |
+| 19:05 | `5652324` | 代码体检①：修 `ReliableReceiver` 回绕、删 `last_armor` | `recvwrap 1`；改回旧比较 → `0` |
+| 19:11 | `a118f73` | AUD-38：`JoinTracker` 终态机 + 旧 epoch FULL_STATE 被忽略 | `[joinstates] 1 1 1 1 1` |
+| 19:18 | `65126e7` | AUD-39（demo）：录放走 `game_step`，格式 v3 带 fire/pitch/hp | `combat demo: ammo 30 -> 23, mismatches 0` |
+| 19:22 | `1ce8b04` | AUD-44：`tick_vitals` 进 `game_step`、`max_health` 生效、NaN 进不来 | `regen armour 9 -> 12`；`a NaN value … never reaches the sim` |
+| 19:24 | `2973c55` | AUD-43：catch-up 超过 32 tick 改重锚；收包 ≤64/次 | `[catchup] … skips 1 bounded 1` |
+| 19:44 | `cb318cf` | AUD-46：协议 **v10**，快照包尾事件块 | `[remoteevents] shots 20 own 0 duplicates 0` |
+| 19:48 | `9be019e` | 代码体检②：删 4 处无人读的符号 | 未引用方法 0 |
+| 19:59 | `8ebe520` | 资产管线 + `check_assets.py` + `ASSET` 检查 | selftest 7 例；塞未登记 glb → doc_check 红 |
+| 19:59 | `0243d01` | 把误提交的 `__pycache__` 清出仓库 | `git status` 干净 |
+
+### 顺序是怎么定的（不是随手排的）
+
+1. **先 `game_step`，再谈事件**：顺序不唯一，事件去重和 vitals 都没有正确的挂载点。
+2. **字段表在 mutant 之前**：没有登记表，三个 mutant 只是碰运气；有了表，mutant 才证明闸门有牙。
+3. **入口硬化（40）在会话生命周期（41/47）之前**：先把「谁能进来」定死，再谈「座位留多久」。
+4. **代码体检插在两条审计之间**：第一遍抓到了接收侧回绕——同一类 bug 的第二个实例，说明修一个不等于修一类。
+5. **资产管线放到最后**：它不阻塞任何东西，但拖到真正建模那天才写就会返工。
+
+### 这一天我自己犯的错（都付了代价）
+
+| 错 | 表现 | 教训 |
+|---|---|---|
+| 在 `m_mutex` 里做 socket 写 | `--test-net` 挂了六分钟不结束 | 锁只管判断，I/O 在外面（S86） |
+| 把「mutant 编译不过」当成 SKIP | 两个 mutant 什么也没证明 | 不编译的 mutant 等于没测（S85） |
+| 命令被中断，仓库留在 mutant 状态 | 下一轮直接 STALE | 会改源码的工具必须能承受被杀（S85） |
+| 测试没走到回绕分支 | 前两版 `recvwrap` 都是假绿 | 测试没红，先看测试有没有走到那条路（S90） |
+| `m_phase = Failed` 之后再问它是不是 Joining | 两条路径都写 `no server` | 先取快照再改状态（S91） |
+| 比较悬空指针 | hor 用例结论只反映分配器心情 | 数计数器，别数指针（S89） |
+
+### 数字快照（收盘时）
+
+```
+smoke            23 项 + bench，ALL GREEN，无 SKIP
+协议             v9 → v10（事件块 145 B，满编 1098 B 仍不分片）
+demo 格式        v2 → v3（+pitch +fire/reload/ads +hp/armor）
+未解决债         41 → 32（关闭 22）
+新增闸门         --test-fields（第 23 项）；ASSET 并入 doc_check
+```
+
+### 仍然开着的（不粉饰）
+
+- 静态分析器、sanitizer、fuzz：一条都没上。
+- POSIX 分支（AUD-42 的端口独占、MSG_NOSIGNAL）本机无法实测，要 Linux 上跑一次 `--test-net`。
+- E9 手感判定仍为 ACCEPTED-DEFERRED，等音频接上再做。
+- 跨机 demo 比对仍缺第二台机器（DEBT-14）。
 ## S81 · 2026-11-01 · 外部审查：三条 P1 是真的，已修
 
 ### 1. 做了什么
@@ -1541,6 +1607,19 @@ M7.0 收了 9 条，还剩 AUD-38 / AUD-39(demo) / AUD-43 / AUD-44 / AUD-46（�
 - 闸门全绿，死代码清零，没有 TODO/FIXME 残留。
 - 结构上最该拆的是 `tests_net.cpp`（57 KB）、`sim/net/session.cpp`（33 KB）、`godot/main.gd`（31 KB）——
   写进审计文件，等动到那几块时顺手拆，不为拆而拆。
+### 5. 扫描是怎么做的（好让别人重跑）
+
+死代码不是靠眼睛：遍历 `sim/ bridge/ tools/ godot/` 下的 `.h`，抽出「缩进 4 空格 + 标识符 + `(`」
+形态的方法声明，统计它在全仓库的出现次数；**只出现一次**（就是声明本身）= 没人调用。
+
+它的边界要写清楚：
+
+- **抓不到**「声明 + 定义 + 零调用」这种两处出现的（比如 `waited_ms()`，S96 才删）——
+  阈值只能定在 1，定到 2 会淹在噪声里。这一步仍需人过一眼候选列表。
+- **抓不到**函数还在用但分支永远为假的那种死逻辑；那不是静态文本能看出来的。
+- **不理解**宏展开与模板实例化，只能按字面匹配。
+
+所以结论只能写「脚本扫过的范围内没有未引用方法」，不能写「没有死代码」。
 ## S91 · 2026-11-01 · AUD-38：连接有了终态机
 
 ### 1. 做了什么
