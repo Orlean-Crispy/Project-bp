@@ -934,6 +934,107 @@ int run_net_alloc_check(const std::string& data_path) {
 // E6: with 30% loss the shot must still land and the hitmarker must still arrive.
 // This is the one acceptance item that needs the whole stack: client command ->
 // server shot -> damage -> snapshot -> client's own hit record.
+
+// AUD-37: a rollback replays ticks, and the replay used to push their events a
+// second time. The invariant is per entity and type: two events in the same tick
+// from the same entity cannot both be real (cadence is >= 1 tick), so any
+// duplicate means a replay leaked.
+int run_event_replay_check(const std::string& data_path) {
+    const std::string map_path = "sim/data/maps/metrics_flat.map";
+    std::string error;
+    sim::NetServer server;
+    if (!server.init(map_path, data_path, 2, error)) {
+        std::printf("FAIL: event replay server init: %s\n", error.c_str());
+        return 1;
+    }
+    sim::NetConditions conditions;
+    conditions.loss = 0.3f;  // losses are what force the rollbacks
+    conditions.latency_ms = 20.0f;
+    sim::LoopbackTransport to_server(conditions, 71);
+    sim::LoopbackTransport to_client(conditions, 72);
+    server.add_client(&to_server, &to_client, 1);
+    server.world().players[0].active = true;
+
+    sim::NetClient client;
+    if (!client.init(&to_server, &to_client, 1, map_path, data_path, error)) {
+        std::printf("FAIL: event replay client init: %s\n", error.c_str());
+        return 1;
+    }
+
+    sim::EventQueue delivered;
+    auto tick_once = [&](const sim::MoveInput& in) {
+        client.send_input(in);
+        client.step_local(&delivered);
+        server.receive();
+        server.step();
+        server.send();
+        to_server.advance(0);
+        to_client.advance(0);
+        client.receive();
+    };
+
+    for (int i = 0; i < 120; ++i) tick_once(sim::MoveInput{});
+    if (!client.joined()) {
+        std::printf("FAIL: event replay client did not join\n");
+        return 1;
+    }
+
+    // Force a divergence the prediction has to correct: commands carry the last
+    // four inputs, so plain packet loss rarely loses one. Nudging the authority
+    // is the same event from the client's point of view.
+    server.world().players[1].pos.y += 0.5f;
+    for (int i = 0; i < 12; ++i) tick_once(sim::MoveInput{});
+
+    // The input also has to change over time, or a corrected tick replays into
+    // exactly what was already delivered and the duplicate is invisible.
+    sim::MoveInput firing;
+    firing.fire = true;
+    firing.forward = 1.0f;
+    for (int i = 0; i < 300; ++i) {
+        firing.yaw = 0.6f * std::sin(static_cast<float>(i) * 0.07f);
+        // Keep correcting while the trigger is down: a rollback that replays a
+        // shooting tick is exactly where a duplicate event would appear.
+        if (i % 60 == 30) server.world().players[1].pos.y += 0.4f;
+        tick_once(firing);
+    }
+
+    // Drain and look for the same (tick, entity, type) twice.
+    constexpr int kMaxSeen = 4096;
+    static uint32_t seen_keys[kMaxSeen];
+    int seen = 0;
+    int duplicates = 0;
+    int shots = 0;
+    sim::SimEvent event;
+    while (delivered.pop(event)) {
+        const uint32_t key = (event.tick * 2654435761u) ^
+                             (static_cast<uint32_t>(event.entity_id) << 8) ^
+                             static_cast<uint32_t>(event.type);
+        bool duplicate = false;
+        for (int i = 0; i < seen; ++i) {
+            if (seen_keys[i] == key) { duplicate = true; break; }
+        }
+        if (duplicate) ++duplicates;
+        else if (seen < kMaxSeen) seen_keys[seen++] = key;
+        if (event.type == sim::EventType::Shot) ++shots;
+    }
+    std::printf("  [eventreplay] shots %d unique %d duplicates %d rollbacks %d\n", shots, seen,
+                duplicates, client.rollbacks());
+    int failures = 0;
+    if (shots == 0) {
+        std::printf("FAIL: no shot events reached the presentation layer\n");
+        ++failures;
+    }
+    if (duplicates != 0) {
+        std::printf("FAIL: a rollback replay delivered %d duplicate events\n", duplicates);
+        ++failures;
+    }
+    if (client.rollbacks() == 0) {
+        std::printf("FAIL: no rollback happened, the check proved nothing\n");
+        ++failures;
+    }
+    return failures;
+}
+
 int run_shot_loss_check(const std::string& data_path) {
     const std::string map_path = "sim/data/maps/metrics_flat.map";
     std::string error;
@@ -1126,6 +1227,7 @@ int run_net_test(const Options& opt) {
     failures += run_timeout_test();
     failures += run_fire_flag_check(opt.data_path);
     failures += run_shot_loss_check(opt.data_path);
+    failures += run_event_replay_check(opt.data_path);
 
     // v0.4 5.2: duplicates, late and far commands never enter the queue twice.
     {

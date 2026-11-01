@@ -209,10 +209,10 @@ func _ready() -> void:
 	add_child(status_label)
 	_update_hud()
 	if hud_check:
-		print("hud hp=%d armor=%d impulse=%d/%d role=%s vertices=%d build=%s protocol=%d port=%d" % [
+		print("hud hp=%d armor=%d impulse=%d/%d role=%s vertices=%d build=%s protocol=%d port=%d events_dropped=%d" % [
 			sim.get_hp(), sim.get_armor(), sim.get_impulses(), sim.get_max_impulses(),
 			sim.get_role(), sim.get_vertices().size(),
-			sim.get_build_id(), sim.get_protocol_version(), net_port
+			sim.get_build_id(), sim.get_protocol_version(), net_port, sim.get_events_dropped()
 		])
 		get_tree().quit()
 	if force_paused:
@@ -244,6 +244,10 @@ func _update_hud() -> void:
 					print("breakpoint: server silent age=%d" % age)
 			else:
 				silent_printed = false
+	# AUD-37: an overflowing event ring is a real symptom (effects stop playing),
+	# so it belongs on the status line instead of in a log nobody reads.
+	if sim.get_events_dropped() > 0:
+		parts.append("EVENTS DROPPED %d" % sim.get_events_dropped())
 	status_label.text = "  ".join(parts)
 
 # M6: the sim takes one button bitmask instead of a positional bool per action.

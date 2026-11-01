@@ -1316,3 +1316,37 @@ ALL GREEN (22 gates + bench, no skips)
 
 - **demo 回放还没接** `game_step`：它需要自己的 hitbox 历史与战斗阶段，归 AUD-39。
 - 下一个：**AUD-37 事件合同**（回滚重复交付 / 远端事件 / overflow），它是 M7 音频的前置。
+## S84 · 2026-11-01 · AUD-37（回滚半边）：重放不再交付事件
+
+### 1. 做了什么
+
+- **回滚重放写进临时事件环**：`advance_weapon(input, sink)` 明确“交付”与“不交付”两种调用，
+  重放传 `&m_replay_events`，每 tick 清空。只有前进的那一 tick 进 `m_events`。
+  这一条不改协议、不改判定，纯粹是把“同一 tick 的事件只能说一次”写进结构。
+- **溢出可见**：`EventQueue::dropped()` 经桥暴露成 `get_events_dropped()`；`--hud-check` 的
+  行尾多一个 `events_dropped=N`，状态行在 >0 时显示 `EVENTS DROPPED n`。
+- **远端权威事件拆成 AUD-46**：别人开枪的声音/枪口要跨网络，那要进协议（v10），不在本轮混做。
+
+### 2. 判据
+
+新闸门 `[eventreplay]`：30% 丢包 + 每 60 tick 推一次权威位置，逼出 6 次回滚，然后检查
+**没有任何 (tick, entity, type) 重复**。
+
+```
+[eventreplay] shots 30 unique 30 duplicates 0 rollbacks 6
+```
+
+**变异验证**（把重放改回交付 `m_events`）：`duplicates 5` → 测试红。这条检查有牙。
+
+### 3. 失败与修正
+
+- 第一版测试**根本没有回滚**（`rollbacks 0`）：命令包每 tick 带最近 4 个输入，
+  30% 丢包几乎不会真的丢一条命令。改成直接推权威位置（从客户端看是同一件事）。
+- 第二版仍然 `duplicates 0`——因为回滚发生在**开火之前**的静默期，重放的都是空 tick。
+  改成在持续开火期间每 60 tick 推一次，重复才现形。
+  **测试没抓到时，先怀疑测试没到位，而不是代码没问题。**
+
+### 4. 边界 / 下一步
+
+- 仍然听不到别人开枪（AUD-46，要协议 v10）。
+- 下一个候选：AUD-39（权威字段清单 + 三个永久 mutant），它决定 hash/快照/demo 不再漏字段。

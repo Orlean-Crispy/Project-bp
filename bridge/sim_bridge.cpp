@@ -255,6 +255,10 @@ public:
         return w->players[static_cast<std::size_t>(slot)].vitals.health;
     }
 
+    // AUD-37: overflow must be visible, or an event ring that silently drops
+    // the oldest entries looks like "the effect just did not play".
+    int64_t get_events_dropped() const { return static_cast<int64_t>(m_events.dropped()); }
+
     Array drain_events() {
         Array out;
         sim::SimEvent event;
@@ -424,6 +428,7 @@ protected:
         ClassDB::bind_method(D_METHOD("get_action_bits"), &SimWorld::get_action_bits);
         ClassDB::bind_method(D_METHOD("step"), &SimWorld::step);
         ClassDB::bind_method(D_METHOD("drain_events"), &SimWorld::drain_events);
+        ClassDB::bind_method(D_METHOD("get_events_dropped"), &SimWorld::get_events_dropped);
         ClassDB::bind_method(D_METHOD("apply_test_damage", "slot", "amount"),
                              &SimWorld::apply_test_damage);
         ClassDB::bind_method(D_METHOD("get_player_hp", "slot"), &SimWorld::get_player_hp);

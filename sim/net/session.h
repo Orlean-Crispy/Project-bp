@@ -353,7 +353,10 @@ private:
     void apply_full_state(const Snapshot& snap);
     // Ammo and fire timers advance on the predicted world too, or every snapshot
     // would disagree with it and roll the client back for a reload tick.
-    void advance_weapon(const MoveInput& input);
+    // sink != nullptr means "deliver": rollback replay passes nullptr and writes
+    // into a scratch ring, because the first pass already delivered those ticks
+    // (AUD-37: a replay used to deliver every event a second time).
+    void advance_weapon(const MoveInput& input, EventQueue* sink);
     // Steps empty-input ticks until the local tick reaches the command tick,
     // recording each in the history and the hitbox ring. A join and a catch-up
     // must land on exactly the same axis, so they share this one loop.
@@ -368,6 +371,8 @@ private:
     // AUD-01: kept so a rollback replay of already-predicted ticks feeds the same
     // channel; the event tick lets the presentation layer drop repeats.
     EventQueue* m_events = nullptr;
+    // Rollback replay writes here instead of m_events (AUD-37).
+    EventQueue m_replay_events;
     World m_local;
     std::vector<HistoryEntry> m_history;
     MoveInput m_last_input;

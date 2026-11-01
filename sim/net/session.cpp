@@ -530,7 +530,7 @@ void NetClient::apply_full_state(const Snapshot& snap) {
 void NetClient::advance_to_clock() {
     while (m_local.tick < m_clock.command_tick()) {
         const MoveInput none;
-        advance_weapon(none);
+        advance_weapon(none, m_events);
         HistoryEntry entry;
         entry.tick = m_local.tick;
         entry.state = m_local.players[0];
@@ -573,7 +573,7 @@ void NetClient::step_local(EventQueue* events) {
     if (m_skip_cooldown > 0) --m_skip_cooldown;
     // Prediction uses exactly the input that was just sent, on the server's tick
     // axis; the clock advances with the world so the two never drift apart.
-    advance_weapon(m_last_input);  // AUD-36: this is the whole tick now
+    advance_weapon(m_last_input, m_events);  // AUD-36: this is the whole tick now
     m_clock.advance();
     HistoryEntry entry;
     entry.tick = m_local.tick;
@@ -718,17 +718,20 @@ void apply_presentation(const PlayerSnap& snap, PlayerState& player) {
 
 }  // namespace
 
-void NetClient::advance_weapon(const MoveInput& input) {
+void NetClient::advance_weapon(const MoveInput& input, EventQueue* sink) {
     if (m_local.players.empty()) return;
     // AUD-36: same entry the server uses. The client has no victim in its
     // predicted world, so the weapon step only keeps ammo and timers in step;
     // damage stays server-authoritative (v0.4 A4).
     GameStep step;
-    step.events = m_events;
+    step.events = sink;
     step.histories = &m_hitbox;
     step.history_count = 1;
     step.rewind = rewind_ticks(0.0f);
     game_step(m_local, &input, 1, kDt, step);
+    // The scratch ring exists so a replay cannot fill up and start dropping:
+    // nothing reads it, and it is emptied every tick.
+    if (sink != m_events) m_replay_events.clear();
 }
 
 void NetClient::apply_snapshot(const Snapshot& snap) {
@@ -780,7 +783,10 @@ void NetClient::apply_snapshot(const Snapshot& snap) {
     m_hitbox.record(m_local.players[0], m_local.params, snap.tick);
 
     for (size_t i = index + 1; i < m_history.size(); ++i) {
-        advance_weapon(m_history[i].input);
+        // AUD-37: a replay must not deliver. These ticks were already shown to
+        // the player on the first pass; delivering again is a double tracer and,
+        // once audio lands, a double gunshot.
+        advance_weapon(m_history[i].input, &m_replay_events);
         m_history[i].state = m_local.players[0];
         m_hitbox.record(m_local.players[0], m_local.params, m_local.tick);
     }
