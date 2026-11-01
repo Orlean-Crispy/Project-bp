@@ -98,7 +98,7 @@ PlayerSnap to_snap(const PlayerState& p) {
                                     (p.dash_was_down ? kFlagDashWasDown : 0) |
                                     (p.vault_was_down ? kFlagVaultWasDown : 0) |
                                     (p.firing ? kFlagFiring : 0) |
-                                    (p.reloading ? kFlagReloading : 0) |
+                                    (p.reload_held ? kFlagReloading : 0) |
                                     (p.ads ? kFlagAds : 0));
     s.impulses = static_cast<uint8_t>(p.impulses);
     s.state = static_cast<uint8_t>(p.state);
@@ -143,7 +143,7 @@ void from_snap(const PlayerSnap& s, PlayerState& p) {
     p.dash_was_down = (s.flags & kFlagDashWasDown) != 0;
     p.vault_was_down = (s.flags & kFlagVaultWasDown) != 0;
     p.firing = (s.flags & kFlagFiring) != 0;
-    p.reloading = (s.flags & kFlagReloading) != 0;
+    p.reload_held = (s.flags & kFlagReloading) != 0;
     p.ads = (s.flags & kFlagAds) != 0;
     p.recharge_progress = s.recharge;
     p.speed_coefficient = s.speed_coefficient;

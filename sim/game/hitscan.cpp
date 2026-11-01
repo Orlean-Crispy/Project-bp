@@ -91,9 +91,17 @@ ShotResult hitscan_penetrating(const CollisionWorld& world, const HitboxSample* 
                                const PenetrationParams& penetration, int ignore_entity) {
     ShotResult result;
     if (max_distance <= 0.0f) return result;
+    // Ordered comparisons do not reject NaN, so finiteness is checked explicitly:
+    // a NaN origin or direction used to fall through to a t = 0 hit.
+    if (!std::isfinite(origin.x) || !std::isfinite(origin.y) || !std::isfinite(origin.z) ||
+        !std::isfinite(direction.x) || !std::isfinite(direction.y) ||
+        !std::isfinite(direction.z) || !std::isfinite(max_distance) ||
+        !std::isfinite(penetration.damage_scale)) {
+        return result;
+    }
 
     const float dir_length = length(direction);
-    if (dir_length < 1e-6f) return result;
+    if (!(dir_length > 1e-6f)) return result;
     const Vec3 dir =
         Vec3(direction.x / dir_length, direction.y / dir_length, direction.z / dir_length);
     const int max_layers = penetration.layers > 0 ? penetration.layers : 0;

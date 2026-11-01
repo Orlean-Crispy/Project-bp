@@ -27,6 +27,13 @@ void update_weapon(PlayerState& shooter, int shooter_index, const MoveInput& inp
                    EventQueue* events) {
     // A dead player holds no trigger: no rounds, no reload, no timers.
     if (shooter.vitals.health <= 0) return;
+    // Non-finite aim is not a shot. A NaN pitch slips through every ordered
+    // comparison downstream (NaN < x is false), which used to produce real hits
+    // and real damage from a malformed command (S81 review, P1).
+    if (!std::isfinite(input.yaw) || !std::isfinite(input.pitch) ||
+        !std::isfinite(shooter.yaw)) {
+        return;
+    }
 
     // M6.10: the spray resets after enough silence, not on the next trigger pull.
     if (shooter.recoil_recovery > 0 && --shooter.recoil_recovery == 0) {
@@ -44,8 +51,9 @@ void update_weapon(PlayerState& shooter, int shooter_index, const MoveInput& inp
         }
         return;  // the magazine is out: no firing until it is back
     }
-    if (input.reload && !shooter.reloading && shooter.ammo < def.magazine &&
-        shooter.reserve > 0) {
+    // The press edge, not the held state: `reload_held` is already this tick's
+    // input by the time the weapon step runs, so testing it would never fire.
+    if (shooter.reload_edge && shooter.ammo < def.magazine && shooter.reserve > 0) {
         shooter.reload_left = reload_ticks(def);
         return;
     }
@@ -59,6 +67,14 @@ void update_weapon(PlayerState& shooter, int shooter_index, const MoveInput& inp
     HitboxSample frame[kMaxShotTargets];
     const int count = history_count < kMaxShotTargets ? history_count : kMaxShotTargets;
     rewind_frame(histories, count, tick, rewind, frame, count);
+
+    // A rewound frame says where a body was, not whether it still exists. A slot
+    // that was released, or a player who died after that tick, must not stop the
+    // bullet on its way to whoever is behind (S81 review).
+    for (int i = 0; i < count && i < static_cast<int>(world.players.size()); ++i) {
+        const PlayerState& current = world.players[static_cast<std::size_t>(i)];
+        frame[i].alive = frame[i].alive && current.active && current.vitals.health > 0;
+    }
 
     PenetrationParams penetration;
     penetration.layers = def.penetration_count;

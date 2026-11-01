@@ -20,6 +20,7 @@ sim::HitboxSample standing(float x, float y) {
     box.height = 1.42f;
     box.radius = 0.405f;
     box.crouched = false;
+    box.alive = true;  // the default is deliberately inert (fail closed)
     return box;
 }
 
@@ -47,6 +48,19 @@ int run_hitscan_test(const Options& opt) {
     sim::HitboxSample boxes[4];
     boxes[0] = standing(-3.0f, 5.0f);  // the shooter, ignored by its own shot
     boxes[1] = standing(3.0f, 5.0f);   // the target
+
+    // Fail closed: no boxes at all is a miss, not a hit at the origin. The
+    // default HitboxSample used to be alive=true at (0,0,0) (S81 review, P1).
+    const sim::ShotHit empty = sim::hitscan(world.collision, nullptr, 0, eye, right, range, 0);
+    check("an empty target list hits no player", empty.entity < 0);
+
+    // A NaN aim vector must not fall through the ordered comparisons to t = 0.
+    const sim::Vec3 nan_dir(std::nanf(""), 0.0f, 0.0f);
+    check("a NaN direction hits nothing",
+          !sim::hitscan(world.collision, boxes, 2, eye, nan_dir, range, 0).hit);
+    const sim::Vec3 nan_eye(std::nanf(""), 5.0f, 1.28f);
+    check("a NaN origin hits nothing",
+          !sim::hitscan(world.collision, boxes, 2, nan_eye, right, range, 0).hit);
 
     const sim::ShotHit chest =
         sim::hitscan(world.collision, boxes, 2, eye, right, range, 0);

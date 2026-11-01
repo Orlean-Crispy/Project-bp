@@ -1211,3 +1211,46 @@ PASS: 120 ticks identical on both runs      (--selftest --map build\blender_test
 
 - 用这个管道做 **40×40 两层 blockout**（M7.4）：先出“能走通、能对枪”的骨架，再谈细节。
 - 贴图/天空盒/烘焙光仍然没有——那是 M8 之后。
+## S81 · 2026-11-01 · 外部审查：三条 P1 是真的，已修
+
+### 1. 做了什么
+
+所有者拿来一份外部 AI 的逐文件审查（187 文件）。**先核实再动手**，三条 P1 全部复现：
+
+| 结论 | 实测 |
+|---|---|
+| 换弹在生产路径上永远不会开始 | 是真的：`World::step` 先把 `reloading` 覆写成本 tick 输入，武器步再要求 `!reloading` |
+| NaN 能造成命中与扣血 | 是真的：`dir_length < 1e-6` 对 NaN 恒为 false |
+| 空 hitbox 历史 = 原点活体 | 是真的：`HitboxSample{}` 默认 `alive=true, height=1.42` |
+
+修法（都带回归）：
+
+- `reloading` 拆成 **`reload_held`（按住，进快照）** 与 **`reload_edge`（按下沿，派生，不进哈希/快照）**；
+  武器步只用 edge。测试改成走 `World::step → update_weapon` 的真实顺序。
+- 非有限输入三层拒绝：`update_weapon` 校验原始 `input.yaw/pitch`，`hitscan_penetrating` 校验
+  origin/direction/max_distance/scale，并把 `< eps` 改成 `!(x > eps)`。
+- `HitboxSample` 默认 `alive=false`（失败即安全）；`record()` 加 `active`；`sample()` 的合并从 `&&` 改 `||`
+  （与注释一致：不要因为半帧死亡吞掉子弹）；`update_weapon` 再把回溯帧与当前权威 active/alive 求交。
+
+### 2. 判据
+
+`--test-damage` 新增 4 条（真实顺序换弹 3 条 + NaN 2 条），`--test-hitscan` 新增 3 条（空目标、NaN 方向、NaN 原点）；
+smoke 22 项 **ALL GREEN**。反例证明：`[shotloss]` 原先打的是空槽 0，修好后必须把槽位置为 active 才能打中——
+**测试夹具本身也在依赖那个 bug**。
+
+### 3. 为什么这次值得记下来
+
+我们一直说“22 项闸门全绿”，但**换弹那条绿是假的**：它测的是函数，不是生产顺序。
+审查给出的判断（“单元测试通过的路径与生产路径不一致”）被三条实锤证明。教训 18 已写进 docs/AGENTS。
+
+### 4. 采纳与拒绝
+
+- 采纳并排期：`game_step` 收拢（AUD-36）、事件合同（AUD-37）、连接状态机（AUD-38）、
+  字段清单 mutant（AUD-39）、网络硬化（AUD-40/41）、验收假绿（AUD-45）。
+- 不采纳其“现在上完整 CI/sanitizer 流水线”的范围；也不同意把 Linux 上的 `--test-net` 红当成 Windows 缺陷。
+  裁决写在 `docs/audits/2026-11-01_external-review.md`。
+
+### 5. 下一步
+
+**AUD-45 先做**：必需项 SKIP 不许算绿、Godot 子进程退出码要判断。闸门自己不可信时，
+后面所有“修好了”都没有意义。

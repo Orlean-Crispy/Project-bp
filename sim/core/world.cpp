@@ -25,8 +25,12 @@ void step_player(PlayerState& player, const MoveInput& input, const CollisionWor
     // must not turn "still holding fire" into "released" (same reason the parkour
     // edges ride in the flags), so the last input is mirrored here, once, for the
     // local step and the rollback replay alike.
+    // `reload_edge` must be computed from the value this tick is about to
+    // overwrite, or the weapon step cannot tell a press from a hold.
+    const bool reload_was_held = player.reload_held;
     player.firing = effective.fire;
-    player.reloading = effective.reload;
+    player.reload_held = effective.reload;
+    player.reload_edge = effective.reload && !reload_was_held;
     player.ads = effective.ads;
 
     if (events == nullptr) return;
@@ -88,7 +92,7 @@ uint64_t World::state_hash() const {
             .u32(p.dash_was_down ? 1u : 0u)
             .u32(p.vault_was_down ? 1u : 0u)
             .u32(p.firing ? 1u : 0u)
-            .u32(p.reloading ? 1u : 0u)
+            .u32(p.reload_held ? 1u : 0u)
             .u32(p.ads ? 1u : 0u)
             .u32(static_cast<uint32_t>(p.weapon_id))
             .u32(static_cast<uint32_t>(p.ammo))

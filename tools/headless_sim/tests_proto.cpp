@@ -60,7 +60,7 @@ int run_snapshot_check() {
     // M6.2: the trigger/reload/aim bits are held states, so they must survive the
     // wire like every other piece of state that steers the next tick.
     src.firing = true;
-    src.reloading = true;
+    src.reload_held = true;
     src.ads = true;
 
     sim::Snapshot full_snap;
@@ -79,7 +79,7 @@ int run_snapshot_check() {
                            round.vault_was_down == src.vault_was_down &&
                            round.impulses == src.impulses && round.state == src.state &&
                            round.state_ticks == src.state_ticks &&
-                           round.firing == src.firing && round.reloading == src.reloading &&
+                           round.firing == src.firing && round.reload_held == src.reload_held &&
                            round.ads == src.ads &&
                            near(round.speed_coefficient, src.speed_coefficient);
     failures += check(fields_ok, "a movement field no longer survives the wire");

@@ -13,7 +13,7 @@
 - **lead**：M6 / M7 / 顺手，只表示排期，不是状态。状态与排期分两列，是为了能统计。
 - **verify**：一条命令 + 期望输出。**没有 verify 的条目不许进 open**（想法去 BACKLOG）。
 
-**当前计数**：未解决 **33** 条（P1 2 / P2 22 / P3 9）；关闭记录 **8** 条；设计待定与功能缺口见 BACKLOG。
+**当前计数**：未解决 **43** 条（P1 6 / P2 27 / P3 9）；关闭记录 **8** 条；设计待定与功能缺口见 BACKLOG。
 改表就要改这个数字——`tools/doc_check.py` 会核对它和实际行数。
 
 ---
@@ -52,6 +52,16 @@
 | DEBT-06 | P2 | 桥每帧新建 `std::vector<PlayerSnap>` + Dictionary | sim_bridge.cpp get_remote_players | 复用成员 vector；测量每帧 0 分配 | open | M7 |
 | DEBT-07 | P2 | 只有 template_debug DLL 与 editor/debug 键；没有 release 导出路径 | breakpoint.gdextension | 决定"v0.1 只跑编辑器"，或补 release 构建 + 导出验证 | open | M7 |
 | DEBT-24 | P2 | 地图专用闸门在 `--map` 指向别的图时给出误导性 FAIL：`--test-wall` 走的根本不是那堵 0.1 m 墙（S79 用 Blender 导出的 40×40 房实测 `penetrations=100`） | tests_move.cpp 的 wall/step/parkour 用例 | 传了显式 `--map` 且不是该用例绑定的图时打印 `SKIP` 并返回 3 | open | M7 |
+| AUD-36 | P1 | 没有唯一的权威 `game_step`：`World::step`、`session`、`bridge`、demo 各自拼接阶段顺序，reload 假绿就是这么来的 | world.cpp / session.cpp:362-368 / sim_bridge.cpp | 服务器、solo、预测、回放都调用同一个 `game_step`；`update_weapon` 只剩一个调用点 | open | M7 |
+| AUD-37 | P1 | 表现事件没有合同：回滚重放重复交付 Shot/Jump/Land，远端权威事件（别人开枪）没有到 Godot 的路，overflow 计数不暴露 | sim_bridge.cpp drain_events / net_gateway.cpp | 强制回滚后曳光与音效严格一次；双端互射能听到对方；`dropped` 增量可在 UI 读到 | open | M7 |
+| AUD-38 | P1 | 连接没有终态机：join 失败原因不出桥、UDP 黑洞可永久等待、没有 Retry/Leave、旧 epoch 的 FULL_STATE 会回退新会话 | net_gateway.h:34-43 / main.gd:223-246 | Idle→Signalling→Waiting→Joined→Silent/Failed(reason) 可读；加入有 deadline；旧 epoch 被拒 | open | M7 |
+| AUD-39 | P1 | hash/snapshot/demo 没有权威字段清单驱动：armor_type/ticks_since_damage/regen_accumulator 不在 hash，demo 缺战斗阶段且 EOF 当正常完成 | world.cpp:69-107 / demo.cpp | 字段登记表 + 三个永久 mutant（删 hash ammo、删 Weapon 组、删 Hit 组）必红；demo 录放战斗一致 | open | M7 |
+| AUD-40 | P1 | 网络入口硬化未集中：POSIX send 无 MSG_NOSIGNAL（SIGPIPE 杀进程）、重复零长分片可错误完成、已占用 ClientId 无票据也能重入 | signaling.cpp:103 / fragment.cpp:69 / matchmaking.cpp:85 | 子进程 FIN/RST 不崩；重复零长分片仍 incomplete；同 id 无票据被拒 | open | M7 |
+| AUD-41 | P1 | 会话生命周期三处不一致：5 s UDP 清理会毁掉 120 s 恢复票据、hub endpoint 不清理、可靠 ACK 跨 u16 回绕会误删在途包 | session.cpp:336 / udp_peer_hub / reliable.cpp:67 | 4/6/10/119/120 s 真实链路矩阵；join→timeout→rejoin 无泄漏；70000 包跨回绕仍交付 | open | M7 |
+| AUD-42 | P2 | 游戏 UDP 端口在 POSIX 分支没有 Windows 那种独占保证（`SO_REUSEADDR` 下第二个 socket 可绑同端口，审查在 Linux 上实测 `--test-net` 变红） | udp_socket.cpp:78-88 | 三平台跑同一端口冲突用例；POSIX 上第二绑定必须失败 | open | M7 |
+| AUD-43 | P2 | catch-up 与收包没有每帧预算：一次长冻结可补大量 tick，恶意 peer 能挤占其他人的 tick 时间 | session.cpp catch_up / receive 循环 | 每帧工作量上限；超限用 full state 重锚；恶意+正常双 peer 公平性用例 | open | M7 |
+| AUD-44 | P2 | 配置与地图缺 finite/范围/跨字段校验；`spawn.cpp` 忽略 `combat.max_health`；`tick_vitals` 没有生产调用（再生规则实际未启用） | config.cpp:196-243 / map_parse.cpp:97 / spawn.cpp | 坏值 hard fail 带字段名；跨字段不变量（蹲高≤站高、band 顺序）；再生在 tick 里真的生效或被明确拒绝 | open | M7 |
+| AUD-45 | P1 | 验收会假绿：`smoke.ps1` 把必需 Godot 项的 SKIP 当通过、`godot_check` 采集了子进程退出码却不判断、没有 CI | smoke.ps1:99-121 / godot_check.ps1:50-104 | 必需项 SKIP 即失败；ExitCode!=0 立即失败；PR 自动跑 headless | open | M7 |
 | DEBT-08 | P3 | `godot/main.tscn` 的 uid 是 12 字符，其余 .uid 是 13 位 | main.tscn:1 | 打开工程无 invalid uid 警告，或重写 uid | open | 待核实 |
 
 ## 4. 工具 / 构建 / 可恢复性

@@ -179,24 +179,69 @@ int run_damage_test(const Options& opt) {
           world.players[1].vitals.health == 100 && wall_report.hits == 0 &&
               wall_report.shots > 0);
 
-    // --- reload ----------------------------------------------------------
+    // --- reload, through the REAL step order ------------------------------
+    // S81 review, P1: the old test called update_weapon() directly, so it never
+    // saw that World::step mirrors `reload_held` before the weapon step runs.
+    // In production the reload press was therefore永远 ignored. This block goes
+    // through World::step -> update_weapon exactly like session.cpp does.
     sim::PlayerState low = shooter;
     low.ammo = 1;
     reset(low, victim);
     tick = 10;
     report = sim::ShotReport{};
-    run(2, fire, &report);
+    const float dt = 1.0f / 64.0f;
+    auto step_real = [&](int ticks, const sim::MoveInput& input, sim::ShotReport* out) {
+        std::vector<sim::MoveInput> inputs{input, sim::MoveInput{}};
+        for (int i = 0; i < ticks; ++i, ++tick) {
+            world.step(inputs, dt, nullptr);
+            for (std::size_t p = 0; p < 2; ++p) {
+                sim::update_weapon(world.players[p], static_cast<int>(p), inputs[p], *rifle, world,
+                                   history, 2, tick, 1.0f, p == 0 ? out : nullptr);
+            }
+            history[0].record(world.players[0], world.params, tick + 1);
+            history[1].record(world.players[1], world.params, tick + 1);
+        }
+    };
+    step_real(1, fire, &report);
     check("the last round fires", report.shots == 1 && world.players[0].ammo == 0);
-    run(2, fire, &report);
+    step_real(2, fire, &report);
     check("an empty magazine cannot fire", report.shots == 1);
+
     sim::MoveInput press_reload;
     press_reload.reload = true;
-    run(130, press_reload, &report);
+    step_real(1, press_reload, &report);
+    check("a reload press starts on the real step order",
+          world.players[0].reload_left > 0);
+    const int left_after_press = world.players[0].reload_left;
+    step_real(2, press_reload, &report);
+    check("holding reload does not restart the timer",
+          world.players[0].reload_left > 0 &&
+              world.players[0].reload_left < left_after_press);
+
+    step_real(sim::reload_ticks(*rifle) + 4, press_reload, &report);
     const int reloaded_ammo = world.players[0].ammo;
     check("reload refills the magazine from the reserve",
           reloaded_ammo == rifle->magazine &&
               world.players[0].reserve == rifle->reserve_ammo - rifle->magazine);
 
+
+    // --- non-finite aim is not a shot (S81 review, P1) -------------------
+    reset(shooter, victim);
+    tick = 10;
+    sim::ShotReport nan_report;
+    sim::MoveInput nan_pitch = fire;
+    nan_pitch.pitch = std::nanf("");
+    step_real(4, nan_pitch, &nan_report);
+    check("a NaN pitch never fires or damages",
+          nan_report.shots == 0 && world.players[1].vitals.health == 100);
+
+    reset(shooter, victim);
+    tick = 10;
+    sim::MoveInput nan_yaw = fire;
+    nan_yaw.yaw = std::nanf("");
+    step_real(4, nan_yaw, &nan_report);
+    check("a NaN yaw never fires or damages",
+          nan_report.shots == 0 && world.players[1].vitals.health == 100);
 
     // --- death: no trigger, no cover, and a respawn after the timer ------
     reset(shooter, victim);

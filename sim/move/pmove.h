@@ -63,7 +63,11 @@ struct PlayerState {
     // snapshot), and gives the fire cadence the previous trigger state it needs
     // to tell a held trigger from a fresh press.
     bool firing = false;
-    bool reloading = false;
+    // Held states, replicated as snapshot flags. `reload_edge` is the press
+    // edge, derived in step_player from the previous held value; it is neither
+    // hashed nor sent, because it is a pure function of (input, previous held).
+    bool reload_held = false;
+    bool reload_edge = false;
     bool ads = false;
     // M6.7: what is held and what is left. Integer ticks and integer rounds: the
     // cadence is part of the simulation, so it must not depend on frame timing.

@@ -949,8 +949,12 @@ int run_shot_loss_check(const std::string& data_path) {
     conditions.latency_ms = 20.0f;
     sim::LoopbackTransport to_server(conditions, 900);
     sim::LoopbackTransport to_client(conditions, 901);
-    // The client takes slot 1; slot 0 is the idle target.
+    // The client takes slot 1; slot 0 is the idle target. Slot 0 has no client,
+    // so mark it active the way add_client() would: since S81 a reserved slot
+    // (nobody joined) is deliberately not hittable, and this test needs a body
+    // to shoot at.
     server.add_client(&to_server, &to_client, 1);
+    server.world().players[0].active = true;
 
     sim::NetClient client;
     if (!client.init(&to_server, &to_client, 1, map_path, data_path, error)) {
@@ -1067,7 +1071,7 @@ int run_fire_flag_check(const std::string& data_path) {
         if (i < kWarmup) continue;
         const sim::PlayerState& srv = server.world().players[0];
         ++held_total;
-        if (srv.firing && srv.reloading) ++held_seen;
+        if (srv.firing && srv.reload_held) ++held_seen;
         ++compared;
         if (client.predicted().firing == srv.firing) ++agree;
     }
@@ -1076,7 +1080,7 @@ int run_fire_flag_check(const std::string& data_path) {
         if (i < kWarmup) continue;
         const sim::PlayerState& srv = server.world().players[0];
         ++released_total;
-        if (!srv.firing && !srv.reloading) ++released_seen;
+        if (!srv.firing && !srv.reload_held) ++released_seen;
         ++compared;
         if (client.predicted().firing == srv.firing) ++agree;
     }

@@ -18,8 +18,10 @@ struct HitboxSample {
     float radius = 0.405f;
     bool crouched = false;
     // M6.9: a corpse is not cover. hitscan() skips dead samples, so a shot goes
-    // through the body to whoever is behind it.
-    bool alive = true;
+    // through the body to whoever is behind it. The default is false on purpose:
+    // an empty or default-constructed sample is inert, so a missing history can
+    // never become a ghost target at the origin (S81 review, P1).
+    bool alive = false;
     uint32_t tick = 0;
 };
 
