@@ -39,6 +39,9 @@ private:
     uint8_t m_received = 0;
     std::vector<uint8_t> m_buffer;
     std::vector<uint16_t> m_sizes;
+    // Presence is its own bitmap: `m_sizes[index] != 0` also means "a zero-length
+    // fragment arrived", which let duplicates count the same index twice (AUD-40).
+    std::vector<uint8_t> m_present;
     int m_dropped = 0;
     int m_fragments_sent = 0;
     int m_reassembled = 0;

@@ -1386,5 +1386,37 @@ ALL GREEN (23 gates + bench, no skips)
 ### 4. 边界 / 下一步
 
 - 只覆盖 `state_hash` 与快照；**demo 的字段清单与战斗阶段**仍在 AUD-39（新开的）里。
+
+## S86 · 2026-11-01 · AUD-40：网络入口三处硬化
+
+### 1. 做了什么
+
+| 问题 | 修法 |
+|---|---|
+| POSIX `send` 对已关闭对端会触发 SIGPIPE，默认动作是**杀进程** | `MSG_NOSIGNAL`（仅 POSIX；Windows 无此信号，所以一直没暴露） |
+| 重复零长分片能错误完成重组 | 独立的 `m_present` 位图 + 拒绝零长片 + 非末片必须整片 + 末片 ≤ 整片 |
+| 已占用 ClientId 无票据也能重入 | 已知 id 无票据 = 接管尝试，直接 `BadTicket`；**决策在锁内，发送在锁外** |
+
+### 2. 判据
+
+```
+[fragment] 3000B 1 small 1 lossy delivered 9 corrupted 0 zerolen 1
+[match] accepted 1 slot 0 ticket 1 resume 1 second 1 tamper 1 takeover 1 full 1 …
+```
+
+**变异验证**：把 `m_present` 换回 `m_sizes` 并去掉零长/整片两道守卫 → `zerolen 0`、测试红。
+（只去掉其中一道时测试仍绿：三道守卫互相兜底，这是有意的纵深，但也说明单独一道不是唯一防线。）
+
+### 3. 失败与修正
+
+- 第一次改完 `--test-net` **挂了 6 分钟没结束**：`send_reject` 在 `m_mutex` 里做 socket 写，
+  对端不读就让 accept 线程卡住，而 sim 线程的 `slot_of()` 要拿同一把锁。改成锁内只做判断。
+  这类问题只会表现为“偶尔很慢”，不查就永远查不到。
+- 零长分片的测试补了完整 5 B 头（marker/id/index/total），否则它连“同一次重组”都算不上。
+
+### 4. 边界 / 下一步
+
+- SIGPIPE 只改了发送侧；POSIX 上 UDP 第二绑定（AUD-42）仍未修 —— 那是端口独占，不是入口校验。
+- 下一个：AUD-41 会话生命周期（5 s 清理 vs 120 s 票据、hub 不清理、ACK 回绕）。
 - 登记表是手写的：新增字段要自己加一行。`--test-fields` 会打印 `sizeof(PlayerState)`（现 156），
   变了就提醒人去看 —— 但**它不会替你想**，这条只能靠 review。

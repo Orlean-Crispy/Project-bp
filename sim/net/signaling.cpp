@@ -100,11 +100,20 @@ bool make_address(const std::string& host, uint16_t port, sockaddr_in& out) {
     return inet_pton(AF_INET, host.c_str(), &out.sin_addr) == 1;
 }
 
+#ifndef _WIN32
+// Writing to a socket whose peer has closed raises SIGPIPE, whose default action
+// is to kill the process. Windows has no SIGPIPE, so this only ever bit POSIX
+// builds (AUD-40). MSG_NOSIGNAL turns it into an ordinary EPIPE error instead.
+constexpr int kSendFlags = MSG_NOSIGNAL;
+#else
+constexpr int kSendFlags = 0;
+#endif
+
 bool send_all(Socket s, const uint8_t* data, size_t size, std::string& error) {
     size_t sent = 0;
     while (sent < size) {
         const int rc = ::send(s, reinterpret_cast<const char*>(data + sent),
-                              static_cast<int>(size - sent), 0);
+                              static_cast<int>(size - sent), kSendFlags);
         if (rc <= 0) {
             const int e = last_error();
             error = timed_out(e) ? "send timeout" : "send failed";

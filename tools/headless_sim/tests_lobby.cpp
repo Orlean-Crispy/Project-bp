@@ -145,6 +145,13 @@ int run_match_test() {
     const bool tamper = sim::match_request("127.0.0.1", port, a, &tampered, rc) && rc.ok &&
                         rc.status == sim::MatchStatus::BadTicket;
 
+    // AUD-40: knowing someone's ClientId must not be enough to take their slot.
+    // A fresh HELLO with A's id and no ticket is a takeover attempt, not a join.
+    sim::MatchReply takeover;
+    const bool takeover_refused = sim::match_request("127.0.0.1", port, a, nullptr, takeover) &&
+                                  takeover.ok &&
+                                  takeover.status == sim::MatchStatus::BadTicket;
+
     // A second identity takes slot 1; a third is turned away.
     sim::MatchReply rd;
     const bool second = sim::match_request("127.0.0.1", port, b, nullptr, rd) && rd.ok &&
@@ -229,13 +236,14 @@ int run_match_test() {
     slots_cleared = aborted.slot_of(d) < 0 && aborted.slot_of(e) < 0;
     release_ok = reserved && released && reclaim && second_slot;
 
-    std::printf("  [match] accepted %d slot 0 ticket %d resume %d second %d tamper %d full %d "
-                "events %d admit %d release %d slots %d\n",
-                accepted, resume, resume, second, tamper, full,
+    std::printf("  [match] accepted %d slot 0 ticket %d resume %d second %d tamper %d "
+                "takeover %d full %d events %d admit %d release %d slots %d\n",
+                accepted, resume, resume, second, tamper, takeover_refused, full,
                 event_accepted && event_resumed && event_full ? 1 : 0, admit_ok ? 1 : 0,
                 release_ok ? 1 : 0, slots_cleared ? 1 : 0);
-    if (!accepted || !resume || !tamper || !second || !full || !event_accepted ||
-        !event_resumed || !event_full || !admit_ok || !release_ok || !slots_cleared) {
+    if (!accepted || !resume || !tamper || !takeover_refused || !second || !full ||
+        !event_accepted || !event_resumed || !event_full || !admit_ok || !release_ok ||
+        !slots_cleared) {
         std::printf("FAIL: A1/A5 matchmaking failed: %s\n", error.c_str());
         return 1;
     }

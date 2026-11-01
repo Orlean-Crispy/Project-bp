@@ -13,7 +13,7 @@
 - **lead**：M6 / M7 / 顺手，只表示排期，不是状态。状态与排期分两列，是为了能统计。
 - **verify**：一条命令 + 期望输出。**没有 verify 的条目不许进 open**（想法去 BACKLOG）。
 
-**当前计数**：未解决 **41** 条（P1 4 / P2 27 / P3 9）；关闭记录 **12** 条；设计待定与功能缺口见 BACKLOG。
+**当前计数**：未解决 **40** 条（P1 3 / P2 27 / P3 9）；关闭记录 **13** 条；设计待定与功能缺口见 BACKLOG。
 改表就要改这个数字——`tools/doc_check.py` 会核对它和实际行数。
 
 ---
@@ -55,7 +55,6 @@
 | AUD-46 | P1 | **远端权威事件**：别人的开枪/脚步还到不了 Godot（本地预测只产生自己的事件），要跨网络就得进协议 | sim/net/session.cpp 只送快照 | 协议 v10 带事件块；双端互射能听到并看到对方的枪口；30% 丢包 60 s 不重复也不丢关键事件 | open | M7 |
 | AUD-38 | P1 | 连接没有终态机：join 失败原因不出桥、UDP 黑洞可永久等待、没有 Retry/Leave、旧 epoch 的 FULL_STATE 会回退新会话 | net_gateway.h:34-43 / main.gd:223-246 | Idle→Signalling→Waiting→Joined→Silent/Failed(reason) 可读；加入有 deadline；旧 epoch 被拒 | open | M7 |
 | AUD-39 | P1 | demo 缺战斗阶段且 EOF 当正常完成：录放不执行武器/伤害/重生，截断被当正常结束（hash/快照的字段清单部分已在 S85 关闭） | demo.cpp / tests_demo.cpp | demo 走 `game_step` 并录战斗；截断的 demo 被拒绝而不是"正常完成" | open | M7 |
-| AUD-40 | P1 | 网络入口硬化未集中：POSIX send 无 MSG_NOSIGNAL（SIGPIPE 杀进程）、重复零长分片可错误完成、已占用 ClientId 无票据也能重入 | signaling.cpp:103 / fragment.cpp:69 / matchmaking.cpp:85 | 子进程 FIN/RST 不崩；重复零长分片仍 incomplete；同 id 无票据被拒 | open | M7 |
 | AUD-41 | P1 | 会话生命周期三处不一致：5 s UDP 清理会毁掉 120 s 恢复票据、hub endpoint 不清理、可靠 ACK 跨 u16 回绕会误删在途包 | session.cpp:336 / udp_peer_hub / reliable.cpp:67 | 4/6/10/119/120 s 真实链路矩阵；join→timeout→rejoin 无泄漏；70000 包跨回绕仍交付 | open | M7 |
 | AUD-42 | P2 | 游戏 UDP 端口在 POSIX 分支没有 Windows 那种独占保证（`SO_REUSEADDR` 下第二个 socket 可绑同端口，审查在 Linux 上实测 `--test-net` 变红） | udp_socket.cpp:78-88 | 三平台跑同一端口冲突用例；POSIX 上第二绑定必须失败 | open | M7 |
 | AUD-43 | P2 | catch-up 与收包没有每帧预算：一次长冻结可补大量 tick，恶意 peer 能挤占其他人的 tick 时间 | session.cpp catch_up / receive 循环 | 每帧工作量上限；超限用 full state 重锚；恶意+正常双 peer 公平性用例 | open | M7 |
@@ -95,6 +94,7 @@
 | 2026-10-23 | AUD-26 | UDP 源地址校验：`connect_peer` 规范化地址，`recv` 不匹配即丢并计数 | `[udpsrc] rejected 1 injection-drop 1 legit-after 1` |
 | 2026-10-23 | AUD-27 | 槽位释放：`NetServer::remove_client` 上报 client_id，网关 `MatchHost::release` | `[slots] first 1 full 1 reported 1 freed 1 cycles 3/1 anonymous 1` |
 | 2026-10-23 | DEBT-17 | GAPS.md 归档到 docs/archive/，主目录不再有会误导的过期文档 | `docs/archive/GAPS.md` 存在；doc_check 路径检查 0 失败 |
+| 2026-11-01 | AUD-40 | 网络入口三处硬化：POSIX `send` 加 `MSG_NOSIGNAL`（对端关闭不再杀进程）；分片用独立 `m_present` 位图 + 拒绝零长 + 非末片必须整片；已占用 `ClientId` 无票据一律 `BadTicket`（ID 在网上可见，知道 ID 不等于能接管槽位），拒绝在锁外发送以免阻塞 sim 线程 | `[fragment] … zerolen 1`；`[match] … takeover 1`；关掉两处分片守卫后 `zerolen 0` 且测试红 |
 | 2026-11-01 | AUD-39 | 权威字段清单：`sim/core/fields.{h,cpp}` 登记 40 个字段（37 必须哈希、3 必须不哈希），新闸门 `--test-fields` 逐个变异；补齐 `armor_type`/`ticks_since_damage`/`regen_accumulator` 进 `state_hash`；`tools/mutants.ps1` 用三个真 mutant 证明闸门有牙（改回交付/删组会红）。demo 半边留给新 AUD-39 | `--test-fields`：`fields: 40 registered, 37 must hash, 3 must not`；`mutants.ps1` 三个 `ok:` |
 | 2026-11-01 | AUD-37 | 事件合同（回滚半边）：**回滚重放不再交付事件**——重放写进 `m_replay_events` 临时环，只有前进的那一 tick 交付；`EventQueue::dropped()` 经桥暴露成 `get_events_dropped()`，HUD 在溢出时显示 `EVENTS DROPPED n`。远端权威事件拆成 AUD-46 | `--test-net` 的 `[eventreplay] shots 30 unique 30 duplicates 0 rollbacks 6`；把重放改回交付会变成 `duplicates 5` |
 | 2026-11-01 | AUD-36 | 唯一 `game_step`：movement → weapon → hitbox 写进一个函数（ADR 0008），服务器/客户端预测/solo 三处调用点全部改走它，`update_weapon` 在生产代码里只剩一个调用者；客户端重复记 hitbox 删掉 | `--test-damage` 用 `game_step` 跑换弹 3 条 + NaN 2 条仍全绿；`--test-net` 的 `[shotloss]` 与 `--selftest` 不变 |

@@ -14,6 +14,7 @@ void FragmentedTransport::abandon() {
     m_received = 0;
     m_buffer.clear();
     m_sizes.clear();
+    m_present.clear();
 }
 
 void FragmentedTransport::send(const std::vector<uint8_t>& packet) {
@@ -72,15 +73,27 @@ bool FragmentedTransport::recv(std::vector<uint8_t>& out) {
             m_total = total;
             m_buffer.assign(static_cast<std::size_t>(total) * kPayloadBytes, 0);
             m_sizes.assign(total, 0);
+            m_present.assign(total, 0);
         }
         if (total != m_total) continue;  // inconsistent frame, wait for the next id
-        if (m_sizes[index] != 0) continue;  // duplicate fragment
+        if (m_present[index] != 0) continue;  // duplicate fragment
 
         const std::size_t chunk = packet.size() - kHeaderBytes;
+        // A fragment with no payload can never be part of a real message: the
+        // sender only splits packets above kPayloadBytes. Rejecting it also keeps
+        // a zero length from masquerading as "not seen yet".
+        if (chunk == 0) continue;
+        const bool is_last = static_cast<int>(index) + 1 == static_cast<int>(total);
+        // Every fragment except the last must be exactly full, or the offsets stop
+        // lining up and the reassembled message is silently wrong.
+        if (!is_last && chunk != kPayloadBytes) continue;
+        if (is_last && chunk > kPayloadBytes) continue;
+
         const std::size_t offset = static_cast<std::size_t>(index) * kPayloadBytes;
         if (offset + chunk > m_buffer.size()) continue;
         std::copy(packet.begin() + 5, packet.end(), m_buffer.begin() + static_cast<long>(offset));
         m_sizes[index] = static_cast<uint16_t>(chunk);
+        m_present[index] = 1;
         ++m_received;
 
         if (m_received == m_total) {
@@ -93,6 +106,7 @@ bool FragmentedTransport::recv(std::vector<uint8_t>& out) {
             m_received = 0;
             m_buffer.clear();
             m_sizes.clear();
+            m_present.clear();
             return true;
         }
     }

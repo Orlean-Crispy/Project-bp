@@ -166,9 +166,23 @@ void MatchHost::serve(TcpStream& stream) {
         resumed = true;
         ticket = hello.ticket;
     } else {
+        bool known_id = false;
         {
+            // AUD-40: a known id without a ticket is a takeover attempt, not a
+            // join. ClientIds are visible on the wire, so "I know the id" must
+            // never be enough to take over someone's slot - only a valid resume
+            // ticket is. The decision is made under the lock, but the reply is
+            // sent outside it: this thread must never block the sim thread's
+            // slot_of() call behind a socket write.
             const std::lock_guard<std::mutex> lock(m_mutex);
-            slot = reserve_slot_locked(hello.client_id);
+            known_id = slot_of_locked(hello.client_id) >= 0;
+            if (!known_id) slot = reserve_slot_locked(hello.client_id);
+        }
+        if (known_id) {
+            send_reject(stream, MatchStatus::BadTicket, m_server_tick.load(), error);
+            event.status = MatchStatus::BadTicket;
+            push(event);
+            return;
         }
         if (slot < 0) {
             send_reject(stream, MatchStatus::RoomFull, m_server_tick.load(), error);

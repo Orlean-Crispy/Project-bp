@@ -239,8 +239,30 @@ int run_fragment_check() {
         }
     }
 
-    std::printf("  [fragment] 3000B %d small %d lossy delivered %d corrupted %d\n", big_ok,
-                small_ok, delivered, corrupted);
+    // AUD-40: two identical zero-length fragments for the same index used to
+    // count twice (the size field doubled as the seen flag), so a frame could
+    // "complete" out of nothing. Feed only empty fragments and demand silence.
+    bool zero_length_ok = true;
+    {
+        sim::NetConditions clean2;
+        sim::LoopbackTransport raw(clean2, 31);
+        sim::FragmentedTransport rx(raw);
+        // id 1, index 0, total 2, no payload - twice.
+        const uint8_t frame[5] = {0xF0, 0x01, 0x00, 0x00, 0x02};
+        std::vector<uint8_t> empty_frame(frame, frame + 5);
+        raw.send(empty_frame);
+        raw.send(empty_frame);
+        for (int k = 0; k < 4; ++k) raw.advance(0);
+        std::vector<uint8_t> out;
+        while (rx.recv(out)) zero_length_ok = false;  // any delivery is a failure
+    }
+
+    std::printf("  [fragment] 3000B %d small %d lossy delivered %d corrupted %d zerolen %d\n",
+                big_ok, small_ok, delivered, corrupted, zero_length_ok ? 1 : 0);
+    if (!zero_length_ok) {
+        std::printf("FAIL: a frame of zero-length fragments was reassembled\n");
+        ++failures;
+    }
     // At 30% loss some payloads must still arrive intact; without a lower bound a
     // receiver that never reassembles anything also reported corrupted == 0.
     // 20 payloads at 30% loss: a few are completely lost, so require a real
