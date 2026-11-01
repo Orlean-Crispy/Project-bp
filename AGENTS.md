@@ -140,7 +140,7 @@ v0.1 定义：**两个人、局域网、1 张 40×40 图、对枪 10 分钟不�
 
 ~~~powershell
 powershell -File tools\build.ps1        # 全量构建（-Werror）
-powershell -File tools\smoke.ps1        # 22 项闸门 + bench；SKIP 与“打印 FAIL 但退出 0”都算失败
+powershell -File tools\smoke.ps1        # 23 项闸门 + bench；SKIP 与“打印 FAIL 但退出 0”都算失败
 powershell -File tools\build_bridge.ps1 # GDExtension DLL（与 CMake 同一套标志）
 powershell -File tools\godot_check.ps1  # 只跑桥：--hud-check + 两进程重连（3 = SKIP）
 powershell -File tools\run_demo.ps1     # Godot demo

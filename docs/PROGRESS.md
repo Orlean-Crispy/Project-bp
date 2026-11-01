@@ -1350,3 +1350,41 @@ ALL GREEN (22 gates + bench, no skips)
 
 - 仍然听不到别人开枪（AUD-46，要协议 v10）。
 - 下一个候选：AUD-39（权威字段清单 + 三个永久 mutant），它决定 hash/快照/demo 不再漏字段。
+## S85 · 2026-11-01 · AUD-39（字段清单）：谁进哈希由一张表说，不由记忆说
+
+### 1. 做了什么
+
+- **`sim/core/fields.{h,cpp}`**：40 个玩家字段登记成一张表，每个字段带一个变异函数和一个
+  `hashed` 标记。不是文档，是新闸门 `--test-fields` 的输入：逐个变异，**该变哈希的必须变，
+  不该变的必须不变**。
+- **补齐三个漏网的**：`armor_type`、`ticks_since_damage`、`regen_accumulator` 进了 `state_hash`。
+  它们决定护甲怎么吸收、下一点护甲何时回 —— 之前回滚可以恢复出一个“哈希相同但未来不同”的玩家。
+- **`tools/mutants.ps1`**：三个真 mutant（从 hash 删 ammo、让 Weapon 组永不进 delta、让 Hit 组永不进 delta），
+  每个都重建、跑对应闸门、**必须变红**才算通过，跑完自动还原并重建。
+
+### 2. 判据
+
+```
+fields: 40 registered, 37 must hash, 3 must not
+ok: hash-ammo caught by --test-fields
+ok: snapshot-weapon caught by --test-snapshot
+ok: snapshot-hit caught by --test-snapshot
+ALL GREEN (23 gates + bench, no skips)
+```
+
+### 3. 失败与修正（这一节比代码重要）
+
+- **前两个 snapshot mutant 直接“不编译”**，而我的脚本把不编译当成 SKIP 继续 —— 
+  一个没编译的 mutant 什么也没证明。改成 FAIL，并把 mutant 换成能编译的形式（`if (false && …)`）。
+- 换成能编译的之后，两个 mutant **活下来了**：`--test-snapshot` 只测全量快照，
+  Weapon/Hit 组在 delta 里丢没丢它看不见。补了一条 change-only delta 用例
+  （`[wire] change-only delta 32 B ammo 9 recoil 3 hit 4/21`），mutant 才开始被抓。
+- **中途 abort 把仓库留成了 mutant 状态**（`if (false && !same_weapon…)` 还在文件里），
+  下一轮直接 STALE。脚本现在写盘前先存 `.orig`，启动时自动恢复遗留 mutant —— 
+  会改源码的工具必须能承受自己被杀死。
+
+### 4. 边界 / 下一步
+
+- 只覆盖 `state_hash` 与快照；**demo 的字段清单与战斗阶段**仍在 AUD-39（新开的）里。
+- 登记表是手写的：新增字段要自己加一行。`--test-fields` 会打印 `sizeof(PlayerState)`（现 156），
+  变了就提醒人去看 —— 但**它不会替你想**，这条只能靠 review。

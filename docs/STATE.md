@@ -5,7 +5,7 @@
 > 历史过程 → `docs/PROGRESS.md`；待办 → `docs/DEBT.md`；预算 → `docs/budgets.md`；
 > 设计待定与功能缺口 → `docs/BACKLOG.md`；**这一段工作的叙事交接 → `docs/HANDOFF.md`**（不重复本文件的数字）。
 
-**更新**：2026-11-01 · S84 · 维护者：谢政霖
+**更新**：2026-11-01 · S85 · 维护者：谢政霖
 
 ---
 
@@ -15,7 +15,7 @@
 |---|---|
 | 里程碑 | **M7 进行中**，但先做 **M7.0 正确性硬化**（外部审查 S81：三条 P1 已修，其余进 AUD-36…45） |
 | 契约 | `docs/contracts/M7.md`（**active**，S78 签）· M6 已 `closed` |
-| 本阶段 | 3 条 P1 + **AUD-45/36/37 关闭**（闸门不言谎、唯一 `game_step`、重放不重复交付）；下一个 AUD-39 |
+| 本阶段 | 3 条 P1 + **AUD-45/36/37/39（字段半边）关闭**；下一个 AUD-40（网络入口硬化） |
 | 协议版本 | **v9**（Weapon 组带后坐力；新增 Hit 组：命中目标/伤害/部位/序号） |
 | 宿主 | Godot **4.5**（计划书目标 4.7，DEBT-15，M7 前必须有结论） |
 | 分支 | `main` · 工作区 `G:\自制游戏` · 工具链 `C:\bp-toolchain` |
@@ -32,8 +32,8 @@
 
 | # | ID | 一句话 |
 |---|---|---|
-| 0 | AUD-39 | 权威字段清单 + 三个永久 mutant（hash/快照/demo），防字段静默漏掉 |
-| 1 | AUD-46 | 远端权威事件（别人开枪的声音/火光），需要协议 v10 |
+| 0 | AUD-40 | 网络入口硬化：POSIX SIGPIPE、重复零长分片、无票据重 ID |
+| 1 | AUD-41 | 会话生命周期：5 s 清理 vs 120 s 票据、hub 不清理、ACK 回绕 |
 | 2 | AUD-39 | 权威字段清单 + 三个永久 mutant（hash/快照/demo） |
 | 3 | AUD-39 | 权威字段清单 + 三个永久 mutant（hash/快照/demo） |
 | 4 | M7.4 | **40×40 可玩地图**（FEAT-04），Blender 管道已通 |
@@ -43,7 +43,7 @@
 
 | 闸门 | 基线 | 采集命令 |
 |---|---|---|
-| smoke | 22 项，全过；SKIP 与“打印 FAIL 但退出 0”都算失败 | `tools\smoke.ps1` |
+| smoke | 23 项，全过；SKIP 与“打印 FAIL 但退出 0”都算失败 | `tools\smoke.ps1` |
 | 单 tick p99 / max | 2.40 / 6.00 µs（10 玩家） | `headless_sim.exe --bench 1000 --players 10` |
 | 分配 | 0 allocs/tick | 同上，输出 `allocs 0.00 / tick` |
 | 30% 丢包回滚 | 51 / 2000 tick | `--test-net` |

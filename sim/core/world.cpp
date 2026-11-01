@@ -117,6 +117,13 @@ uint64_t World::state_hash() const {
         // one and not the other is a false divergence or a silent one).
         h.u32(static_cast<uint32_t>(p.vitals.health))
             .u32(static_cast<uint32_t>(p.vitals.armor));
+        // S85 (AUD-39): the armour type decides how damage is absorbed, and the
+        // two regen counters decide the next point of armour. All three were
+        // authoritative and all three were outside the hash, so a rollback could
+        // restore a player whose future differed while the hash said "same".
+        h.u32(static_cast<uint32_t>(p.vitals.armor_type))
+            .u32(static_cast<uint32_t>(p.vitals.ticks_since_damage))
+            .u32(static_cast<uint32_t>(p.vitals.regen_accumulator));
     }
     return h.value();
 }

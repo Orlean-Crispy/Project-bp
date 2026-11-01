@@ -136,6 +136,51 @@ int run_snapshot_check() {
 
     // 4. Delta economy: an unchanged snapshot must cost one mask per player and
     //    nothing else. This is what keeps the reserved Weapon group free.
+
+    // 5. Every group must survive a DELTA, not just a full snapshot (AUD-39).
+    // A group whose same_*() check is broken stops being sent at all, and the
+    // wire tests above would still pass: they all changed position or hp.
+    {
+        sim::Snapshot weapon_before;
+        weapon_before.tick = 500;
+        weapon_before.players.resize(1);
+        sim::PlayerSnap p0;
+        p0.pos = sim::Vec3(1.0f, 2.0f, 3.0f);
+        p0.flags = 0x7FF;
+        p0.ammo = 10;
+        p0.reserve = 30;
+        p0.recoil_index = 0;
+        p0.hit_serial = 0;
+        weapon_before.players[0] = p0;
+
+        sim::Snapshot weapon_after = weapon_before;
+        weapon_after.tick = 501;
+        weapon_after.players[0].ammo = 9;
+        weapon_after.players[0].reserve = 21;
+        weapon_after.players[0].recoil_index = 3;
+        weapon_after.players[0].hit_serial = 4;
+        weapon_after.players[0].hit_amount = 21;
+        weapon_after.players[0].hit_target = 1;
+
+        const std::vector<uint8_t> group_delta =
+            sim::encode_snapshot(weapon_after, &weapon_before);
+        sim::Snapshot group_decoded;
+        const bool group_ok = sim::decode_snapshot(group_delta.data(), group_delta.size(),
+                                                   &weapon_before, group_decoded) &&
+                              group_decoded.players.size() == 1 &&
+                              group_decoded.players[0].ammo == 9 &&
+                              group_decoded.players[0].reserve == 21 &&
+                              group_decoded.players[0].recoil_index == 3 &&
+                              group_decoded.players[0].hit_serial == 4 &&
+                              group_decoded.players[0].hit_amount == 21 &&
+                              group_decoded.players[0].hit_target == 1;
+        std::printf("  [wire] change-only delta %zu B ammo %d recoil %d hit %d/%u\n",
+                    group_delta.size(), group_decoded.players[0].ammo,
+                    group_decoded.players[0].recoil_index, group_decoded.players[0].hit_serial,
+                    static_cast<unsigned>(group_decoded.players[0].hit_amount));
+        failures += check(group_ok, "a delta that only changes weapon/hit state is lost");
+    }
+
     const std::vector<uint8_t> idle = sim::encode_snapshot(before, &before);
     const std::size_t idle_expected = kHeaderBytes + 2;  // one u16 mask per player
     std::printf("  [wire] idle delta %zu B (expected %zu)\n", idle.size(), idle_expected);

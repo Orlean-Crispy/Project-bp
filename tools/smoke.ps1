@@ -45,6 +45,9 @@ try {
         @{ name = 'demo replay'; args = @('--test-demo') },
         @{ name = 'hitbox history'; args = @('--test-hitbox') },
         @{ name = 'event channel'; args = @('--test-events') },
+        # AUD-39: every authoritative field must move state_hash, and the fields
+        # that are derived or presentation-only must not.
+        @{ name = 'authoritative fields'; args = @('--test-fields') },
         # The headless gates cannot see the bridge: if the DLL fails to load,
         # every Godot check is meaningless and nothing else here notices.
         @{ name = 'godot bridge'; action = 'godot' },

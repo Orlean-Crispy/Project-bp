@@ -46,6 +46,7 @@ unsigned long long allocation_count();
 #include "tests_weapons.h"
 #include "tests_hitscan.h"
 #include "tests_shoot.h"
+#include "tests_fields.h"
 
 namespace {
 
@@ -118,6 +119,7 @@ void usage() {
         "  --test-weapons    weapons.toml loads, hashes independently, rejects bad values\n"
         "  --test-hitscan    one ray vs player hulls and world geometry (E1)\n"
         "  --test-damage     trigger -> round -> hit -> health, cadence and reload\n"
+        "  --test-fields     every authoritative field moves state_hash; excluded ones do not\n"
         "  --test-hitbox     verify the 64-tick hitbox history and the 3-zone multipliers\n"
         "  --test-events     event channel: jump/land emission, determinism, ring overflow\n"
         "  --test-snapshot   protocol wire: 16-bit mask/flags, vitals, delta economy, MTU\n"
@@ -235,6 +237,8 @@ int main(int argc, char** argv) {
             opt.test_hitscan = true;
         } else if (arg == "--test-damage") {
             opt.test_damage = true;
+        } else if (arg == "--test-fields") {
+            opt.test_fields = true;
         } else if (arg == "--test-hitbox") {
             opt.test_hitbox = true;
         } else if (arg == "--test-events") {
@@ -286,6 +290,7 @@ int main(int argc, char** argv) {
     if (opt.test_weapons) return run_weapon_test(opt);
     if (opt.test_hitscan) return run_hitscan_test(opt);
     if (opt.test_damage) return run_damage_test(opt);
+    if (opt.test_fields) return run_fields_test(opt);
     if (opt.test_net) return run_net_test(opt);
     if (opt.test_jump) return run_jump_test(opt);
     if (opt.test_soak) return run_soak_test(opt);

@@ -34,7 +34,7 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 
 ### 0.3 现在能跑什么
 
-- `headless_sim` 与 Godot 桥检查合计 **22 项闸门** + bench（数量与数字见 STATE §3，清单见 §3）
+- `headless_sim` 与 Godot 桥检查合计 **23 项闸门** + bench（数量与数字见 STATE §3，清单见 §3）
 - Godot demo：`demo.bat` 或 `powershell -File tools/run_demo.ps1`，可走跑跳滑铲墙跑爬墙翻越
 - 手感数值可改 sim/data/movement.toml 后重跑，不用改代码
 
@@ -135,7 +135,7 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 
 ---
 
-## 3. 判据清单（tools/smoke.ps1 串起 22 项闸门 + bench）
+## 3. 判据清单（tools/smoke.ps1 串起 23 项闸门 + bench）
 
 | # | 判据 | 阈值 | 命令 |
 |---|---|---|---|
@@ -161,6 +161,7 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 | 20 | 武器数据 | 两把枪加载 0 警告、缺键/拼错都报警、坏值被拒、改一个数哈希变、武器表不动 movement 哈希、BOM 可读 | --test-weapons |
 | 21 | 命中判定 | 正对躯干必中、偏一个盒宽必不中、0.40 中 / 0.41 不中、蹲下躲过、墙挡人、射程截断、自伤忽略、最近者胜；回溯 6 tick 仍命中当时位置、半 tick 插值、超界不外推 | --test-hitscan |
 | 22 | 射击链路 | 扣扳机 → 扣弹 → 命中 → 掉血；射速节奏、护甲多吃两发、爆头一枪、墙全挡、换弹填满 | --test-damage |
+| 23 | 权威字段 | 40 个登记字段里 37 个必须移动 `state_hash`，3 个（派生/表现）必须**不**移动 | --test-fields |
 
 当前全部 PASS。**第 18 项不再是“可跳过”**（AUD-45，S82）：没装 Godot 或桥 DLL 时它仍然返回 3，
 但 `smoke.ps1` 现在把 SKIP 当成**失败**，除非显式传 `-AllowGodotSkip`。理由：必需项静默跳过还报 ALL GREEN，
@@ -234,7 +235,7 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 ```powershell
 powershell -File tools\setup_toolchain.ps1   # 仅首次：下载 GCC/CMake/Ninja（无 7z 依赖，版本已锁）
 powershell -File tools\build.ps1             # 配置 + 全量构建（headless_sim, move_metrics）
-powershell -File tools\smoke.ps1             # 22 项闸门 + bench；SKIP 与“打印 FAIL 但退出 0”都算失败
+powershell -File tools\smoke.ps1             # 23 项闸门 + bench；SKIP 与“打印 FAIL 但退出 0”都算失败
 powershell -File tools\smoke.ps1 -AllowGodotSkip  # 只在没有 Godot 的机器上显式放行第 18 项
 powershell -File tools\build_bridge.ps1      # 重建 GDExtension DLL（与 CMake 同一套标志）
 powershell -File tools\godot_check.ps1       # 只跑桥：--hud-check + 两进程重连
@@ -641,7 +642,7 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HA
 ```
 1. 读 docs/STATE.md（唯一的"现在"）+ docs/AGENTS.md（本文件）
 2. 读 docs/DEBT.md 的未解决表；PROGRESS 最后一节按需
-3. 跑 tools\build.ps1，再跑 tools\smoke.ps1，确认 22 项闸门 + bench 全绿（数字抄 STATE §3）
+3. 跑 tools\build.ps1，再跑 tools\smoke.ps1，确认 23 项闸门 + bench 全绿（数字抄 STATE §3）
 4. 只改一个关注点；大文件只做精确 edit；越界问题记一行进 DEBT
 5. 改完立刻 commit（一个功能一个 commit）
 6. 更新 STATE（WIP/数字）+ PROGRESS（四段）+ DEBT 状态 + `python tools\doc_check.py` 退出码 0

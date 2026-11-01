@@ -24,6 +24,7 @@ struct Options {
     bool test_weapons = false;
     bool test_hitscan = false;
     bool test_damage = false;
+    bool test_fields = false;
     bool test_hitbox = false;
     bool test_events = false;
     bool test_snapshot = false;
