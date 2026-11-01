@@ -22,6 +22,9 @@ public:
     int retransmits() const { return m_retransmits; }
     int in_flight() const;
 
+    // Test hook (AUD-47): reach the u16 wrap without sending 65536 packets.
+    void debug_set_next_seq(uint16_t seq) { m_next_seq = seq; }
+
 private:
     struct Entry {
         uint16_t seq = 0;
@@ -32,12 +35,6 @@ private:
     };
     uint16_t m_window;
     uint16_t m_next_seq = 1;  // 0 means nothing acknowledged
-
-public:
-    // Test hook (AUD-47): reaches the wrap point without sending 65536 packets.
-    void debug_set_next_seq(uint16_t seq) { m_next_seq = seq; }
-
-private:
     std::vector<Entry> m_entries;
     uint32_t m_srtt = 0;
     uint32_t m_rttvar = 0;
@@ -52,6 +49,10 @@ public:
     void on_packet(const uint8_t* data, size_t size,
                    std::vector<std::vector<uint8_t>>& delivered);
     void make_ack(std::vector<uint8_t>& out) const;
+
+    // Test hook (AUD-22): the first packet after the wrap must be delivered, not
+    // dropped by a comparison that assumed no wrap.
+    void debug_set_next(uint16_t seq) { m_next = seq; }
 
 private:
     // The ACK bitmap is 32 bits wide, so the window is capped at 32 and a whole

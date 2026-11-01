@@ -13,7 +13,7 @@
 - **lead**：M6 / M7 / 顺手，只表示排期，不是状态。状态与排期分两列，是为了能统计。
 - **verify**：一条命令 + 期望输出。**没有 verify 的条目不许进 open**（想法去 BACKLOG）。
 
-**当前计数**：未解决 **38** 条（P1 2 / P2 26 / P3 9）；关闭记录 **16** 条；设计待定与功能缺口见 BACKLOG。
+**当前计数**：未解决 **37** 条（P1 2 / P2 26 / P3 9）；关闭记录 **17** 条；设计待定与功能缺口见 BACKLOG。
 改表就要改这个数字——`tools/doc_check.py` 会核对它和实际行数。
 
 ---
@@ -23,7 +23,6 @@
 | ID | 级别 | 症状 | 证据 / 位置 | verify | status | lead |
 |---|---|---|---|---|---|---|
 | AUD-21 | P2 | 序列化/接收热路径每 tick 约 4-8 次堆分配；`[netalloc]` 只统计 session 三步，所以永远 0 | session.cpp encode/wrap/recv | `headless_sim --test-net` 输出 `[netalloc] per_tick 0` 且统计覆盖 encode/decode | open | M7 |
-| AUD-22 | P2 | 可靠流 `seq <= ack` / `seq > m_next` 不是 u16 回绕安全的；第 65536 个包后静默死 | reliable.cpp:67,99 | 推 70000 个 rel 包仍完整交付（新闸门） | open | M7 |
 | AUD-24 | P2 | admission 的 approve 队列无 TTL/上限：走过 TCP 但不发 HELLO 的 id 永久留在 deque | admission.h:17-29 | 过期（120 s 或容量上限）后 `admission.pending()==0` | open | M7 |
 | AUD-25 | P3 | `ReliableTransport` 的 now_ms 只在 advance 更新，recv 在 advance 之前时 RTT 采样少一 tick | reliable_transport.cpp:46,56-60 | loopback RTT 采样等于 1-2 tick | open | 顺手 |
 | DEBT-23 | P2 | 服务器的回溯固定用 1 tick（`rewind_ticks(0)`）：没有测 RTT，§9.1 的公式只算了插值那一项。30 ms 局域网内偏差 ≤2 tick，跨网段会明显偏 | session.cpp:NetServer::step | 服务器测单程延迟并传给 `update_weapon`；60 ms 链路上 rewind > 1.5 tick 且射击仍落在旧位置 | open | M7 |
@@ -92,6 +91,7 @@
 | 2026-10-23 | AUD-26 | UDP 源地址校验：`connect_peer` 规范化地址，`recv` 不匹配即丢并计数 | `[udpsrc] rejected 1 injection-drop 1 legit-after 1` |
 | 2026-10-23 | AUD-27 | 槽位释放：`NetServer::remove_client` 上报 client_id，网关 `MatchHost::release` | `[slots] first 1 full 1 reported 1 freed 1 cycles 3/1 anonymous 1` |
 | 2026-10-23 | DEBT-17 | GAPS.md 归档到 docs/archive/，主目录不再有会误导的过期文档 | `docs/archive/GAPS.md` 存在；doc_check 路径检查 0 失败 |
+| 2026-11-01 | AUD-22 | 可靠流两侧都改成序列号比较：发送侧 `(int16_t)(e.seq - ack) <= 0`（S89）、接收侧 `ahead = (uint16_t)(seq - m_next)`（S90，跨回绕的第一个包曾被静默丢弃）。**没有**推 70000 个包，改用测试钩子把序号停到 0xFFFF 再验；用例先写错过一次（把 0 号包当成“已可交付”），改正后变异回归才成立 | `[reliable] … wrap 1 recvwrap 1`；改回 `seq > m_next` → `recvwrap 0` |
 | 2026-11-01 | AUD-47 | 会话生命周期剩余两处：**hub 真的会删 peer**（网关记下 id→endpoint，离场时 `remove_peer`，否则同源重进落在没人排空的旧 inbox）；**可靠流 ACK 用序列号比较**（`e.seq <= ack` 在回绕后会把刚发的包当成老的丢���，改 `(int16_t)(e.seq - ack) <= 0`）。M7.0 到此结束 | `[hubreuse] added 1 removed 1 readded 1`；`[reliable] … wrap 1`；把比较改回 `<=` 会变 `wrap 0` |
 | 2026-11-01 | AUD-42 | 游戏端口独占：POSIX 分支不再设 `SO_REUSEADDR`（那条注释“只复用 TIME_WAIT”只对 TCP 监听成立，UDP 上 Linux 会把数据报分给两个 socket）；Windows 仍用 `SO_EXCLUSIVEADDRUSE`。新闸门 `[portexclusive]` 绑两次，第二次必须失败 | Windows 上 `portexclusive … refused 1`；**POSIX 分支未在本机实测**（本机无 Linux），由闸门在那边跑 |
 | 2026-11-01 | AUD-41 | 恢复座位不再是“5 s 就没了”：`release` 不清 id，而是把座位变成 **ghost**（`held_since`），票据 120 s 内本人可 resume；新玩家先占空位，没有空位才驱逐最早离开的 ghost，所以空房间永不再回 `RoomFull`。hub 清理与 ACK 回绕拆到 AUD-47 | `[ghost] reserved 1 kept 1 second 1 reclaimed 1 refused 1`；`[match] … release 1 slots 1` |

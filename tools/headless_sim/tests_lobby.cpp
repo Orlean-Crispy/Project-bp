@@ -121,13 +121,50 @@ int run_reliable_test() {
         wrapping.poll(800, after);
         wrap_ok = before == 2 && after.size() == 1 && wrapping.in_flight() == 1;
     }
+    // AUD-22: the receiver side. With m_next parked at 0xFFFF the first packet
+    // after the wrap is seq 0; the old `seq > m_next` test dropped it.
+    bool recv_wrap_ok = false;
+    {
+        sim::ReliableReceiver rr;
+        rr.debug_set_next(0xFFFF);
+        const auto packet = [](uint16_t seq, uint8_t payload) {
+            return std::vector<uint8_t>{1, static_cast<uint8_t>(seq & 0xFF),
+                                        static_cast<uint8_t>(seq >> 8), payload};
+        };
+        // The wrapped packet (seq 0) arrives while m_next is still 0xFFFF: it has
+        // to be BUFFERED. The old compare dropped it, so once 0xFFFF showed up
+        // only one of the two packets ever reached the config assembler.
+        std::vector<std::vector<uint8_t>> out;
+        std::vector<uint8_t> wrapped = packet(0x0000, 'b');
+        std::vector<uint8_t> last_pre_wrap = packet(0xFFFF, 'a');
+        rr.on_packet(wrapped.data(), wrapped.size(), out);
+        const bool buffered_across_wrap = out.empty();
+        rr.on_packet(last_pre_wrap.data(), last_pre_wrap.size(), out);
+        const bool delivered_after_wrap = out.size() == 2 && out[0].size() == 1 &&
+                                          out[0][0] == 'a' && out[1].size() == 1 &&
+                                          out[1][0] == 'b';
+
+        // And out of order at the boundary: the last pre-wrap packet is late, so
+        // 0xFFFF has to wait in the buffer and be released with it.
+        sim::ReliableReceiver rr2;
+        rr2.debug_set_next(0xFFFE);
+        std::vector<std::vector<uint8_t>> out2;
+        std::vector<uint8_t> late = packet(0xFFFF, 'b');
+        std::vector<uint8_t> head = packet(0xFFFE, 'a');
+        rr2.on_packet(late.data(), late.size(), out2);
+        const bool buffered = out2.empty();
+        rr2.on_packet(head.data(), head.size(), out2);
+        const bool ordered = out2.size() == 2 && out2[0][0] == 'a' && out2[1][0] == 'b';
+        recv_wrap_ok = buffered_across_wrap && delivered_after_wrap && buffered && ordered;
+    }
     const bool same = assembler.assemble() == data;
     std::printf("  [reliable] chunks %zu retrans %d complete %d same %d corrupt %d dead %d "
-                "wrap %d\n",
+                "wrap %d recvwrap %d\n",
                 chunks.size(), sender.retransmits(), complete ? 1 : 0, same ? 1 : 0,
-                rejected ? 1 : 0, sender.dead() ? 1 : 0, wrap_ok ? 1 : 0);
+                rejected ? 1 : 0, sender.dead() ? 1 : 0, wrap_ok ? 1 : 0,
+                recv_wrap_ok ? 1 : 0);
     if (!complete || !same || sender.retransmits() == 0 || !rejected || sender.dead() ||
-        !wrap_ok) {
+        !wrap_ok || !recv_wrap_ok) {
         std::printf("FAIL: A2 reliable stream test failed\n");
         return 1;
     }

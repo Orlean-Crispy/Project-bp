@@ -102,15 +102,20 @@ void ReliableReceiver::on_packet(const uint8_t* data, size_t size,
     if (size < 3 || data[0] != 1) return;
     const uint16_t seq = static_cast<uint16_t>(data[1]) |
                          static_cast<uint16_t>(data[2] << 8);
-    if (static_cast<uint16_t>(seq - m_next) > 0x8000) return;  // already delivered
-    if (seq > m_next && static_cast<uint16_t>(seq - m_next) < m_window) {
+    // AUD-22/AUD-47: compare by serial distance only. The old `seq > m_next`
+    // guard dropped the first packet after the wrap (m_next 0xFFFF, seq 0), which
+    // then had to wait for a retransmit that the sender had already decided was
+    // unnecessary.
+    const uint16_t ahead = static_cast<uint16_t>(seq - m_next);
+    if (ahead > 0x8000) return;  // already delivered
+    if (ahead != 0 && ahead < m_window) {
         Pending& slot = m_pending[seq % kWindow];
         slot.seq = seq;
         slot.payload.assign(data + 3, data + size);
         slot.valid = true;
         return;
     }
-    if (seq != m_next) return;
+    if (ahead != 0) return;
     delivered.emplace_back(data + 3, data + size);
     ++m_next;
     for (;;) {

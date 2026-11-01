@@ -254,7 +254,6 @@ public:
     // Diagnostics: the last authoritative hp/armor this client decoded. If the HUD
     // shows something else, the prediction never took the snapshot's vitals.
     int last_hp() const { return m_last_hp; }
-    int last_armor() const { return m_last_armor; }
     int snapshots_received() const { return m_snapshots; }
     // Malformed or reordered snapshots: a rising number means the baseline ring
     // is too shallow or the link reorders badly.
@@ -386,7 +385,6 @@ private:
     uint32_t m_last_snapshot_tick = 0;
     int m_rollbacks = 0;
     int m_last_hp = -1;
-    int m_last_armor = -1;
     int m_snapshots = 0;
     int m_decode_fail = 0;
     int m_stale = 0;

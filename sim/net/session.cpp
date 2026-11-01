@@ -737,7 +737,6 @@ void NetClient::advance_weapon(const MoveInput& input, EventQueue* sink) {
 void NetClient::apply_snapshot(const Snapshot& snap) {
     const PlayerSnap& auth = snap.players[static_cast<size_t>(m_player)];
     m_last_hp = auth.hp;
-    m_last_armor = auth.armor;
 
     // Find the predicted state for this tick.
     size_t index = m_history.size();
