@@ -17,7 +17,8 @@ solo 的桥 `SimWorld::step`、demo 回放。它们都在 `World::step` 之后�
 ```
 1. movement    World::step        —— 含 held/edge 镜像（reload_edge 在这里算）
 2. weapon      update_weapon      —— 每 tick 一次，tick 用 world.tick - 1（命令所属 tick）
-3. hitbox      HitboxHistory::record —— 在武器之后，因为射击会回溯到旧帧
+3. vitals      tick_vitals           —— 在武器之后：同 tick 的伤害必须先落地（S93）
+4. hitbox      HitboxHistory::record —— 在武器之后，因为射击会回溯到旧帧
 ```
 
 **仍然在 `game_step` 之外**（并写明理由）：
@@ -49,4 +50,4 @@ struct GameStep {
 ## 不做的事
 
 - 不趁机改规则、不改阶段顺序。顺序调整必须另开变更（外部审查的原话：不要与重构混在一起）。
-- demo 回放暂不接 `game_step`：它需要自己的 hitbox 历史与战斗阶段，属于 AUD-39。
+- ~~demo 回放暂不接 `game_step`~~ —— AUD-39（S92）已接上，demo 走同一入口。

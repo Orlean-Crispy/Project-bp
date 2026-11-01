@@ -2,6 +2,7 @@
 
 #include <cctype>
 #include <cerrno>
+#include <cmath>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -201,7 +202,19 @@ bool TomlBinder::number(const std::string& key, float& target) {
         warnings.push_back(key + ": expected a number, kept default");
         return false;
     }
+    // AUD-44: strtod happily parses "nan" and "inf", and a NaN speed poisons the
+    // whole simulation (comparisons go false, positions become NaN, hashes still
+    // match because NaN hashes consistently). Reject it at the one place every
+    // loader reads numbers through.
+    if (!std::isfinite(v->number)) {
+        warnings.push_back(key + ": not a finite number, kept default");
+        return false;
+    }
     target = static_cast<float>(v->number);
+    if (!std::isfinite(target)) {
+        warnings.push_back(key + ": out of float range, kept default");
+        return false;
+    }
     return true;
 }
 
@@ -211,6 +224,10 @@ bool TomlBinder::integer(const std::string& key, int& target) {
     used.push_back(key);
     if (v->type != TomlValue::Type::Number) {
         warnings.push_back(key + ": expected a number, kept default");
+        return false;
+    }
+    if (!std::isfinite(v->number) || v->number < -2147483648.0 || v->number > 2147483647.0) {
+        warnings.push_back(key + ": not a usable integer, kept default");
         return false;
     }
     target = static_cast<int>(v->number);
@@ -236,6 +253,12 @@ bool TomlBinder::floats(const std::string& key, std::vector<float>& target) {
     if (v->type != TomlValue::Type::Array) {
         warnings.push_back(key + ": expected an array of numbers, kept default");
         return false;
+    }
+    for (double d : v->array) {
+        if (!std::isfinite(d) || !std::isfinite(static_cast<float>(d))) {
+            warnings.push_back(key + ": array holds a non-finite number, kept default");
+            return false;
+        }
     }
     target.clear();
     target.reserve(v->array.size());

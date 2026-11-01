@@ -13,7 +13,7 @@
 - **lead**：M6 / M7 / 顺手，只表示排期，不是状态。状态与排期分两列，是为了能统计。
 - **verify**：一条命令 + 期望输出。**没有 verify 的条目不许进 open**（想法去 BACKLOG）。
 
-**当前计数**：未解决 **35** 条（P1 0 / P2 26 / P3 9）；关闭记录 **19** 条；设计待定与功能缺口见 BACKLOG。
+**当前计数**：未解决 **34** 条（P1 0 / P2 25 / P3 9）；关闭记录 **20** 条；设计待定与功能缺口见 BACKLOG。
 改表就要改这个数字——`tools/doc_check.py` 会核对它和实际行数。
 
 ---
@@ -53,7 +53,6 @@
 | DEBT-24 | P2 | 地图专用闸门在 `--map` 指向别的图时给出误导性 FAIL：`--test-wall` 走的根本不是那堵 0.1 m 墙（S79 用 Blender 导出的 40×40 房实测 `penetrations=100`） | tests_move.cpp 的 wall/step/parkour 用例 | 传了显式 `--map` 且不是该用例绑定的图时打印 `SKIP` 并返回 3 | open | M7 |
 | AUD-46 | P1 | **远端权威事件**：别人的开枪/脚步还到不了 Godot（本地预测只产生自己的事件），要跨网络就得进协议 | sim/net/session.cpp 只送快照 | 协议 v10 带事件块；双端互射能听到并看到对方的枪口；30% 丢包 60 s 不重复也不丢关键事件 | open | M7 |
 | AUD-43 | P2 | catch-up 与收包没有每帧预算：一次长冻结可补大量 tick，恶意 peer 能挤占其他人的 tick 时间 | session.cpp catch_up / receive 循环 | 每帧工作量上限；超限用 full state 重锚；恶意+正常双 peer 公平性用例 | open | M7 |
-| AUD-44 | P2 | 配置与地图缺 finite/范围/跨字段校验；`spawn.cpp` 忽略 `combat.max_health`；`tick_vitals` 没有生产调用（再生规则实际未启用） | config.cpp:196-243 / map_parse.cpp:97 / spawn.cpp | 坏值 hard fail 带字段名；跨字段不变量（蹲高≤站高、band 顺序）；再生在 tick 里真的生效或被明确拒绝 | open | M7 |
 | DEBT-08 | P3 | `godot/main.tscn` 的 uid 是 12 字符，其余 .uid 是 13 位 | main.tscn:1 | 打开工程无 invalid uid 警告，或重写 uid | open | 待核实 |
 
 ## 4. 工具 / 构建 / 可恢复性
@@ -89,6 +88,7 @@
 | 2026-10-23 | AUD-26 | UDP 源地址校验：`connect_peer` 规范化地址，`recv` 不匹配即丢并计数 | `[udpsrc] rejected 1 injection-drop 1 legit-after 1` |
 | 2026-10-23 | AUD-27 | 槽位释放：`NetServer::remove_client` 上报 client_id，网关 `MatchHost::release` | `[slots] first 1 full 1 reported 1 freed 1 cycles 3/1 anonymous 1` |
 | 2026-10-23 | DEBT-17 | GAPS.md 归档到 docs/archive/，主目录不再有会误导的过期文档 | `docs/archive/GAPS.md` 存在；doc_check 路径检查 0 失败 |
+| 2026-11-01 | AUD-44 | 配置与地图不再能吃进 NaN/inf：`TomlBinder::number/integer/floats` 一律拒收（警告 + 保默认值），`map_parse::parse_float` 直接判错。`spawn.cpp` 改用 `combat.max_health`。**`tick_vitals` 进了 `game_step` 第 3 阶段**——护甲再生此前只有闸门手动调用，生产路径从来没跑过 | `--test-damage` 的 `regen armour comes back through game_step: 9 -> 12`；`--test-weapons` 的 `a NaN value is reported and never reaches the sim` |
 | 2026-11-01 | AUD-39 | demo 现在**录放都走 `game_step`**（武器/伤害/命中都在里面），格式升到 **v3**：输入补 `pitch` 与 fire/reload/ads 三个按钮，玩家表补 `hp/armor`。**输入不带 fire 是这条 P1 的真因**——开火的 demo 回放成一个走路的 demo，哈希每 tick 都不同。截断文件早前已改为报错（`feof` 判据） | `--test-demo` 的 `combat demo: ammo 30 -> 23, replay ticks 64 mismatches 0` |
 | 2026-11-01 | AUD-38 | 连接有了终态机：`sim/net/join_state.*`（Idle→Signalling→Joining→Connected/Failed；5 s 拿不到 full state 即 `no full state`），桥暴露成 `get_join_phase()/get_join_reason()`，HUD 按阶段给不同句子；**旧 epoch 的 FULL_STATE 被忽略**（`join_id` 串行比较），重连不会被上一局的延迟包打回去 | `[joinstates] signalling 1 noserver 1 waiting 1 connected 1 timeout 1`；`--hud-check` 行尾 `join_phase=0` |
 | 2026-11-01 | AUD-22 | 可靠流两侧都改成序列号比较：发送侧 `(int16_t)(e.seq - ack) <= 0`（S89）、接收侧 `ahead = (uint16_t)(seq - m_next)`（S90，跨回绕的第一个包曾被静默丢弃）。**没有**推 70000 个包，改用测试钩子把序号停到 0xFFFF 再验；用例先写错过一次（把 0 号包当成“已可交付”），改正后变异回归才成立 | `[reliable] … wrap 1 recvwrap 1`；改回 `seq > m_next` → `recvwrap 0` |

@@ -1610,5 +1610,34 @@ flags：jump/crouch/slide/dash/wallrun/wallclimb/vault
 - 重生仍然是服务器后置阶段，demo 里不会重生：录一场有人阵亡的对局，尸体保持死亡状态（录放一致，但不是完整对局）。
   要支持就把它并进 `game_step` 之后再录，记在 BACKLOG。
 - 审查的 P1 到此**全部关闭**。剩下 AUD-43（catch-up 预算）、AUD-44（配置校验）、AUD-46（远端事件，协议 v10）都是 P2 级收益。
+## S93 · 2026-11-01 · AUD-44：护甲再生原来从来没跑过
+
+### 1. 做了什么
+
+- **`tick_vitals` 进了 `game_step` 的第 3 阶段**（移动 → 武器 → **生命/护甲** → hitbox）。
+  这个函数之前**只有闸门手动调用**，生产路径从来没执行过 —— “再生甲 5 秒后开始回甲”这条设计一直是纸上的。
+- **`spawn.cpp` 用 `combat.max_health`**：以前把它 `(void)` 掉，重生永远是 100。
+  把 max_health 调成 150 的服务器会把所有人按 100 生出来，然后永远不补那 50。
+- **NaN/inf 进不来**：`TomlBinder::number/integer/floats` 一律拒收（警告 + 保默认值），
+  `map_parse::parse_float` 直接判错。`strtod("nan")` 是合法的，这个口子一直开着。
+
+### 2. 判据
+
+```
+regen armour comes back through game_step                  ok
+  regen armour: 9 -> 12 after 398 ticks (of 25)
+a NaN value is reported and never reaches the sim          ok
+ALL GREEN (23 gates + bench, no skips)
+```
+
+### 3. 记录
+
+- 再生用例走的是 `game_step`，不是 `tick_vitals` —— 教训 18 的直接应用。只调函数的话，
+  这条 bug 会像换弹那样再活半年。
+- 顺序：生命必须在**武器之后**（同 tick 的伤害要先落地）。ADR 0008 已同步成四阶段。
+
+### 4. 下一步
+
+- 剩下 AUD-43（catch-up 每帧预算）与 AUD-46（远端事件，协议 v10）。
 - 登记表是手写的：新增字段要自己加一行。`--test-fields` 会打印 `sizeof(PlayerState)`（现 156），
   变了就提醒人去看 —— 但**它不会替你想**，这条只能靠 review。

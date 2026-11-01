@@ -99,6 +99,10 @@ bool parse_float(const std::string& s, float& out) {
     char* end = nullptr;
     const double d = std::strtod(s.c_str(), &end);
     if (end == s.c_str() || *end != '\0') return false;
+    // AUD-44: "nan" and "inf" parse fine and then travel through the whole
+    // collision path, where every comparison against them is false. A map with a
+    // non-finite coordinate is corrupt, not merely unusual.
+    if (!std::isfinite(d) || !std::isfinite(static_cast<float>(d))) return false;
     out = static_cast<float>(d);
     return true;
 }

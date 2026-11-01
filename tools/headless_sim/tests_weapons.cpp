@@ -211,6 +211,21 @@ int run_weapon_test(const Options& opt) {
     check("a file with no weapons is rejected", no_sections);
     check("a duplicate key is rejected", duplicate);
 
+    // AUD-44: strtod accepts "nan" and "inf", so a hand-edited file could put a
+    // NaN into the damage table and every comparison downstream would go false.
+    sim::WeaponParams nan_out;
+    std::vector<std::string> nan_warnings;
+    std::string nan_error;
+    const bool nan_written = write_text("build/weapons_nan.toml", one_weapon("damage_near = nan\n"));
+    const bool nan_loaded =
+        nan_written && sim::load_weapon_params("build/weapons_nan.toml", nan_out, nan_warnings,
+                                               nan_error);
+    const sim::WeaponDef def_defaults;
+    check("a NaN value is reported and never reaches the sim",
+          nan_loaded && mentions(nan_warnings, "not a finite number") &&
+              nan_out.weapons.size() == 1 &&
+              nan_out.weapons[0].damage_near == def_defaults.damage_near);
+
     std::printf("[weapons] weapons %zu clean %d stable %d independent %d defaults %d rejects %d\n",
                 params.weapons.size(), clean ? 1 : 0, stable ? 1 : 0,
                 (both_loaded && a.hash() != b.hash() && movement_after.hash() == movement_before) ? 1 : 0,

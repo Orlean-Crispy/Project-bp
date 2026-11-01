@@ -92,6 +92,42 @@ int run_damage_test(const Options& opt) {
         return rounds;
     };
 
+
+    // AUD-44: regeneration has to happen in the PRODUCTION step, not just in a
+    // function the gate calls by hand. Damage a regen-armour player, then run
+    // game_step with no input for the delay plus a few points' worth of ticks.
+    {
+        sim::World regen_world;
+        std::string regen_error;
+        if (!load_world_from("sim/data/maps/test_box.map", opt.data_path, regen_world,
+                             regen_error)) {
+            std::printf("FAIL: regen world: %s\n", regen_error.c_str());
+            return 1;
+        }
+        regen_world.players.push_back(sim::PlayerState{});
+        sim::PlayerState& target = regen_world.players[0];
+        target.pos = sim::Vec3(0.0f, 5.0f, 0.01f);
+        sim::equip_armor(target.vitals, sim::ArmorType::Regen, regen_world.combat);
+        const int full = target.vitals.armor;
+        sim::apply_damage(target.vitals, full, sim::HitZone::Chest, regen_world.combat);
+        const int wounded = target.vitals.armor;
+
+        sim::HitboxHistory regen_history;
+        sim::GameStep regen_step;
+        regen_step.histories = &regen_history;
+        regen_step.history_count = 1;
+        const sim::ArmorDef& regen_def =
+            regen_world.combat.armor[static_cast<int>(sim::ArmorType::Regen)];
+        const int ticks_to_wait = regen_def.regen_delay_ticks + regen_def.regen_ticks_per_point * 3;
+        const sim::MoveInput idle;
+        for (int i = 0; i < ticks_to_wait; ++i) {
+            sim::game_step(regen_world, &idle, 1, 1.0f / 64.0f, regen_step);
+        }
+        check("regen armour comes back through game_step",
+              wounded < full && target.vitals.armor > wounded);
+        std::printf("    regen armour: %d -> %d after %d ticks (of %d)\n", wounded,
+                    target.vitals.armor, ticks_to_wait, full);
+    }
     // --- chest damage, cadence and ammo ---------------------------------
     reset(shooter, victim);
     sim::ShotReport report;
