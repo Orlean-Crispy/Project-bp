@@ -18,6 +18,12 @@ enum InputFlag : uint16_t {
     kFlagWallRun = 1u << 4,
     kFlagWallClimb = 1u << 5,
     kFlagVault = 1u << 6,
+    // v3 (AUD-39): the demo now carries combat, so the weapon buttons have to be
+    // in the record. They were not, which is why a firing demo replayed as a
+    // walking one.
+    kFlagFire = 1u << 7,
+    kFlagReload = 1u << 8,
+    kFlagAds = 1u << 9,
 };
 
 uint16_t encode_input(const MoveInput& in) {
@@ -29,14 +35,18 @@ uint16_t encode_input(const MoveInput& in) {
     if (in.wallrun) flags |= kFlagWallRun;
     if (in.wallclimb) flags |= kFlagWallClimb;
     if (in.vault) flags |= kFlagVault;
+    if (in.fire) flags |= kFlagFire;
+    if (in.reload) flags |= kFlagReload;
+    if (in.ads) flags |= kFlagAds;
     return flags;
 }
 
-MoveInput decode_input(float forward, float right, float yaw, uint16_t flags) {
+MoveInput decode_input(float forward, float right, float yaw, float pitch, uint16_t flags) {
     MoveInput in;
     in.forward = forward;
     in.right = right;
     in.yaw = yaw;
+    in.pitch = pitch;
     in.jump = (flags & kFlagJump) != 0;
     in.crouch = (flags & kFlagCrouch) != 0;
     in.slide = (flags & kFlagSlide) != 0;
@@ -44,6 +54,9 @@ MoveInput decode_input(float forward, float right, float yaw, uint16_t flags) {
     in.wallrun = (flags & kFlagWallRun) != 0;
     in.wallclimb = (flags & kFlagWallClimb) != 0;
     in.vault = (flags & kFlagVault) != 0;
+    in.fire = (flags & kFlagFire) != 0;
+    in.reload = (flags & kFlagReload) != 0;
+    in.ads = (flags & kFlagAds) != 0;
     return in;
 }
 
@@ -131,6 +144,7 @@ bool DemoWriter::close(std::string& error) {
         ok = ok && put_u8(f, p.weapon_id);
         ok = ok && put_u16(f, p.ammo) && put_u16(f, p.reserve);
         ok = ok && put_u16(f, p.fire_cooldown) && put_u16(f, p.reload_left);
+        ok = ok && put_u16(f, p.hp) && put_u16(f, p.armor);
     }
     ok = ok && put_u32(f, m_header.tick_count);
 
@@ -140,6 +154,9 @@ bool DemoWriter::close(std::string& error) {
         ok = ok && put_u16(f, static_cast<uint16_t>(t.inputs.size()));
         for (const MoveInput& in : t.inputs) {
             ok = ok && put_f32(f, in.forward) && put_f32(f, in.right) && put_f32(f, in.yaw);
+            // v3: pitch is part of the command (protocol v7) and aiming up is part
+            // of a shooting demo; without it a replay fires at the horizon.
+            ok = ok && put_f32(f, in.pitch);
             ok = ok && put_u16(f, encode_input(in));
         }
     }
@@ -207,6 +224,7 @@ bool DemoReader::open(const std::string& path, DemoHeader& header, std::string& 
         ok = ok && get_u8(f, p.weapon_id);
         ok = ok && get_u16(f, p.ammo) && get_u16(f, p.reserve);
         ok = ok && get_u16(f, p.fire_cooldown) && get_u16(f, p.reload_left);
+        ok = ok && get_u16(f, p.hp) && get_u16(f, p.armor);
         (void)pad;
         if (!ok) {
             std::fclose(f);
@@ -270,13 +288,14 @@ bool DemoReader::next(DemoTick& tick, bool& has_tick, std::string& error) {
         float forward = 0.0f;
         float right = 0.0f;
         float yaw = 0.0f;
+        float pitch = 0.0f;
         uint16_t flags = 0;
         if (!get_f32(m_file, forward) || !get_f32(m_file, right) || !get_f32(m_file, yaw) ||
-            !get_u16(m_file, flags)) {
+            !get_f32(m_file, pitch) || !get_u16(m_file, flags)) {
             error = "truncated input record";
             return false;
         }
-        in = decode_input(forward, right, yaw, flags);
+        in = decode_input(forward, right, yaw, pitch, flags);
     }
     tick = t;
     has_tick = true;

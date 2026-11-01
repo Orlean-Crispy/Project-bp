@@ -27,6 +27,9 @@ struct DemoPlayerInit {
     uint16_t reserve = 0;
     uint16_t fire_cooldown = 0;
     uint16_t reload_left = 0;
+    // v3: combat is part of the replay now, so the initial health has to be too.
+    uint16_t hp = 100;
+    uint16_t armor = 0;
 };
 
 struct DemoHeader {

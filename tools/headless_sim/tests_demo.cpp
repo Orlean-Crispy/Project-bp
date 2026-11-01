@@ -16,6 +16,9 @@
 #include "sim/demo/demo.h"
 #include "sim/input/bindings.h"
 #include "sim/game/combat.h"
+#include "sim/game/game_step.h"
+#include "sim/game/hitbox.h"
+#include "sim/game/rewind.h"
 #include "sim/net/fragment.h"
 #include "sim/net/admission.h"
 #include "sim/net/handshake.h"
@@ -80,9 +83,19 @@ bool play_file(const std::string& demo_path, const std::string& params_path,
         p.reserve = init.reserve;
         p.fire_cooldown = init.fire_cooldown;
         p.reload_left = init.reload_left;
+        p.vitals.health = init.hp;
+        p.vitals.armor = init.armor;
         world.players.push_back(p);
     }
     world.tick = 0;
+
+    // AUD-39: playback runs the same single step as the server, with one hitbox
+    // history per player, or the recording would contain combat the replay skips.
+    std::vector<sim::HitboxHistory> histories(world.players.size());
+    sim::GameStep step;
+    step.histories = histories.empty() ? nullptr : histories.data();
+    step.history_count = static_cast<int>(histories.size());
+    step.rewind = sim::rewind_ticks(0.0f);
 
     out.header_reason = sim::demo_mismatch_reason(header, sim::kSimVersion, sim::kProtocolVersion,
                                                   world.params_hash,
@@ -108,7 +121,8 @@ bool play_file(const std::string& demo_path, const std::string& params_path,
         }
         if (!has_tick) break;
 
-        world.step(tick.inputs, kDt);
+        sim::game_step(world, tick.inputs.data(), static_cast<int>(tick.inputs.size()), kDt,
+                       step);
         if (world.state_hash() != tick.state_hash) {
             if (out.mismatches == 0) out.first_bad = tick.tick;
             ++out.mismatches;
@@ -153,15 +167,25 @@ bool record_demo(World& world, const std::string& map_path, const std::string& s
         init.reserve = static_cast<uint16_t>(p.reserve);
         init.fire_cooldown = static_cast<uint16_t>(p.fire_cooldown);
         init.reload_left = static_cast<uint16_t>(p.reload_left);
+        init.hp = static_cast<uint16_t>(p.vitals.health);
+        init.armor = static_cast<uint16_t>(p.vitals.armor);
         header.players.push_back(init);
     }
 
     sim::DemoWriter writer;
     if (!writer.open(out_path, header, error)) return false;
 
+    // AUD-39: demos go through game_step like everything else, so a replay runs
+    // the weapon, the damage and (via the recorded hash) proves they happened.
+    std::vector<sim::HitboxHistory> histories(world.players.size());
+    sim::GameStep step;
+    step.histories = histories.empty() ? nullptr : histories.data();
+    step.history_count = static_cast<int>(histories.size());
+    step.rewind = sim::rewind_ticks(0.0f);
+
     for (int i = 0; i < ticks; ++i) {
         const MoveInput in = make_input(script, static_cast<uint32_t>(i));
-        world.step({in}, kDt);
+        sim::game_step(world, &in, 1, kDt, step);
         sim::DemoTick tick;
         tick.tick = static_cast<uint32_t>(i);
         tick.state_hash = world.state_hash();
@@ -306,6 +330,7 @@ int run_demo_test(const Options& opt) {
     };
 
     const std::string demo_path = "build/demo_test.bpd";
+    const std::string shoot_path = "build/demo_combat.bpd";
     const std::string params_a = opt.data_path;
     const std::string params_b = "build/perturbed.toml";
 
@@ -340,6 +365,30 @@ int run_demo_test(const Options& opt) {
         }
     }
 
+
+    // AUD-39: a demo must carry combat. Record a firing run, prove the magazine
+    // actually emptied (so the weapon stage ran), then prove the replay agrees
+    // tick for tick - a replay that skipped the weapon would diverge at tick 0.
+    {
+        World world;
+        std::string shoot_error;
+        if (!load_world(record, world, shoot_error)) {
+            std::fprintf(stderr, "error: %s\n", shoot_error.c_str());
+            return 1;
+        }
+        const int magazine = world.players[0].ammo;
+        sim::DemoHeader header;
+        const bool recorded = record_demo(world, record.map_path, "shoot", 64, shoot_path,
+                                          header, shoot_error);
+        const int left = world.players[0].ammo;
+        check("a firing demo empties the magazine", recorded && left < magazine);
+
+        PlayOutcome shoot_play;
+        const bool replayed = play_file(shoot_path, params_a, "", "", shoot_play, shoot_error);
+        std::printf("    combat demo: ammo %d -> %d, replay ticks %u mismatches %d\n", magazine,
+                    left, shoot_play.ticks, shoot_play.mismatches);
+        check("a combat demo replays every hash", replayed && shoot_play.mismatches == 0);
+    }
     PlayOutcome same;
     std::string error;
     const bool played = play_file(demo_path, params_a, "", "", same, error);

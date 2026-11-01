@@ -47,6 +47,10 @@ MoveInput make_input(const std::string& script, uint32_t tick) {
     } else if (script == "jump") {
         in.forward = 1.0f;
         in.jump = (tick % 45) == 0;
+    } else if (script == "shoot") {
+        // AUD-39: a scripted run that spends ammunition, so a demo that skipped
+        // the weapon stage would replay to a different hash on every tick.
+        in.fire = true;
     } else if (script == "strafe") {
         in.forward = tick < 128 ? 1.0f : 0.0f;
         in.right = tick >= 128 ? 1.0f : 0.0f;

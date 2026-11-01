@@ -12,7 +12,7 @@
 
 ```
 magic            "BPDM"
-u16              format_version = 1
+u16              format_version = 3
 u16              reserved
 u32              sim_version
 u32              protocol_version
@@ -28,7 +28,10 @@ u16              player_count
     f32 x2       speed_coefficient / slow_factor
     u8           crouched
     u8           impulses
-    u16          padding
+    u8           weapon_id
+    u16          ammo / reserve
+    u16          fire_cooldown / reload_left
+    u16          hp / armor             # v3：回放要跑战斗，初始血量必须一起存
 u32              tick_count
 每个 tick:
   u32            tick
@@ -36,7 +39,8 @@ u32              tick_count
   u16            input_count
     每个输入:
       f32 x3     forward / right / yaw
-      u16        flags（jump/crouch/slide/dash/wallrun/wallclimb/vault）
+      f32        pitch                  # v3（协议 v7 起命令就带 pitch）
+      u16        flags（jump/crouch/slide/dash/wallrun/wallclimb/vault/fire/reload/ads）
 ```
 
 实测体积：**约 28 B / tick**（600 tick ≈ 17 KB），一局 30 分钟 ≈ 2.8 MB。

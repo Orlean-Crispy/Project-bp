@@ -1573,5 +1573,42 @@ Joining 超时的原因必须是 `no full state`（区别于是“连不上服�
 - Retry 复用现有 `reconnect()`（票据 + 原槽），Leave 是暂停菜单里的那个；本轮没有新增按钮。
 - 审查还剩 **AUD-39（demo 战斗阶段 + EOF）**、AUD-43（catch-up 预算）、AUD-44（配置校验）、
   AUD-46（远端事件，协议 v10）。下一个做 AUD-39，它是最后一条 P1。
+## S92 · 2026-11-01 · AUD-39：demo 里终于有枪声了
+
+### 1. 做了什么
+
+- **demo 录放都走 `game_step`**：武器、伤害、命中全部包含，和服务器同一条路。
+- **格式升到 v3**：玩家表补 `hp/armor`；每条输入补 `pitch` 与 fire/reload/ads 三个按钮。
+- 闸门新增一条：录 64 tick 的 `shoot` 脚本，断言**弹匣真的打空了**（30 → 23），再断言回放 64 个哈希全中。
+
+### 2. 判据
+
+```
+combat demo: ammo 30 -> 23, replay ticks 64 mismatches 0
+PASS: demos replay exactly and divergence is localised
+ALL GREEN (23 gates + bench, no skips)
+```
+
+### 3. 失败与修正（这条 P1 的真因不是我一开始以为的那个）
+
+第一次改完：`ammo 30 -> 23`（录制确实开火了）但回放 **64/64 tick 全不匹配**。
+
+打印两侧 tick 0 的哈希与弹药才看清：**回放里根本没开枪**。原因是 demo 的输入记录
+
+```
+flags：jump/crouch/slide/dash/wallrun/wallclimb/vault
+```
+
+**没有 fire**。所以“demo 缺战斗阶段”一半是没走 `game_step`，另一半是**扳机状态压根没存**。
+同时 pitch 也没存 —— 存了 fire 也只是平射。两处一起补，回放才归零。
+
+这件事的教训：**“录了输入”不等于“录了决定行为的输入”**。加一个按钮时，要同时问
+“它进了哈希吗 / 进了快照吗 / 进了 demo 吗”（教训 16 的第三个去处）。
+
+### 4. 边界 / 下一步
+
+- 重生仍然是服务器后置阶段，demo 里不会重生：录一场有人阵亡的对局，尸体保持死亡状态（录放一致，但不是完整对局）。
+  要支持就把它并进 `game_step` 之后再录，记在 BACKLOG。
+- 审查的 P1 到此**全部关闭**。剩下 AUD-43（catch-up 预算）、AUD-44（配置校验）、AUD-46（远端事件，协议 v10）都是 P2 级收益。
 - 登记表是手写的：新增字段要自己加一行。`--test-fields` 会打印 `sizeof(PlayerState)`（现 156），
   变了就提醒人去看 —— 但**它不会替你想**，这条只能靠 review。

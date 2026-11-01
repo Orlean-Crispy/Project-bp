@@ -28,6 +28,8 @@ constexpr const char* kBuildId = BP_BUILD_ID;
 constexpr uint32_t kSimVersion = BP_SIM_VERSION;
 constexpr uint32_t kProtocolVersion = BP_PROTOCOL_VERSION;
 // 2: the player table carries the weapon state (2026-10-24).
-constexpr uint32_t kDemoFormatVersion = 2;
+// v3 (AUD-39): the demo steps through game_step, so it carries combat. That
+// needs the initial HP/armour, or a replay of a wounded player starts at 100.
+constexpr uint32_t kDemoFormatVersion = 3;
 
 }  // namespace sim
