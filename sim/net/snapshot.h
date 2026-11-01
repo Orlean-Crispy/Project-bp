@@ -72,7 +72,10 @@ void from_snap(const PlayerSnap& snap, PlayerState& player);
 // Delta encoding against the last snapshot the client acknowledged (plan 7.1).
 // A field group that did not change costs one bit in the per-player mask.
 std::vector<uint8_t> encode_snapshot(const Snapshot& current, const Snapshot* baseline);
-bool decode_snapshot(const uint8_t* data, size_t size, const Snapshot* baseline, Snapshot& out);
+// `consumed` (optional) receives how many bytes the snapshot itself used, so a
+// caller can read a trailing block such as the AUD-46 event list.
+bool decode_snapshot(const uint8_t* data, size_t size, const Snapshot* baseline, Snapshot& out,
+                     size_t* consumed = nullptr);
 
 // Reads just the baseline tick so the receiver can pick the right snapshot to
 // decode against (the server's baseline lags behind the client's newest one).

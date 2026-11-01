@@ -11,6 +11,7 @@
 #include "sim/game/hitbox.h"
 #include "sim/net/client_id.h"
 #include "sim/net/configstring.h"
+#include "sim/net/event_wire.h"
 #include "sim/net/interp.h"
 #include "sim/net/reliable.h"
 #include "sim/net/snapshot.h"
@@ -237,6 +238,10 @@ private:
     uint32_t m_next_join_id = 1;
     std::function<void(const ClientId&)> m_on_departure;
     std::vector<HitboxHistory> m_hitboxes;
+    // AUD-46: what happened this tick, drained into each client's snapshot packet.
+    EventQueue m_events;
+    SimEvent m_drained[64];
+    int m_drained_count = 0;
     // M6.9: ticks left before a dead slot comes back (server only, not on the wire).
     std::vector<uint16_t> m_respawn;
     std::vector<std::vector<uint8_t>> m_config_chunks;
@@ -277,6 +282,8 @@ public:
     int catch_up_skips() const { return m_catch_up_skips; }
     // How many receives hit the packet cap (the rest wait for the next tick).
     int budget_hits() const { return m_budget_hits; }
+    // AUD-46: events that arrived for other players (tracers, muzzle flashes).
+    int remote_events() const { return m_remote_events; }
     uint32_t max_behind() const { return m_behind_max; }
     float max_correction() const { return m_max_correction; }
     bool joined() const { return m_joined; }
@@ -409,6 +416,8 @@ private:
     int m_catch_ups = 0;
     int m_catch_up_skips = 0;
     int m_budget_hits = 0;
+    int m_remote_events = 0;
+    EventDedup m_event_dedup;
     uint32_t m_behind_max = 0;
     int m_full_states = 0;
     uint32_t m_join_tick = 0;

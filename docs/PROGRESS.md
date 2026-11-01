@@ -1667,5 +1667,38 @@ ALL GREEN (23 gates + bench, no skips)
 ### 4. 下一步
 
 - 审查只剩 **AUD-46**（远端权威事件，协议 v10）。它是 M7 音频的前置，也是这一串里唯一需要动协议的。
+## S95 · 2026-11-01 · AUD-46：别人的枪声，终于过得了网
+
+### 1. 做了什么
+
+- **协议 v10**：快照包尾追加一个**有界事件块**（`sim/net/event_wire.*`）。
+  服务器每 tick 把 `game_step` 产生的事件排空，按收件人过滤掉**他自己**的那些（客户端已经预测过），
+  客户端 `read_events` 后按 `(tick, entity, type)` 去重再交付。
+- 尺寸是算过的：4 条 × 36 B + 1 = 145 B；满编快照 953 B + 145 B = **1098 B**，仍在 1100 B 分片阈值内。
+  要提高上限就是一次分片决策，不是审美问题。
+- 半截的事件块**一条都不交付**（先解析到暂存，完整才 push）——不然屏幕上会留下半个弹幕，还撤不回来。
+
+### 2. 判据
+
+```
+[remoteevents] shots 20 own 0 duplicates 0 delivered 20
+[wire] event block 73 B, delivered 2, truncated 0/0
+[wire] 10 players 953 B, 94 B/player, budget 1100 B
+hud … protocol=10 …
+ALL GREEN (23 gates + bench, no skips)
+```
+
+三个子项各自挡一件事：**远端开火能到**（shots 20）、**自己的枪不被回声**（own 0）、
+**重复包不重复播**（duplicates 0）。
+
+### 3. 顺带修的
+
+- `ByteReader::position()`：包里有第二段时，得知道第一段读到哪。
+- `decode_snapshot` 多一个可选出参 `consumed`，事件块就是从它后面开始的。
+
+### 4. 结果
+
+**M7.0 正确性硬化到此全部完成**（9 条 AUD）。审查里所有条目都已关闭。
+M7 内容可以开始了：M7.1 枪感旋钮 → M7.2 音频（现在**听得到**别人开枪了，音频接上就有意义）。
 - 登记表是手写的：新增字段要自己加一行。`--test-fields` 会打印 `sizeof(PlayerState)`（现 156），
   变了就提醒人去看 —— 但**它不会替你想**，这条只能靠 review。

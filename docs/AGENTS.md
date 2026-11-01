@@ -339,7 +339,10 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HA
   命令包带 **pitch**（没有它只能平射）；PlayerSnap 带四个按下沿、`recharge_progress`、
   `speed_coefficient`，Vitals 组（hp/armor 真值）与 Weapon 组（weapon_id/ammo/reserve/
   fire_cooldown/reload_left，v8 起再加 `recoil_index/recoil_recovery`，**全部有生产者**），
-  以及 Hit 组（v9：target/amount/zone/serial，每玩家 5 B）。
+  以及 Hit 组（v9：target/amount/zone/serial，每玩家 5 B）。**v10（AUD-46，S95）**：快照包尾追加一个
+  有界事件块（`sim/net/event_wire.*`，≤4 条/包，36 B/条），服务器每 tick 把 `game_step` 的事件排空、
+  过滤掉收件人自己的那些，客户端按 `(tick, entity, type)` 去重后交付 —— 别人的曳光与枪口火光
+  就是从这里到 Godot 的。满编 953 B + 145 B = 1098 B，仍在 1100 B 分片阈值之内。
   flags 的 7/8/9 是**按住状态**（不是一 tick 脉冲），
   bit10 从 S71 起也**不填**：`alive` 由 `hp > 0` 派生，别再养第二份真值。
 - 客户端：本地预测 + 128 tick 历史 + 回滚重放；命令包带最近 4 个输入。
@@ -381,7 +384,7 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HA
   用 `get_max_impulses()` 画格（**不写死**），状态行显示 role/slot/peers/waiting；
   Esc 开合暂停菜单（Resume / Reconnect（仅客户端）/ Leave）。
   判据：`--hud-check` 打 `hud hp=100 armor=0 impulse=4/4 role=solo vertices=360
-  build=<hash> protocol=9 port=27115`——vertices > 0 证明 mesh_builder 还在产出几何，
+  build=<hash> protocol=10 port=27115`——vertices > 0 证明 mesh_builder 还在产出几何，
   port 证明默认端口来自 ports.h 而不是脚本；hp/armor 是 PlayerState 里的真值，伤害来源自 S70 起
   也有了（AUD-16 关闭：房主打 30 → 客户端 HUD `hp=70`）。这条检查已并入 tools/godot_check.ps1。
 - 失联检测（`NetClient::snapshot_age()`）：客户端用**最后一次收到快照的 tick 差**判断，
@@ -406,7 +409,8 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HA
   命令全部 Late 且永远不会自愈（跳过逻辑只处理"领先"）。现在 `receive()` 发现快照比本地轴超前
   >4 tick 就 `catch_up()`：重锚时钟到 snap+3、清掉会变 Late 的 pending 命令、用空输入补跑缺的
   tick 并记进 history/hitbox。判据：`[catchup] freeze 300 behind 293 catchups 1
-  accepted 196->203->259 late 0->0 settled 1`。
+  accepted 196->203->259 late 0->0 settled 1`。**AUD-43（S94）**：落后超过 32 tick 不再逐 tick 回放，
+  改为重锚 + 清 history/hitbox，判据 `skips 1 bounded 1`；`receive()` 每 tick 最多处理 64 个包。
   main.gd 同时不再把累加器清零（保留亚 tick 余量并打印丢弃的 tick 数），否则相位每卡一次就偏一点。
 - A5 票据（sim/net/ticket.*）：32 B（client_id 16 + expiry 4 + HMAC-SHA256/12），
   密钥只在房主内存；now >= expiry 即失效。判据：valid 1 expired 1 tamper 1 wrongkey 1。
@@ -460,7 +464,7 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HA
   （桥和 net_loop 都装同一条：`MatchHost::release`）。为什么用回调而不是队列：队列要求每个调用方
   都记得 drain，net_loop 第一天就忘了，那类泄漏只能靠纪律防；回调装一次就不会漏。
   判据：`[slots] first 1 full 1 reported 1 freed 1 cycles 3/1 anonymous 1`。
-- 远端朝向：PlayerState.yaw 由 pmove 写入；PlayerSnap 的 kFieldYaw 独立字段组；协议版本 **9**
+- 远端朝向：PlayerState.yaw 由 pmove 写入；PlayerSnap 的 kFieldYaw 独立字段组；协议版本 **10**
   （R9 起带 wall_normal/vault_dir/vault_rise/slow_ticks；v5 起带 slide/dash/vault 三个按下沿、
   recharge_progress 与 speed_coefficient；v6 起 mask/flags 16 位并带 hp/armor）。
   GDScript 用 rotation.y = atan2(-cos(yaw), sin(yaw))，插值器取前一帧 yaw。
@@ -514,7 +518,7 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HA
   会让 DLL 与 exe 的浮点结果悄悄分叉（教训 12）。
 - **版本号唯一来源是 sim/core/version.h**。CMake 只注入 BP_BUILD_ID（git short hash），
   桥用同一条命令注入同一个值；桥暴露 `get_build_id()/get_protocol_version()`，Godot 启动打
-  `breakpoint: build <id> protocol 9`——两台机器的日志一比就知道是不是同一个构建。
+  `breakpoint: build <id> protocol 10`——两台机器的日志一比就知道是不是同一个构建。
 - **breakpoint.gdextension 必须同时有 `windows.editor.x86_64`**：我们用的是 release 编辑器
   二进制跑 headless，它只认 editor key；只写 `windows.debug.*` 时扩展根本不加载，
   报错还会说是「找不到 windows.x86_64 的库」（教训 13）。
@@ -567,7 +571,8 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HA
 ### 8.12 射击管线（sim/game/shoot.*，M6.6/M6.7 框架）
 
 - **调用入口只有一个**：`game_step(world, inputs, dt, GameStep)`（ADR 0008 / AUD-36）按
-  movement → weapon → hitbox 的顺序推进；服务器、客户端预测、solo 都走它。
+  movement → weapon → **vitals** → hitbox 的顺序推进（vitals 是 S93 加的）；服务器、客户端预测、
+  solo、**demo 录放**都走它。
 - `update_weapon(shooter, index, input, def, world, histories, count, tick, rewind, report)`：
   先走计时器（`fire_cooldown`、`reload_left`），再决定是否开火。**由 `game_step` 调用**，
   所以弹药/冷却两边一致；客户端的世界里没有受害者，所以伤害仍然只有服务器算（v0.4 A4）。
@@ -587,7 +592,7 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HA
   带 a/b 过界，GDScript 生成一根 0.02 m 的盒子（`look_at` 对齐，沿 -Z 拉伸到长度），
   0.09 s 内 alpha 淡出后 `queue_free`。事件只在表现层消费，**不承载伤害**。
 - **谁看得到自己的曳光**：开火在自己的预测世界里执行，所以房主/客户端都能立刻看到；
-  别人的枪口火光要等事件上网络（M7），现在看不到。
+  别人的枪口火光自 **S95（协议 v10）** 起会随快照包尾的事件块过来，所以对面开枪你看得见。
 - **敌方红轮廓**：远端玩家节点加一个略大的胶囊壳（半径 +0.025、高 +0.05），
   材质 `CULL_FRONT` + unshaded 红 —— 只画背面就得到一圈红边。蹲下时随节点 scale.y 一起缩。
   **M6 没有队伍**，所以“远端 = 敌方”；M8 分队后必须按队伍着色（记在 BACKLOG FEAT-14）。
@@ -672,8 +677,7 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HA
 
 ## 11. 下一步（严格按计划书顺序，不要跳）
 
-1. **M7.0 正确性硬化**（外部审查 S81 定的顺序，先于内容）：AUD-36 `game_step` 收拢 →
-   AUD-37 事件合同 → AUD-39 字段清单 mutant → AUD-40/41 网络硬化。
+1. **M7.0 正确性硬化** —— **已完成**（S89–S95）：AUD-36/37/39/40/41/42/43/44/46/47 全部关闭。
 2. **M7 内容**：M7.1 枪感旋钮 → M7.2 音频骨架 → M7.3 脚步材质/楼层低通 → M7.4 地图 → M7.5 远端姿态 → M7.6 视角模型。
 3. **M8**：爆破目标、比分、视角模型收尾。
 4. 债看 docs/DEBT.md（41 条未解决），设计待定与功能缺口看 docs/BACKLOG.md。

@@ -19,7 +19,9 @@
 //    the aim, so a client that guessed them wrong would shoot elsewhere (2026-10-24).
 // 9: a small hit record (target/amount/zone/serial) rides in its own group, so the
 //    hitmarker and damage number come from the snapshot, not an event (2026-10-24).
-#define BP_PROTOCOL_VERSION 9
+// 10: a snapshot packet ends with a bounded event block, so a client can see other
+//     players' tracers and muzzle flashes (AUD-46, 2026-11-01).
+#define BP_PROTOCOL_VERSION 10
 #endif
 
 namespace sim {

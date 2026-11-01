@@ -12,6 +12,9 @@
 #include <cstdio>
 
 #include "sim/core/version.h"
+#include "sim/core/event.h"
+#include "sim/net/bytes.h"
+#include "sim/net/event_wire.h"
 #include "sim/net/snapshot.h"
 
 namespace {
@@ -181,6 +184,35 @@ int run_snapshot_check() {
         failures += check(group_ok, "a delta that only changes weapon/hit state is lost");
     }
 
+    // AUD-46: the trailing event block. Round-trip it, then prove a truncated
+    // block delivers nothing rather than half a tracer.
+    {
+        sim::SimEvent events[2];
+        events[0].tick = 700;
+        events[0].type = sim::EventType::Shot;
+        events[0].entity_id = 3;
+        events[0].a = sim::Vec3(1.0f, 2.0f, 3.0f);
+        events[0].b = sim::Vec3(4.0f, 5.0f, 6.0f);
+        events[0].param = 1;
+        events[1] = events[0];
+        events[1].tick = 701;
+        events[1].entity_id = 4;
+
+        sim::ByteWriter w;
+        sim::append_events(w, events, 2, -1);
+        sim::EventQueue back;
+        const int delivered = sim::read_events(w.data().data(), w.size(), back);
+        sim::SimEvent first;
+        const bool first_ok = back.pop(first) && first.tick == 700 && first.entity_id == 3 &&
+                              first.type == sim::EventType::Shot && first.param == 1;
+        sim::EventQueue truncated;
+        const int half = sim::read_events(w.data().data(), w.size() - 8, truncated);
+        std::printf("  [wire] event block %zu B, delivered %d, truncated %d/%zu\n", w.size(),
+                    delivered, half, truncated.size());
+        failures += check(delivered == 2 && first_ok && truncated.size() == 0,
+                          "the event block does not round-trip or half-decodes");
+    }
+
     const std::vector<uint8_t> idle = sim::encode_snapshot(before, &before);
     const std::size_t idle_expected = kHeaderBytes + 2;  // one u16 mask per player
     std::printf("  [wire] idle delta %zu B (expected %zu)\n", idle.size(), idle_expected);
@@ -208,7 +240,8 @@ int run_snapshot_check() {
                       "a delta with no baseline decoded anyway");
 
     // 7. The advertised protocol version is the one this format implements.
-    failures += check(sim::kProtocolVersion == 9, "protocol version is not 9");
+    // AUD-46 bumped the wire: a snapshot packet may now end with an event block.
+    failures += check(sim::kProtocolVersion == 10, "protocol version is not 10");
 
     std::printf("  [snapshot] %s\n", failures == 0 ? "ok" : "FAILED");
     return failures;

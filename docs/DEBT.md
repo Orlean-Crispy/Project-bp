@@ -13,7 +13,7 @@
 - **lead**：M6 / M7 / 顺手，只表示排期，不是状态。状态与排期分两列，是为了能统计。
 - **verify**：一条命令 + 期望输出。**没有 verify 的条目不许进 open**（想法去 BACKLOG）。
 
-**当前计数**：未解决 **33** 条（P1 0 / P2 24 / P3 9）；关闭记录 **21** 条；设计待定与功能缺口见 BACKLOG。
+**当前计数**：未解决 **32** 条（P1 0 / P2 23 / P3 9）；关闭记录 **22** 条；设计待定与功能缺口见 BACKLOG。
 改表就要改这个数字——`tools/doc_check.py` 会核对它和实际行数。
 
 ---
@@ -51,7 +51,6 @@
 | DEBT-06 | P2 | 桥每帧新建 `std::vector<PlayerSnap>` + Dictionary | sim_bridge.cpp get_remote_players | 复用成员 vector；测量每帧 0 分配 | open | M7 |
 | DEBT-07 | P2 | 只有 template_debug DLL 与 editor/debug 键；没有 release 导出路径 | breakpoint.gdextension | 决定"v0.1 只跑编辑器"，或补 release 构建 + 导出验证 | open | M7 |
 | DEBT-24 | P2 | 地图专用闸门在 `--map` 指向别的图时给出误导性 FAIL：`--test-wall` 走的根本不是那堵 0.1 m 墙（S79 用 Blender 导出的 40×40 房实测 `penetrations=100`） | tests_move.cpp 的 wall/step/parkour 用例 | 传了显式 `--map` 且不是该用例绑定的图时打印 `SKIP` 并返回 3 | open | M7 |
-| AUD-46 | P1 | **远端权威事件**：别人的开枪/脚步还到不了 Godot（本地预测只产生自己的事件），要跨网络就得进协议 | sim/net/session.cpp 只送快照 | 协议 v10 带事件块；双端互射能听到并看到对方的枪口；30% 丢包 60 s 不重复也不丢关键事件 | open | M7 |
 | DEBT-08 | P3 | `godot/main.tscn` 的 uid 是 12 字符，其余 .uid 是 13 位 | main.tscn:1 | 打开工程无 invalid uid 警告，或重写 uid | open | 待核实 |
 
 ## 4. 工具 / 构建 / 可恢复性
@@ -87,6 +86,7 @@
 | 2026-10-23 | AUD-26 | UDP 源地址校验：`connect_peer` 规范化地址，`recv` 不匹配即丢并计数 | `[udpsrc] rejected 1 injection-drop 1 legit-after 1` |
 | 2026-10-23 | AUD-27 | 槽位释放：`NetServer::remove_client` 上报 client_id，网关 `MatchHost::release` | `[slots] first 1 full 1 reported 1 freed 1 cycles 3/1 anonymous 1` |
 | 2026-10-23 | DEBT-17 | GAPS.md 归档到 docs/archive/，主目录不再有会误导的过期文档 | `docs/archive/GAPS.md` 存在；doc_check 路径检查 0 失败 |
+| 2026-11-01 | AUD-46 | **协议 v10**：快照包尾追加一个**有界事件块**（`sim/net/event_wire.*`，≤4 条/包，满编 953 B + 125 B 仍在 1100 B 分片阈值内），服务器每 tick 把 `game_step` 的事件排空、按客户端过滤掉“自己的”，客户端 `read_events` 后按 `(tick, entity, type)` 去重再交付。**别人的曳光/枪口火光现在真的到得了 Godot** | `[remoteevents] shots 20 own 0 duplicates 0 delivered 20`；`[wire] 10 players 953 B` 未变 |
 | 2026-11-01 | AUD-43 | catch-up 与收包都有每帧预算：落后超过 `kMaxCatchUpTicks`（32）就不回放，直接重锚 + 清 history/hitbox，让快照恢复状态；`receive()` 每次最多处理 `kMaxPacketsPerReceive`（64）个包，其余留给下一 tick。计数器 `catch_up_skips()` / `budget_hits()` 可读。**收包上限有计数但没有专门用例**（要靠一次塞 64+ 包才触发） | `[catchup] … skips 1 bounded 1 … settled 1` |
 | 2026-11-01 | AUD-44 | 配置与地图不再能吃进 NaN/inf：`TomlBinder::number/integer/floats` 一律拒收（警告 + 保默认值），`map_parse::parse_float` 直接判错。`spawn.cpp` 改用 `combat.max_health`。**`tick_vitals` 进了 `game_step` 第 3 阶段**——护甲再生此前只有闸门手动调用，生产路径从来没跑过 | `--test-damage` 的 `regen armour comes back through game_step: 9 -> 12`；`--test-weapons` 的 `a NaN value is reported and never reaches the sim` |
 | 2026-11-01 | AUD-39 | demo 现在**录放都走 `game_step`**（武器/伤害/命中都在里面），格式升到 **v3**：输入补 `pitch` 与 fire/reload/ads 三个按钮，玩家表补 `hp/armor`。**输入不带 fire 是这条 P1 的真因**——开火的 demo 回放成一个走路的 demo，哈希每 tick 都不同。截断文件早前已改为报错（`feof` 判据） | `--test-demo` 的 `combat demo: ammo 30 -> 23, replay ticks 64 mismatches 0` |

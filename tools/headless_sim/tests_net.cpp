@@ -1040,6 +1040,100 @@ int run_event_replay_check(const std::string& data_path) {
     return failures;
 }
 
+
+// AUD-46: a player must see the OTHER player's shots. Before this, tracers only
+// existed in the shooter's own predicted world, so a two-person match showed one
+// gun firing into the void.
+int run_remote_event_check(const std::string& data_path) {
+    const std::string map_path = "sim/data/maps/metrics_flat.map";
+    std::string error;
+    sim::NetServer server;
+    if (!server.init(map_path, data_path, 2, error)) {
+        std::printf("FAIL: remote-event server init: %s\n", error.c_str());
+        return 1;
+    }
+    sim::LoopbackTransport a_tx(sim::NetConditions{}, 81);
+    sim::LoopbackTransport a_rx(sim::NetConditions{}, 82);
+    sim::LoopbackTransport b_tx(sim::NetConditions{}, 83);
+    sim::LoopbackTransport b_rx(sim::NetConditions{}, 84);
+    server.add_client(&a_tx, &a_rx, 0);
+    server.add_client(&b_tx, &b_rx, 1);
+
+    sim::NetClient a;
+    sim::NetClient b;
+    if (!a.init(&a_tx, &a_rx, 0, map_path, data_path, error) ||
+        !b.init(&b_tx, &b_rx, 1, map_path, data_path, error)) {
+        std::printf("FAIL: remote-event client init: %s\n", error.c_str());
+        return 1;
+    }
+
+    sim::EventQueue seen;
+    auto tick_once = [&](const sim::MoveInput& a_in, const sim::MoveInput& b_in) {
+        a.send_input(a_in);
+        a.step_local();
+        b.send_input(b_in);
+        b.step_local(&seen);
+        server.receive();
+        server.step();
+        server.send();
+        a_tx.advance(0);
+        a_rx.advance(0);
+        b_tx.advance(0);
+        b_rx.advance(0);
+        a.receive();
+        b.receive();
+    };
+
+    for (int i = 0; i < 120; ++i) tick_once(sim::MoveInput{}, sim::MoveInput{});
+    if (!a.joined() || !b.joined()) {
+        std::printf("FAIL: the two remote-event clients did not join\n");
+        return 1;
+    }
+
+    sim::MoveInput fire;
+    fire.fire = true;
+    for (int i = 0; i < 200; ++i) tick_once(fire, sim::MoveInput{});
+
+    int shots = 0;
+    int own = 0;
+    int duplicates = 0;
+    uint32_t keys[512];
+    int keys_count = 0;
+    sim::SimEvent event;
+    while (seen.pop(event)) {
+        if (event.type != sim::EventType::Shot) continue;
+        if (event.entity_id == 1) {
+            ++own;  // this client's own shot echoed back: it must not happen
+            continue;
+        }
+        ++shots;
+        const uint32_t key = event.tick * 7u + static_cast<uint32_t>(event.entity_id) * 13u +
+                             static_cast<uint32_t>(event.type);
+        for (int k = 0; k < keys_count; ++k) {
+            if (keys[k] != key) continue;
+            ++duplicates;
+            break;
+        }
+        if (keys_count < 512) keys[keys_count++] = key;
+    }
+    std::printf("  [remoteevents] shots %d own %d duplicates %d delivered %d\n", shots, own,
+                duplicates, b.remote_events());
+    int failures = 0;
+    if (shots == 0) {
+        std::printf("FAIL: no remote shot event reached the other client\n");
+        ++failures;
+    }
+    if (own != 0) {
+        std::printf("FAIL: the client got its own shot echoed back (%d)\n", own);
+        ++failures;
+    }
+    if (duplicates != 0) {
+        std::printf("FAIL: a duplicate remote event was delivered (%d)\n", duplicates);
+        ++failures;
+    }
+    return failures;
+}
+
 int run_shot_loss_check(const std::string& data_path) {
     const std::string map_path = "sim/data/maps/metrics_flat.map";
     std::string error;
@@ -1236,6 +1330,7 @@ int run_net_test(const Options& opt) {
     failures += run_fire_flag_check(opt.data_path);
     failures += run_shot_loss_check(opt.data_path);
     failures += run_event_replay_check(opt.data_path);
+    failures += run_remote_event_check(opt.data_path);
 
     // v0.4 5.2: duplicates, late and far commands never enter the queue twice.
     {

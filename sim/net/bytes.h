@@ -40,6 +40,9 @@ public:
 
     bool ok() const { return m_ok; }
     bool eof() const { return m_pos >= m_size; }
+    // Where the reader stopped. Needed when a packet carries a second block after
+    // the first one (AUD-46: events after the snapshot).
+    std::size_t position() const { return m_pos; }
 
     uint8_t u8() {
         if (m_pos + 1 > m_size) { m_ok = false; return 0; }

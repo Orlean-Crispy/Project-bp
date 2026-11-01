@@ -2,6 +2,7 @@
 
 #include "sim/core/tick.h"
 #include "sim/game/game_step.h"
+#include "sim/net/event_wire.h"
 #include "sim/game/respawn.h"
 #include "sim/game/rewind.h"
 #include "sim/game/shoot.h"
@@ -366,7 +367,16 @@ void NetServer::step() {
     step.histories = m_hitboxes.data();
     step.history_count = static_cast<int>(m_hitboxes.size());
     step.rewind = rewind_ticks(0.0f);
+    step.events = &m_events;
     game_step(m_world, m_inputs, kDt, step);
+
+    // AUD-46: snapshot the tick's events before send() walks the links, so every
+    // client sees the same set (minus its own).
+    m_drained_count = 0;
+    SimEvent event;
+    while (m_drained_count < 64 && m_events.pop(event)) {
+        m_drained[m_drained_count++] = event;
+    }
     // M6.9: dead players come back after kRespawnTicks. This runs on the server
     // only; the client learns about it the same way it learns about damage - from
     // the next snapshot, which then rewinds the prediction to the new position.
@@ -425,12 +435,18 @@ void NetServer::send() {
         const Snapshot* baseline = use_delta ? &link.baseline : nullptr;
         const std::vector<uint8_t> payload = encode_snapshot(snap, baseline);
 
+        // AUD-46: the tick's events ride along, minus the ones this client already
+        // played from its own prediction (it would draw every tracer twice).
+        ByteWriter framed;
+        framed.raw(payload.data(), payload.size());
+        append_events(framed, m_drained, m_drained_count, link.player);
+
         PacketHeader header;
         header.type = PacketType::Snapshot;
         header.seq = link.out_seq++;
         header.ack = link.last_cmd_seq;
         header.ack_bits = 0;
-        link.tx->send(wrap_packet(header, payload));
+        link.tx->send(wrap_packet(header, framed.data()));
 
         // R6: fixed ring, no node allocation and no full-snapshot copy per tick.
         link.sent.push(header.seq, snap);
@@ -690,7 +706,8 @@ void NetClient::receive() {
                 continue;
             }
         }
-        if (!decode_snapshot(payload, size, baseline, snap)) {
+        size_t snapshot_bytes = 0;
+        if (!decode_snapshot(payload, size, baseline, snap, &snapshot_bytes)) {
             ++m_decode_fail;
             continue;
         }
@@ -699,6 +716,24 @@ void NetClient::receive() {
             ++m_stale;  // reordered older snapshot
             continue;
         }
+        // AUD-46: what happened this tick for OTHER players. Delivered before the
+        // rollback so a corrected tick cannot lose the tracer that caused it, and
+        // de-duplicated because a reordered datagram can carry the same block twice.
+        if (m_events != nullptr && size > snapshot_bytes) {
+            EventQueue incoming;
+            const int delivered =
+                read_events(payload + snapshot_bytes, size - snapshot_bytes, incoming);
+            SimEvent event;
+            while (incoming.pop(event)) {
+                if (m_event_dedup.seen(event.tick, event.entity_id,
+                                       static_cast<uint16_t>(event.type))) {
+                    continue;
+                }
+                m_events->push(event);
+            }
+            m_remote_events += delivered;
+        }
+
         m_snapshots++;
         m_ack = header.seq;
         m_ack_bits = 0;

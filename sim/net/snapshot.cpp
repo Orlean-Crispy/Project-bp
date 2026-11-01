@@ -245,7 +245,8 @@ uint32_t peek_baseline_tick(const uint8_t* data, size_t size) {
     return r.u32();
 }
 
-bool decode_snapshot(const uint8_t* data, size_t size, const Snapshot* baseline, Snapshot& out) {
+bool decode_snapshot(const uint8_t* data, size_t size, const Snapshot* baseline, Snapshot& out,
+                     size_t* consumed) {
     ByteReader r(data, size);
     Snapshot s;
     s.tick = r.u32();
@@ -312,6 +313,7 @@ bool decode_snapshot(const uint8_t* data, size_t size, const Snapshot* baseline,
     }
 
     out = s;
+    if (consumed != nullptr) *consumed = r.position();
     return true;
 }
 

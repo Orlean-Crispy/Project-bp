@@ -19,6 +19,7 @@ sim/input/bindings.cpp
 sim/input/buttons.cpp
 sim/input/keycodes.cpp
 sim/move/pmove.cpp
+sim/net/event_wire.cpp
 sim/net/fragment.cpp
 sim/net/join_state.cpp
 sim/net/handshake.cpp
