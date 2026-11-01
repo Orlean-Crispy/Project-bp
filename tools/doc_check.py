@@ -263,7 +263,13 @@ def check_gates(root: Path):
     # "smoke | 19 项" - a bare N/N would collide with numbers like "2.40 / 4.20".
     m_state = re.search(r"smoke[^\n]*?(\d+)\s*项", st)
     m_budget = re.search(r"smoke\s*闸门数[^\n]*?(\d+)", bg)
-    markers = len(re.findall(r"Write-Host\s+'==\s", smoke)) if smoke else None
+    # Prefer the data-driven gate list (AUD-45: `@{ name = ... }` entries); fall
+    # back to printed step markers for the old shape and for --selftest fixtures.
+    if smoke:
+        listed = len(re.findall(r"^\s*@\{ name = ", smoke, re.MULTILINE))
+        markers = listed if listed > 0 else len(re.findall(r"Write-Host\s+'==\s", smoke))
+    else:
+        markers = None
 
     if m_state and m_budget:
         claimed = int(m_budget.group(1))
@@ -277,8 +283,8 @@ def check_gates(root: Path):
 
     if markers is not None and m_budget:
         claimed = int(m_budget.group(1))
-        # markers include the sources lint and bench; allow +/-2 slack
-        if abs(markers - claimed) > 2:
+        # The list is exactly the numbered table; sources/bench are not gates.
+        if markers != claimed:
             record(
                 WARN,
                 "GATE",

@@ -13,7 +13,7 @@
 - **lead**：M6 / M7 / 顺手，只表示排期，不是状态。状态与排期分两列，是为了能统计。
 - **verify**：一条命令 + 期望输出。**没有 verify 的条目不许进 open**（想法去 BACKLOG）。
 
-**当前计数**：未解决 **43** 条（P1 6 / P2 27 / P3 9）；关闭记录 **8** 条；设计待定与功能缺口见 BACKLOG。
+**当前计数**：未解决 **42** 条（P1 5 / P2 27 / P3 9）；关闭记录 **9** 条；设计待定与功能缺口见 BACKLOG。
 改表就要改这个数字——`tools/doc_check.py` 会核对它和实际行数。
 
 ---
@@ -61,7 +61,6 @@
 | AUD-42 | P2 | 游戏 UDP 端口在 POSIX 分支没有 Windows 那种独占保证（`SO_REUSEADDR` 下第二个 socket 可绑同端口，审查在 Linux 上实测 `--test-net` 变红） | udp_socket.cpp:78-88 | 三平台跑同一端口冲突用例；POSIX 上第二绑定必须失败 | open | M7 |
 | AUD-43 | P2 | catch-up 与收包没有每帧预算：一次长冻结可补大量 tick，恶意 peer 能挤占其他人的 tick 时间 | session.cpp catch_up / receive 循环 | 每帧工作量上限；超限用 full state 重锚；恶意+正常双 peer 公平性用例 | open | M7 |
 | AUD-44 | P2 | 配置与地图缺 finite/范围/跨字段校验；`spawn.cpp` 忽略 `combat.max_health`；`tick_vitals` 没有生产调用（再生规则实际未启用） | config.cpp:196-243 / map_parse.cpp:97 / spawn.cpp | 坏值 hard fail 带字段名；跨字段不变量（蹲高≤站高、band 顺序）；再生在 tick 里真的生效或被明确拒绝 | open | M7 |
-| AUD-45 | P1 | 验收会假绿：`smoke.ps1` 把必需 Godot 项的 SKIP 当通过、`godot_check` 采集了子进程退出码却不判断、没有 CI | smoke.ps1:99-121 / godot_check.ps1:50-104 | 必需项 SKIP 即失败；ExitCode!=0 立即失败；PR 自动跑 headless | open | M7 |
 | DEBT-08 | P3 | `godot/main.tscn` 的 uid 是 12 字符，其余 .uid 是 13 位 | main.tscn:1 | 打开工程无 invalid uid 警告，或重写 uid | open | 待核实 |
 
 ## 4. 工具 / 构建 / 可恢复性
@@ -97,6 +96,7 @@
 | 2026-10-23 | AUD-26 | UDP 源地址校验：`connect_peer` 规范化地址，`recv` 不匹配即丢并计数 | `[udpsrc] rejected 1 injection-drop 1 legit-after 1` |
 | 2026-10-23 | AUD-27 | 槽位释放：`NetServer::remove_client` 上报 client_id，网关 `MatchHost::release` | `[slots] first 1 full 1 reported 1 freed 1 cycles 3/1 anonymous 1` |
 | 2026-10-23 | DEBT-17 | GAPS.md 归档到 docs/archive/，主目录不再有会误导的过期文档 | `docs/archive/GAPS.md` 存在；doc_check 路径检查 0 失败 |
+| 2026-11-01 | AUD-45 | 验收不再假绿：`smoke.ps1` 用统一 runner（退出码 + `FAIL` 标记双判），必需 Godot 项的 SKIP 直接失败（`-AllowGodotSkip` 才放行）；`Invoke-BpGodotHeadless` 改用 `System.Diagnostics.Process` 并检查 ExitCode——`Start-Process -PassThru` 在本机根本读不到 ExitCode | `smoke.ps1` 输出 `ALL GREEN (22 gates + bench, no skips)`；单次 `godot_check.ps1` 退出码 0 |
 | 2026-10-24 | AUD-16 | 伤害有了来源：`update_weapon` 走完命中→伤害；`godot_check` 的“damage reaches the other HUD”在房主打 30 后，客户端 HUD 打出 `hud hp=70`（快照链路，不只本地） | `godot_check.ps1`：`PASS: damage crossed the snapshot into the other HUD`（BACKLOG FEAT-03 随之完成） |
 
 ## 7. 已接受边界（不修，写明原因）

@@ -162,7 +162,9 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 | 21 | 命中判定 | 正对躯干必中、偏一个盒宽必不中、0.40 中 / 0.41 不中、蹲下躲过、墙挡人、射程截断、自伤忽略、最近者胜；回溯 6 tick 仍命中当时位置、半 tick 插值、超界不外推 | --test-hitscan |
 | 22 | 射击链路 | 扣扳机 → 扣弹 → 命中 → 掉血；射速节奏、护甲多吃两发、爆头一枪、墙全挡、换弹填满 | --test-damage |
 
-当前全部 PASS（第 18 项在没装 Godot 或桥 DLL 未构建时打印 SKIP 并返回 3，smoke 视为跳过而不是绿 = DEBT-10）。
+当前全部 PASS。**第 18 项不再是“可跳过”**（AUD-45，S82）：没装 Godot 或桥 DLL 时它仍然返回 3，
+但 `smoke.ps1` 现在把 SKIP 当成**失败**，除非显式传 `-AllowGodotSkip`。理由：必需项静默跳过还报 ALL GREEN，
+等于把“没测”写成“测过”。同一个 runner 还会检查每项闸门**打印了 FAIL 却退出 0** 的情况（教训 15 的机器化）。
 **bench 也是判据**：p99 > 4 ms 或出现任何分配，`--bench` 返回 1（S59 之前它只打印）。
 **doc_check 也是判据**：1 个 FAIL 就是退出码 1；它的 `--selftest` 在故意写坏的树上必须报错，否则它就是装饰（教训 15）。
 `--compare`（跨机 dump 比对）需要第二台机器，尚未执行。
@@ -232,7 +234,8 @@ sim/（纯 C++17，零 Godot 依赖；headless_sim 可独立跑全部测试）
 ```powershell
 powershell -File tools\setup_toolchain.ps1   # 仅首次：下载 GCC/CMake/Ninja（无 7z 依赖，版本已锁）
 powershell -File tools\build.ps1             # 配置 + 全量构建（headless_sim, move_metrics）
-powershell -File tools\smoke.ps1             # 22 项闸门 + bench，退出码 0 才算过
+powershell -File tools\smoke.ps1             # 22 项闸门 + bench；SKIP 与“打印 FAIL 但退出 0”都算失败
+powershell -File tools\smoke.ps1 -AllowGodotSkip  # 只在没有 Godot 的机器上显式放行第 18 项
 powershell -File tools\build_bridge.ps1      # 重建 GDExtension DLL（与 CMake 同一套标志）
 powershell -File tools\godot_check.ps1       # 只跑桥：--hud-check + 两进程重连
 powershell -File tools\run_demo.ps1          # 构建桥 + 启动 Godot demo
@@ -665,10 +668,11 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HA
 
 ## 11. 下一步（严格按计划书顺序，不要跳）
 
-1. **M7 打磨**：M7.1 枪感旋钮 → M7.2 音频骨架 → M7.3 脚步材质/楼层低通 → M7.5 远端姿态 → M7.6 视角模型。
-2. **M8**：爆破目标、比分、视角模型收尾。
-3. 代码体检：A1–A7、AUD-01…19、R1–R19 已完成；S60 关掉了 AUD-20/23/26/27，
-   其余见 docs/DEBT.md（33 条）与 docs/BACKLOG.md（设计待定/功能缺口）。
+1. **M7.0 正确性硬化**（外部审查 S81 定的顺序，先于内容）：AUD-36 `game_step` 收拢 →
+   AUD-37 事件合同 → AUD-39 字段清单 mutant → AUD-40/41 网络硬化。
+2. **M7 内容**：M7.1 枪感旋钮 → M7.2 音频骨架 → M7.3 脚步材质/楼层低通 → M7.4 地图 → M7.5 远端姿态 → M7.6 视角模型。
+3. **M8**：爆破目标、比分、视角模型收尾。
+4. 债看 docs/DEBT.md（42 条未解决），设计待定与功能缺口看 docs/BACKLOG.md。
 
 ---
 

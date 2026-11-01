@@ -52,22 +52,42 @@ function Initialize-BpProject {
 function Invoke-BpGodotHeadless {
     param(
         [string[]]$Arguments,
-        [int]$TimeoutSeconds = 60
+        [int]$TimeoutSeconds = 60,
+        # AUD-45: a non-zero exit is a failure unless the caller says otherwise.
+        # Swallowing it meant a crashed Godot still "passed" as long as its
+        # stdout happened to contain the expected line.
+        [switch]$AllowNonZeroExit
     )
     $project = Initialize-BpProject
-    $log = [System.IO.Path]::GetTempFileName()
-    $err = $log + '.err'
-    $godotArguments = @('--headless', '--path', $project, '--') + $Arguments
-    $process = Start-Process -FilePath (Get-BpGodot) -ArgumentList $godotArguments -PassThru -NoNewWindow -RedirectStandardOutput $log -RedirectStandardError $err
+    $godotArguments = @('--headless', '--path', ('"' + $project + '"'), '--') + $Arguments
+    # System.Diagnostics.Process, not Start-Process: in this environment
+    # Start-Process -PassThru leaves ExitCode empty, so the exit code was
+    # collected but never actually readable (AUD-45).
+    $info = New-Object System.Diagnostics.ProcessStartInfo
+    $info.FileName = (Get-BpGodot)
+    $info.Arguments = ($godotArguments -join ' ')
+    $info.UseShellExecute = $false
+    $info.RedirectStandardOutput = $true
+    $info.RedirectStandardError = $true
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $info
+    if (-not $process.Start()) { throw 'could not start Godot' }
+    $outTask = $process.StandardOutput.ReadToEndAsync()
+    $errTask = $process.StandardError.ReadToEndAsync()
     if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
-        Stop-Process -Id $process.Id -Force
-        throw ('Godot did not exit within ' + $TimeoutSeconds + ' s; log: ' + $log)
+        try { $process.Kill() } catch { }
+        throw ('Godot did not exit within ' + $TimeoutSeconds + ' s for [' + ($Arguments -join ' ') + ']')
     }
+    $process.WaitForExit()
     $result = [pscustomobject]@{
         ExitCode = $process.ExitCode
-        Output   = (Get-Content -LiteralPath $log -Raw)
-        Error    = (Get-Content -LiteralPath $err -Raw)
+        Output   = $outTask.Result
+        Error    = $errTask.Result
     }
-    Remove-Item -LiteralPath $log, $err -Force -ErrorAction SilentlyContinue
+    if ($result.ExitCode -ne 0 -and -not $AllowNonZeroExit) {
+        $out = ($result.Output + $result.Error)
+        if ($out.Length -gt 600) { $out = $out.Substring($out.Length - 600) }
+        throw ('Godot exited with ' + $result.ExitCode + ' for [' + ($Arguments -join ' ') + ']: ' + $out)
+    }
     return $result
 }

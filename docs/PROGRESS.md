@@ -1254,3 +1254,36 @@ smoke 22 项 **ALL GREEN**。反例证明：`[shotloss]` 原先打的是空槽 0
 
 **AUD-45 先做**：必需项 SKIP 不许算绿、Godot 子进程退出码要判断。闸门自己不可信时，
 后面所有“修好了”都没有意义。
+## S82 · 2026-11-01 · AUD-45：闸门不再会撒谎
+
+### 1. 做了什么
+
+- **`smoke.ps1` 重写为数据驱动**：闸门是一张表（`$gates`：name + args），一个 runner 统一执行，
+  每项同时判两件事：**退出码**与**输出里有没有 `FAIL`**（教训 15 的机器化）。
+  这张表还被 `doc_check.py` 数，所以“文档说 22 项、实际跑 N 项”不可能再漂移。
+- **必需项 SKIP 即失败**：Godot 闸门返回 3 时默认抛错，只有显式 `-AllowGodotSkip` 才放行。
+- **Godot 子进程退出码真的被判了**：`Invoke-BpGodotHeadless` 改用 `System.Diagnostics.Process`。
+  之前的 `Start-Process -PassThru` 在本机 **`ExitCode` 永远为空**（实测 `cmd /c exit 7` 读出来也是空），
+  也就是说那份“采集了退出码”的代码从来没读到过任何东西。
+
+### 2. 判据
+
+```
+ALL GREEN (22 gates + bench, no skips)
+```
+
+反例：把桥 DLL 挪走后 `godot_check.ps1` 返回 3，`smoke.ps1` 直接失败并给出两种正当做法；
+`doc_check.py --selftest` 仍 6 fail / 0 崩溃（旧形状 fixture 走 Write-Host 回退路径）。
+
+### 3. 失败与修正
+
+- `throw ('...' + '...')` 跨行写在 PowerShell 5.1 里解析失败（`+` 起行被当成新语句）→ 改单行。
+- 第一版把 sources 也计进闸门数 → 23，和文档的 22 对不上。**数是文档的镜像，不是自我感觉**：
+  改成 sources 作为 preflight 不计入，闸门表正好 22 项。
+- 关闭 DEBT 行时状态写成 `**closed (S82)**`，`doc_check` 的状态枚举拒绝 → 状态只写 `closed`，
+  证据写进 §6 的关闭记录。
+
+### 4. 边界 / 下一步
+
+- 仍然没有 CI（审查建议的“PR 自动跑”）；现在只保证**本机一条命令不说谎**。
+- 下一个：**AUD-36**，把服务器 / solo / 预测 / 回放收拢到同一个 `game_step`。
