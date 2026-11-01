@@ -78,13 +78,18 @@ bool UdpSocket::open(uint16_t local_port, std::string& error) {
     // docs/pitfalls/port-hijack.md: on Windows SO_REUSEADDR lets a second
     // socket bind a port that is already in use, so the port can be taken over
     // silently. The game port is ours or nobody's: make the conflict loud.
-    // POSIX SO_REUSEADDR only reuses TIME_WAIT, so it stays.
+    //
+    // AUD-42: the old comment claimed POSIX SO_REUSEADDR "only reuses TIME_WAIT".
+    // That is true for TCP listeners, not for UDP sockets: Linux lets a second
+    // UDP socket bind the same port and then splits the datagrams between them.
+    // Exclusivity is the contract on both platforms, so POSIX sets nothing here
+    // and relies on bind() returning EADDRINUSE (TIME_WAIT does not exist for UDP).
     const int one = 1;
 #ifdef _WIN32
     setsockopt(static_cast<Socket>(m_socket), SOL_SOCKET, SO_EXCLUSIVEADDRUSE,
                reinterpret_cast<const char*>(&one), sizeof(one));
 #else
-    setsockopt(static_cast<Socket>(m_socket), SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
+    (void)one;
 #endif
 
     sockaddr_in local{};

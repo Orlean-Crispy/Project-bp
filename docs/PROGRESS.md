@@ -1447,5 +1447,31 @@ ALL GREEN (23 gates + bench, no skips)
 - AUD-41 原列三项，本轮只做了座位这一项；hub endpoint 清理与可靠流 ACK 跨回绕**拆成 AUD-47**，
   不混在同一个 commit 里假装做完。
 - 下一个：AUD-42（POSIX 上 UDP 端口不独占）。
+## S88 · 2026-11-01 · AUD-42：端口是“我的或没人的”
+
+### 1. 做了什么
+
+- `udp_socket.cpp` 的 POSIX 分支**不再设 `SO_REUSEADDR`**。原来那条注释写着“POSIX 上它只复用 TIME_WAIT” ——
+  这句话只对 **TCP 监听**成立；对 UDP，Linux 会让两个 socket 绑同一个端口，然后把数据报**分给两边**，
+  于是“我的端口被占了”表现为“偶尔丢包”。
+- Windows 保持 `SO_EXCLUSIVEADDRUSE`；POSIX 靠 `bind()` 返回 `EADDRINUSE`（UDP 没有 TIME_WAIT，不需要复用）。
+- 新闸门 `[portexclusive]`：绑一个临时端口，再绑一次同一个，**第二次必须失败**。
+
+### 2. 判据
+
+```
+[portexclusive] port 64631 second bind refused 1
+```
+
+### 3. 边界（重要）
+
+- **POSIX 分支没有在本机实测**：这台机器只有 Windows。能证明的是“Windows 上第二次绑定被拒”
+  与“代码里不再设 SO_REUSEADDR”。Linux 上要由那个人跑一次 `--test-net` 才算数。
+  这一条写进 DEBT 的关闭记录里，不假装验证过。
+
+### 4. 下一步
+
+- AUD-47：hub endpoint 清理 + 可靠流 ACK 跨 u16 回绕。
+- 之后 M7.0 的正确性硬化就只剩这一条，可以回到 M7 的内容（音频/地图）。
 - 登记表是手写的：新增字段要自己加一行。`--test-fields` 会打印 `sizeof(PlayerState)`（现 156），
   变了就提醒人去看 —— 但**它不会替你想**，这条只能靠 review。

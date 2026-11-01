@@ -13,7 +13,7 @@
 - **lead**：M6 / M7 / 顺手，只表示排期，不是状态。状态与排期分两列，是为了能统计。
 - **verify**：一条命令 + 期望输出。**没有 verify 的条目不许进 open**（想法去 BACKLOG）。
 
-**当前计数**：未解决 **40** 条（P1 3 / P2 27 / P3 9）；关闭记录 **14** 条；设计待定与功能缺口见 BACKLOG。
+**当前计数**：未解决 **39** 条（P1 3 / P2 26 / P3 9）；关闭记录 **15** 条；设计待定与功能缺口见 BACKLOG。
 改表就要改这个数字——`tools/doc_check.py` 会核对它和实际行数。
 
 ---
@@ -56,7 +56,6 @@
 | AUD-38 | P1 | 连接没有终态机：join 失败原因不出桥、UDP 黑洞可永久等待、没有 Retry/Leave、旧 epoch 的 FULL_STATE 会回退新会话 | net_gateway.h:34-43 / main.gd:223-246 | Idle→Signalling→Waiting→Joined→Silent/Failed(reason) 可读；加入有 deadline；旧 epoch 被拒 | open | M7 |
 | AUD-39 | P1 | demo 缺战斗阶段且 EOF 当正常完成：录放不执行武器/伤害/重生，截断被当正常结束（hash/快照的字段清单部分已在 S85 关闭） | demo.cpp / tests_demo.cpp | demo 走 `game_step` 并录战斗；截断的 demo 被拒绝而不是"正常完成" | open | M7 |
 | AUD-47 | P1 | 会话生命周期剩下的两处：hub endpoint 从不清理（`remove_peer` 无生产调用，同源重进会落到旧 peer）、可靠流 ACK 跨 u16 回绕会误删在途包 | udp_peer_hub / reliable.cpp:67 | join→timeout→同 endpoint rejoin 拿新 peer；70000 包跨回绕仍交付 | open | M7 |
-| AUD-42 | P2 | 游戏 UDP 端口在 POSIX 分支没有 Windows 那种独占保证（`SO_REUSEADDR` 下第二个 socket 可绑同端口，审查在 Linux 上实测 `--test-net` 变红） | udp_socket.cpp:78-88 | 三平台跑同一端口冲突用例；POSIX 上第二绑定必须失败 | open | M7 |
 | AUD-43 | P2 | catch-up 与收包没有每帧预算：一次长冻结可补大量 tick，恶意 peer 能挤占其他人的 tick 时间 | session.cpp catch_up / receive 循环 | 每帧工作量上限；超限用 full state 重锚；恶意+正常双 peer 公平性用例 | open | M7 |
 | AUD-44 | P2 | 配置与地图缺 finite/范围/跨字段校验；`spawn.cpp` 忽略 `combat.max_health`；`tick_vitals` 没有生产调用（再生规则实际未启用） | config.cpp:196-243 / map_parse.cpp:97 / spawn.cpp | 坏值 hard fail 带字段名；跨字段不变量（蹲高≤站高、band 顺序）；再生在 tick 里真的生效或被明确拒绝 | open | M7 |
 | DEBT-08 | P3 | `godot/main.tscn` 的 uid 是 12 字符，其余 .uid 是 13 位 | main.tscn:1 | 打开工程无 invalid uid 警告，或重写 uid | open | 待核实 |
@@ -94,6 +93,7 @@
 | 2026-10-23 | AUD-26 | UDP 源地址校验：`connect_peer` 规范化地址，`recv` 不匹配即丢并计数 | `[udpsrc] rejected 1 injection-drop 1 legit-after 1` |
 | 2026-10-23 | AUD-27 | 槽位释放：`NetServer::remove_client` 上报 client_id，网关 `MatchHost::release` | `[slots] first 1 full 1 reported 1 freed 1 cycles 3/1 anonymous 1` |
 | 2026-10-23 | DEBT-17 | GAPS.md 归档到 docs/archive/，主目录不再有会误导的过期文档 | `docs/archive/GAPS.md` 存在；doc_check 路径检查 0 失败 |
+| 2026-11-01 | AUD-42 | 游戏端口独占：POSIX 分支不再设 `SO_REUSEADDR`（那条注释“只复用 TIME_WAIT”只对 TCP 监听成立，UDP 上 Linux 会把数据报分给两个 socket）；Windows 仍用 `SO_EXCLUSIVEADDRUSE`。新闸门 `[portexclusive]` 绑两次，第二次必须失败 | Windows 上 `portexclusive … refused 1`；**POSIX 分支未在本机实测**（本机无 Linux），由闸门在那边跑 |
 | 2026-11-01 | AUD-41 | 恢复座位不再是“5 s 就没了”：`release` 不清 id，而是把座位变成 **ghost**（`held_since`），票据 120 s 内本人可 resume；新玩家先占空位，没有空位才驱逐最早离开的 ghost，所以空房间永不再回 `RoomFull`。hub 清理与 ACK 回绕拆到 AUD-47 | `[ghost] reserved 1 kept 1 second 1 reclaimed 1 refused 1`；`[match] … release 1 slots 1` |
 | 2026-11-01 | AUD-40 | 网络入口三处硬化：POSIX `send` 加 `MSG_NOSIGNAL`（对端关闭不再杀进程）；分片用独立 `m_present` 位图 + 拒绝零长 + 非末片必须整片；已占用 `ClientId` 无票据一律 `BadTicket`（ID 在网上可见，知道 ID 不等于能接管槽位），拒绝在锁外发送以免阻塞 sim 线程 | `[fragment] … zerolen 1`；`[match] … takeover 1`；关掉两处分片守卫后 `zerolen 0` 且测试红 |
 | 2026-11-01 | AUD-39 | 权威字段清单：`sim/core/fields.{h,cpp}` 登记 40 个字段（37 必须哈希、3 必须不哈希），新闸门 `--test-fields` 逐个变异；补齐 `armor_type`/`ticks_since_damage`/`regen_accumulator` 进 `state_hash`；`tools/mutants.ps1` 用三个真 mutant 证明闸门有牙（改回交付/删组会红）。demo 半边留给新 AUD-39 | `--test-fields`：`fields: 40 registered, 37 must hash, 3 must not`；`mutants.ps1` 三个 `ok:` |

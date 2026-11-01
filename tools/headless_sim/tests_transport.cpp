@@ -275,6 +275,29 @@ int run_fragment_check() {
     return failures;
 }
 
+// AUD-42: the game port is ours or nobody's. On Windows that is
+// SO_EXCLUSIVEADDRUSE; on POSIX it is bind() without SO_REUSEADDR, which returns
+// EADDRINUSE. Linux used to split datagrams between two sockets bound to the same
+// port instead, and the reviewer caught it by running this suite there.
+int run_port_exclusive_check() {
+    sim::UdpSocket first;
+    std::string error;
+    if (!first.open(0, error)) {
+        std::printf("FAIL: port exclusivity: first open failed: %s\n", error.c_str());
+        return 1;
+    }
+    const uint16_t port = first.local_port();
+    sim::UdpSocket second;
+    const bool refused = !second.open(port, error);
+    std::printf("  [portexclusive] port %u second bind refused %d\n",
+                static_cast<unsigned>(port), refused ? 1 : 0);
+    if (!refused) {
+        std::printf("FAIL: a second socket bound the port that is already in use\n");
+        return 1;
+    }
+    return 0;
+}
+
 int run_udp_session_check(const std::string& data_path) {
     const std::string map_path = "sim/data/maps/metrics_flat.map";
     std::string error;

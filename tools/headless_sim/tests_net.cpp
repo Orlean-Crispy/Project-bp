@@ -1212,6 +1212,7 @@ int run_net_test(const Options& opt) {
     failures += run_udp_check();
     failures += run_udp_fragment_check();
     failures += run_fragment_check();
+    failures += run_port_exclusive_check();
     failures += run_udp_session_check(opt.data_path);
     failures += run_clock_check(opt.data_path);
     failures += run_catch_up_check(opt.data_path);
