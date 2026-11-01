@@ -1541,5 +1541,37 @@ M7.0 收了 9 条，还剩 AUD-38 / AUD-39(demo) / AUD-43 / AUD-44 / AUD-46（�
 - 闸门全绿，死代码清零，没有 TODO/FIXME 残留。
 - 结构上最该拆的是 `tests_net.cpp`（57 KB）、`sim/net/session.cpp`（33 KB）、`godot/main.gd`（31 KB）——
   写进审计文件，等动到那几块时顺手拆，不为拆而拆。
+## S91 · 2026-11-01 · AUD-38：连接有了终态机
+
+### 1. 做了什么
+
+- **`sim/net/join_state.{h,cpp}`**：`Idle → Signalling → Joining → Connected / Failed`。
+  5 秒拿不到第一份 full state 就转 `Failed("no full state")`，信令阶段超时是 `Failed("no server")`。
+  放在 sim 里而不是桥里，是为了让闸门能在没有 Godot 的情况下驱动它。
+- **失败原因能上屏**：桥暴露 `get_join_phase()` / `get_join_reason()`，HUD 按阶段显示
+  `signalling` / `joining` / `join failed: no full state`，而不是永远 `waiting for server`。
+- **旧 epoch 的 FULL_STATE 被忽略**：`join_id` 串行比较，重连之后上一局的延迟包不会把会话打回去。
+
+### 2. 判据
+
+```
+[joinstates] signalling 1 noserver 1 waiting 1 connected 1 timeout 1
+hud … events_dropped=0 join_phase=0
+```
+
+五个子项：信令态停留 / 信令超时进 Failed 且带原因 / Joining 未到期不算失败 / joined 立刻转 Connected /
+Joining 超时的原因必须是 `no full state`（区别于是“连不上服务器”还是“连上了但没给状态”）。
+
+### 3. 失败与修正
+
+- `update()` 里我先写 `m_phase = Failed;` 再用 `m_phase == Joining` 选原因 —— 那时它已经是 Failed 了，
+  两条路径都会写 `no server`。**先取快照再改状态**，和 S85 那个“锁内判断、锁外发送”是同一类顺序错误。
+- 桥里没有现成的 `now_ms()`，临时加了一个 steady_clock 毫秒函数；顺便确认 `#include <chrono>` 补上。
+
+### 4. 边界 / 下一步
+
+- Retry 复用现有 `reconnect()`（票据 + 原槽），Leave 是暂停菜单里的那个；本轮没有新增按钮。
+- 审查还剩 **AUD-39（demo 战斗阶段 + EOF）**、AUD-43（catch-up 预算）、AUD-44（配置校验）、
+  AUD-46（远端事件，协议 v10）。下一个做 AUD-39，它是最后一条 P1。
 - 登记表是手写的：新增字段要自己加一行。`--test-fields` 会打印 `sizeof(PlayerState)`（现 156），
   变了就提醒人去看 —— 但**它不会替你想**，这条只能靠 review。

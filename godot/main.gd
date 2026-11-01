@@ -209,16 +209,32 @@ func _ready() -> void:
 	add_child(status_label)
 	_update_hud()
 	if hud_check:
-		print("hud hp=%d armor=%d impulse=%d/%d role=%s vertices=%d build=%s protocol=%d port=%d events_dropped=%d" % [
+		print("hud hp=%d armor=%d impulse=%d/%d role=%s vertices=%d build=%s protocol=%d port=%d events_dropped=%d join_phase=%d" % [
 			sim.get_hp(), sim.get_armor(), sim.get_impulses(), sim.get_max_impulses(),
 			sim.get_role(), sim.get_vertices().size(),
-			sim.get_build_id(), sim.get_protocol_version(), net_port, sim.get_events_dropped()
+			sim.get_build_id(), sim.get_protocol_version(), net_port, sim.get_events_dropped(),
+			sim.get_join_phase()
 		])
 		get_tree().quit()
 	if force_paused:
 		# AUD-02: start with the in-game menu open so a headless run can prove the
 		# network pump keeps going while the world is paused.
 		_toggle_game_menu()
+
+func _join_text() -> String:
+	match sim.get_join_phase():
+		0:
+			return "waiting for server"
+		1:
+			return "signalling"
+		2:
+			return "joining"
+		3:
+			return "connected"
+		_:
+			var why := str(sim.get_join_reason())
+			return "join failed: %s" % ("unknown" if why.is_empty() else why)
+
 
 func _update_hud() -> void:
 	if hud == null:
@@ -232,7 +248,9 @@ func _update_hud() -> void:
 		parts.append("slot %d" % sim.get_player_slot())
 		parts.append("peers %d" % sim.get_peer_count())
 		if not sim.get_joined():
-			parts.append("waiting for server")
+			# AUD-38: the phase and its reason come from the sim's join state machine,
+			# so "stuck" and "failed" are different sentences on screen.
+			parts.append(_join_text())
 		elif sim.get_role() != "host":
 			# Snapshot age is the only honest "server is gone" signal: the local
 			# world keeps stepping even when nothing arrives.

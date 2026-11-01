@@ -310,6 +310,9 @@ public:
     int get_max_impulses() const { return m_world.params.max_impulses; }
 
     int get_snapshot_age() const { return m_net.snapshot_age(); }
+    // AUD-38: 0 idle / 1 signalling / 2 joining / 3 connected / 4 failed.
+    int get_join_phase() const { return static_cast<int>(m_net.join_phase()); }
+    String get_join_reason() const { return String(m_net.join_reason()); }
     // M6.10: the view punch is *derived* from the replicated spray index, so it
     // never needs a field of its own (A4: the client can recompute it exactly).
     // M6.11: the last hit this player dealt. Straight out of the snapshot - the
@@ -452,6 +455,8 @@ protected:
         ClassDB::bind_method(D_METHOD("get_impulses"), &SimWorld::get_impulses);
         ClassDB::bind_method(D_METHOD("get_max_impulses"), &SimWorld::get_max_impulses);
         ClassDB::bind_method(D_METHOD("get_snapshot_age"), &SimWorld::get_snapshot_age);
+        ClassDB::bind_method(D_METHOD("get_join_phase"), &SimWorld::get_join_phase);
+        ClassDB::bind_method(D_METHOD("get_join_reason"), &SimWorld::get_join_reason);
         ClassDB::bind_method(D_METHOD("get_hp"), &SimWorld::get_hp);
         ClassDB::bind_method(D_METHOD("get_armor"), &SimWorld::get_armor);
         ClassDB::bind_method(D_METHOD("get_eye_height"), &SimWorld::get_eye_height);

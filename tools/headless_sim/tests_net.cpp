@@ -1219,6 +1219,7 @@ int run_net_test(const Options& opt) {
     failures += run_catch_up_check(opt.data_path);
     failures += run_signal_test();
     failures += run_match_test();
+    failures += run_join_state_test();
     failures += run_slot_release_test();
     failures += run_dual_channel_test();
     failures += run_config_test();

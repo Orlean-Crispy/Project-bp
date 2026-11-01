@@ -14,6 +14,7 @@
 #include "sim/net/session.h"
 #include "sim/net/ticket.h"
 #include "sim/net/fragment.h"
+#include "sim/net/join_state.h"
 #include "sim/net/transport.h"
 #include "sim/net/udp_hub.h"
 #include "sim/net/udp_transport.h"
@@ -42,6 +43,11 @@ public:
     const sim::NetClient* client() const { return m_net_client.get(); }
     sim::NetClient* client() { return m_net_client.get(); }
     // The host's authoritative world, for the gate-only damage seam in SimWorld.
+    // AUD-38: what the menu shows. 0 idle / 1 signalling / 2 joining /
+    // 3 connected / 4 failed.
+    sim::JoinPhase join_phase() const { return m_join.phase(); }
+    const char* join_reason() const { return m_join.reason(); }
+
     sim::NetServer* server() { return m_server.get(); }
     const sim::NetServer* server() const { return m_server.get(); }
 
@@ -75,6 +81,9 @@ private:
     std::unique_ptr<sim::LoopbackTransport> m_local_to_client;
     bool m_hosting = false;
     bool m_disconnected = false;
+    // AUD-38: the join side has an explicit terminal state, so the menu can say
+    // why it failed instead of showing a spinner forever.
+    sim::JoinTracker m_join;
     sim::ClientId m_client_id{};
     sim::Ticket m_ticket{};
     bool m_has_ticket = false;

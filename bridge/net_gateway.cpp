@@ -1,5 +1,6 @@
 #include "net_gateway.h"
 
+#include <chrono>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -18,6 +19,13 @@ namespace {
 bool fail(const char* prefix, std::string& error) {
     error = std::string(prefix) + error;
     return false;
+}
+
+// AUD-38: milliseconds on the same clock the join deadline uses.
+uint32_t now_ms() {
+    return static_cast<uint32_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                     std::chrono::steady_clock::now().time_since_epoch())
+                                     .count());
 }
 
 }  // namespace
@@ -96,6 +104,7 @@ bool NetGateway::start_host(const std::string& map, const std::string& data, int
     }
     m_hosting = true;
     m_disconnected = false;
+    m_join.reset();  // the host is already in the world
     return true;
 }
 
@@ -138,6 +147,8 @@ bool NetGateway::join(const std::string& host, int port, const std::string& map,
 bool NetGateway::reconnect() {
     if (m_hosting || !m_has_ticket) return false;
     std::string error;
+    m_join.reset();
+    m_join.begin_signalling(now_ms());
     if (join_impl(m_join_host, m_join_port, &m_ticket, error)) return true;
     // reconnect() has no error out-parameter, so it reports in place like the
     // pre-extraction join path did.
@@ -148,6 +159,7 @@ bool NetGateway::reconnect() {
 bool NetGateway::join_impl(const std::string& host, int port, const sim::Ticket* resume,
                            std::string& error) {
     // A1/A5: ask the host for a slot and a ticket before touching UDP.
+    m_join.begin_signalling(now_ms());
     sim::MatchReply reply;
     if (!sim::match_request(host.c_str(), static_cast<uint16_t>(port), m_client_id, resume,
                             reply) ||
@@ -156,6 +168,7 @@ bool NetGateway::join_impl(const std::string& host, int port, const sim::Ticket*
                     reply.error.c_str(), static_cast<int>(reply.status));
         std::fflush(stdout);
         error = "breakpoint join: signalling failed";
+        m_join.fail("signalling failed");
         return false;
     }
     if (reply.has_ticket) {
@@ -185,11 +198,15 @@ bool NetGateway::join_impl(const std::string& host, int port, const sim::Ticket*
     m_udp->send(sim::make_hello(m_client_id));
     m_last_hello = std::chrono::steady_clock::now();
     m_disconnected = false;
+    // Ticket in hand: from here the only thing that can finish the join is the
+    // first full state, which is exactly what the deadline is for.
+    m_join.begin_joining(now_ms());
     return true;
 }
 
 void NetGateway::pump(const sim::MoveInput& input, sim::EventQueue* events) {
     if (!m_net_client) return;
+    m_join.update(m_net_client->joined(), now_ms());
     const auto now = std::chrono::steady_clock::now();
     if (m_hosting) {
         m_match->set_server_tick(m_server->tick());

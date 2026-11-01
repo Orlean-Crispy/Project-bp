@@ -12,6 +12,7 @@
 
 #include "sim/net/admission.h"
 #include "sim/net/configstring.h"
+#include "sim/net/join_state.h"
 #include "sim/net/matchmaking.h"
 #include "sim/net/ports.h"
 #include "sim/net/reliable.h"
@@ -169,6 +170,43 @@ int run_reliable_test() {
         return 1;
     }
     return 0;
+}
+
+
+// AUD-38: joining is a state machine with a deadline, not two booleans. A UDP
+// black hole used to look identical to "still connecting" forever.
+int run_join_state_test() {
+    int failures = 0;
+    sim::JoinTracker tracker;
+    tracker.begin_signalling(0);
+    tracker.update(false, 1000);
+    const bool signalling = tracker.phase() == sim::JoinPhase::Signalling;
+    tracker.update(false, sim::JoinTracker::kJoinTimeoutMs + 1);
+    const bool no_server = tracker.phase() == sim::JoinPhase::Failed &&
+                           tracker.reason()[0] != '\0';
+
+    tracker.reset();
+    tracker.begin_joining(10);
+    tracker.update(false, 10 + sim::JoinTracker::kJoinTimeoutMs - 1);
+    const bool still_waiting = tracker.phase() == sim::JoinPhase::Joining;
+    tracker.update(true, 10 + sim::JoinTracker::kJoinTimeoutMs);
+    const bool connected = tracker.phase() == sim::JoinPhase::Connected;
+
+    tracker.reset();
+    tracker.begin_joining(0);
+    tracker.update(false, sim::JoinTracker::kJoinTimeoutMs + 1);
+    const bool no_full_state = tracker.phase() == sim::JoinPhase::Failed &&
+                               std::string(tracker.reason()) == "no full state";
+
+    const bool ok = signalling && no_server && still_waiting && connected && no_full_state;
+    std::printf("  [joinstates] signalling %d noserver %d waiting %d connected %d timeout %d\n",
+                signalling ? 1 : 0, no_server ? 1 : 0, still_waiting ? 1 : 0,
+                connected ? 1 : 0, no_full_state ? 1 : 0);
+    if (!ok) {
+        std::printf("FAIL: the join state machine does not reach its terminals\n");
+        ++failures;
+    }
+    return failures;
 }
 
 int run_match_test() {

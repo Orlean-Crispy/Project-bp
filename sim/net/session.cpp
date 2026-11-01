@@ -647,7 +647,11 @@ void NetClient::receive() {
             }
             // The server repeats the same full state every tick until our first
             // command lands; a new join_id means a reconnect.
+            // AUD-38: a full state from an OLDER join must not roll the session
+            // back. join_id only increases, so compare serially and ignore the
+            // past (a delayed datagram from the link we just replaced).
             if (m_joined && join_id == m_join_id) continue;
+            if (m_joined && static_cast<int32_t>(join_id - m_join_id) < 0) continue;
             m_join_id = join_id;
             m_player = player_index;
             apply_full_state(full);

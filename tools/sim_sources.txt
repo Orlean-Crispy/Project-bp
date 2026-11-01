@@ -20,6 +20,7 @@ sim/input/buttons.cpp
 sim/input/keycodes.cpp
 sim/move/pmove.cpp
 sim/net/fragment.cpp
+sim/net/join_state.cpp
 sim/net/handshake.cpp
 sim/net/interp.cpp
 sim/net/matchmaking.cpp
