@@ -31,6 +31,7 @@
 #include "sim/core/world.h"
 #include "sim/input/bindings.h"
 #include "sim/input/buttons.h"
+#include "sim/game/game_step.h"
 #include "sim/game/rewind.h"
 #include "sim/game/shoot.h"
 #include "sim/net/ports.h"
@@ -158,14 +159,13 @@ public:
         remember_previous();
         // step_single exists exactly for this: step({input}) would build a
         // one-element vector 64 times a second (iron law E).
-        m_world.step_single(m_input, static_cast<float>(sim::tick_seconds()), &m_events);
-        // Solo play runs the same weapon update the sessions run, so the trigger
-        // spends rounds, draws tracers and obeys the cadence offline too.
-        if (const sim::WeaponDef* def = m_world.weapons.find_by_slot(
-                m_world.players[0].weapon_id)) {
-            sim::update_weapon(m_world.players[0], 0, m_input, *def, m_world, nullptr, 0,
-                               m_world.tick - 1, sim::rewind_ticks(0.0f), nullptr, &m_events);
-        }
+        // AUD-36: solo play takes the same single game_step the server and the
+        // client prediction take, so the trigger spends rounds, draws tracers and
+        // obeys the cadence through the same code path.
+        sim::GameStep step;
+        step.events = &m_events;
+        step.rewind = sim::rewind_ticks(0.0f);
+        sim::game_step(m_world, &m_input, 1, static_cast<float>(sim::tick_seconds()), step);
     }
 
     // ---- networking (host = listen server + local client, join = client) ----

@@ -274,7 +274,7 @@ sim/data/        movement.toml、combat.toml、weapons.toml、keybinds.toml、ma
 bridge/          GDExtension 桥（唯一跨边界层）
 godot/           project.godot / main.tscn / main.gd / breakpoint.gdextension
 tools/           headless_sim（所有闸门）、move_metrics、net_loop（两进程联机）、run_net_demo（双实例）、build/smoke/build_bridge/run_demo/setup 脚本、blender/bp_export_map.py（Blender → .map）
-docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HANDOFF.md（叙事交接）、contracts/、budgets.md、DEBT.md、BACKLOG.md、PROGRESS.md、AUDIT.md（索引）+ audits/、pitfalls/、decisions/、keymap.md、demo-format.md、map-authoring.md（Blender → .map）、计划书_v0.3.md、IMPULSE_命名方案.md、archive/（S01–S59 的 HANDOFF、GAPS、8.3 专章）
+docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HANDOFF.md（叙事交接）、contracts/、decisions/（0003–0008；0008 = 唯一 game_step）、budgets.md、DEBT.md、BACKLOG.md、PROGRESS.md、AUDIT.md（索引）+ audits/、pitfalls/、keymap.md、demo-format.md、map-authoring.md（Blender → .map）、计划书_v0.3.md、IMPULSE_命名方案.md、archive/（S01–S59 的 HANDOFF、GAPS、8.3 专章）
 ```
 
 ### 7.1 地图
@@ -565,8 +565,10 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HA
 
 ### 8.12 射击管线（sim/game/shoot.*，M6.6/M6.7 框架）
 
+- **调用入口只有一个**：`game_step(world, inputs, dt, GameStep)`（ADR 0008 / AUD-36）按
+  movement → weapon → hitbox 的顺序推进；服务器、客户端预测、solo 都走它。
 - `update_weapon(shooter, index, input, def, world, histories, count, tick, rewind, report)`：
-  先走计时器（`fire_cooldown`、`reload_left`），再决定是否开火。**服务器和客户端都调它**，
+  先走计时器（`fire_cooldown`、`reload_left`），再决定是否开火。**由 `game_step` 调用**，
   所以弹药/冷却两边一致；客户端的世界里没有受害者，所以伤害仍然只有服务器算（v0.4 A4）。
 - 开火那一步：从 `eye_position` 沿 `view_forward(yaw, pitch)` 射出，用 `rewind_frame` 取回溯帧，
   `hitscan_penetrating` 拿 `ShotResult`，`hit_zone_at` 定部位，`damage_at_range` 做距离衰减，
@@ -603,8 +605,9 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HA
 - **`alive` 不是字段**：`hp > 0` 就是活着。flags bit10 保持预留——派生值进两份真值，迟早一份是错的。
 - 死亡后**输入进不了 pmove**（`step_player` 换成空 `MoveInput`），但**照样走重力/落地**：直接冻结整个
   step 会让尸体悬在空中，看起来像 bug。开火侧由 `update_weapon` 第一行拦掉（不开枪、不换弹）。
-- **尸体不是掩体**：`HitboxSample::alive` 由 `record()` 写入，`hitscan` 跳过 dead 帧；插值时取两帧
-  的 **and**（只有确定死了才跳过），避免“死在插值中间”把子弹吞掉。
+- **尸体不是掩体**：`HitboxSample::alive` 由 `record()` 写入（`active && hp > 0`），`hitscan` 跳过 dead 帧；
+  插值时取两帧的 **or**（S81 修正：只有两帧都死了才算死，避免“死在插值中间”把子弹吞掉），
+  然后 `update_weapon` 再与**当前权威** active/alive 求交——回溯帧说位置，不说“这个人还在不在”。
 - 重生在**服务器**：`tick_respawn` 计时 `kRespawnTicks`（320 = 5 s），到点用 `make_spawn_player()`
   重造一个玩家（与入局同一份定义），保留 `active`（槽位还是这个客户端的），随后 reset 该槽的 hitbox
   历史——旧帧在旧位置，回溯会打到“已经不在那的人”。
@@ -672,7 +675,7 @@ docs/            STATE.md（唯一的"现在"）、AGENTS.md（本文件）、HA
    AUD-37 事件合同 → AUD-39 字段清单 mutant → AUD-40/41 网络硬化。
 2. **M7 内容**：M7.1 枪感旋钮 → M7.2 音频骨架 → M7.3 脚步材质/楼层低通 → M7.4 地图 → M7.5 远端姿态 → M7.6 视角模型。
 3. **M8**：爆破目标、比分、视角模型收尾。
-4. 债看 docs/DEBT.md（42 条未解决），设计待定与功能缺口看 docs/BACKLOG.md。
+4. 债看 docs/DEBT.md（41 条未解决），设计待定与功能缺口看 docs/BACKLOG.md。
 
 ---
 

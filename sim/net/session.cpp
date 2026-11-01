@@ -1,6 +1,7 @@
 #include "sim/net/session.h"
 
 #include "sim/core/tick.h"
+#include "sim/game/game_step.h"
 #include "sim/game/respawn.h"
 #include "sim/game/rewind.h"
 #include "sim/game/shoot.h"
@@ -359,19 +360,13 @@ void NetServer::step() {
                 link.has_command ? link.last_input : MoveInput{};
         }
     }
-    m_world.step(m_inputs, kDt);
-    // M6.7: weapons advance on the commands this tick executed. This runs before
-    // the new hitbox frame is recorded, because a shot rewinds into older frames.
-    for (std::size_t i = 0; i < m_world.players.size(); ++i) {
-        const WeaponDef* def = m_world.weapons.find_by_slot(m_world.players[i].weapon_id);
-        if (def == nullptr) continue;
-        update_weapon(m_world.players[i], static_cast<int>(i), m_inputs[i], *def, m_world,
-                      m_hitboxes.data(), static_cast<int>(m_hitboxes.size()),
-                      m_world.tick - 1, rewind_ticks(0.0f), nullptr, nullptr);
-    }
-    for (std::size_t i = 0; i < m_world.players.size() && i < m_hitboxes.size(); ++i) {
-        m_hitboxes[i].record(m_world.players[i], m_world.params, m_world.tick);
-    }
+    // AUD-36: movement, weapons and the hitbox frame come from one function, so
+    // the server cannot drift from the client's prediction or from a test.
+    GameStep step;
+    step.histories = m_hitboxes.data();
+    step.history_count = static_cast<int>(m_hitboxes.size());
+    step.rewind = rewind_ticks(0.0f);
+    game_step(m_world, m_inputs, kDt, step);
     // M6.9: dead players come back after kRespawnTicks. This runs on the server
     // only; the client learns about it the same way it learns about damage - from
     // the next snapshot, which then rewinds the prediction to the new position.
@@ -535,14 +530,12 @@ void NetClient::apply_full_state(const Snapshot& snap) {
 void NetClient::advance_to_clock() {
     while (m_local.tick < m_clock.command_tick()) {
         const MoveInput none;
-        m_local.step_single(none, kDt, m_events);
         advance_weapon(none);
         HistoryEntry entry;
         entry.tick = m_local.tick;
         entry.state = m_local.players[0];
         entry.input = none;
         m_history.push_back(entry);
-        m_hitbox.record(m_local.players[0], m_local.params, m_local.tick);
     }
     if (m_history.size() > 128) {
         m_history.erase(m_history.begin(), m_history.end() - 128);
@@ -580,15 +573,15 @@ void NetClient::step_local(EventQueue* events) {
     if (m_skip_cooldown > 0) --m_skip_cooldown;
     // Prediction uses exactly the input that was just sent, on the server's tick
     // axis; the clock advances with the world so the two never drift apart.
-    m_local.step_single(m_last_input, kDt, m_events);
-    advance_weapon(m_last_input);
+    advance_weapon(m_last_input);  // AUD-36: this is the whole tick now
     m_clock.advance();
     HistoryEntry entry;
     entry.tick = m_local.tick;
     entry.state = m_local.players[0];
     entry.input = m_last_input;
     m_history.push_back(entry);
-    m_hitbox.record(m_local.players[0], m_local.params, m_local.tick);
+    // The hitbox frame is recorded inside game_step (AUD-36); recording it again
+    // here would advance nothing but would hide a future ordering mistake.
     if (m_history.size() > 128) m_history.erase(m_history.begin());
 }
 
@@ -727,12 +720,15 @@ void apply_presentation(const PlayerSnap& snap, PlayerState& player) {
 
 void NetClient::advance_weapon(const MoveInput& input) {
     if (m_local.players.empty()) return;
-    const WeaponDef* def = m_local.weapons.find_by_slot(m_local.players[0].weapon_id);
-    if (def == nullptr) return;
-    // The client has no victim in its predicted world, so this only keeps ammo
-    // and timers in step with the server. Damage stays server-authoritative.
-    update_weapon(m_local.players[0], 0, input, *def, m_local, &m_hitbox, 1,
-                  m_local.tick - 1, rewind_ticks(0.0f), nullptr, m_events);
+    // AUD-36: same entry the server uses. The client has no victim in its
+    // predicted world, so the weapon step only keeps ammo and timers in step;
+    // damage stays server-authoritative (v0.4 A4).
+    GameStep step;
+    step.events = m_events;
+    step.histories = &m_hitbox;
+    step.history_count = 1;
+    step.rewind = rewind_ticks(0.0f);
+    game_step(m_local, &input, 1, kDt, step);
 }
 
 void NetClient::apply_snapshot(const Snapshot& snap) {
@@ -784,7 +780,6 @@ void NetClient::apply_snapshot(const Snapshot& snap) {
     m_hitbox.record(m_local.players[0], m_local.params, snap.tick);
 
     for (size_t i = index + 1; i < m_history.size(); ++i) {
-        m_local.step_single(m_history[i].input, kDt, m_events);
         advance_weapon(m_history[i].input);
         m_history[i].state = m_local.players[0];
         m_hitbox.record(m_local.players[0], m_local.params, m_local.tick);

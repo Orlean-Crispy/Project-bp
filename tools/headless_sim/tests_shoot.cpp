@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "sim/game/hitscan.h"
+#include "sim/game/game_step.h"
 #include "sim/game/respawn.h"
 #include "sim/game/shoot.h"
 #include "sim/game/weapon.h"
@@ -190,16 +191,17 @@ int run_damage_test(const Options& opt) {
     tick = 10;
     report = sim::ShotReport{};
     const float dt = 1.0f / 64.0f;
+    // S81/AUD-36: the test uses the SAME entry the server uses, not a hand-built
+    // sequence. If game_step's order ever changes, this is the test that notices.
     auto step_real = [&](int ticks, const sim::MoveInput& input, sim::ShotReport* out) {
-        std::vector<sim::MoveInput> inputs{input, sim::MoveInput{}};
+        const sim::MoveInput inputs[2] = {input, sim::MoveInput{}};
+        sim::GameStep step;
+        step.histories = history;
+        step.history_count = 2;
+        step.rewind = 1.0f;
         for (int i = 0; i < ticks; ++i, ++tick) {
-            world.step(inputs, dt, nullptr);
-            for (std::size_t p = 0; p < 2; ++p) {
-                sim::update_weapon(world.players[p], static_cast<int>(p), inputs[p], *rifle, world,
-                                   history, 2, tick, 1.0f, p == 0 ? out : nullptr);
-            }
-            history[0].record(world.players[0], world.params, tick + 1);
-            history[1].record(world.players[1], world.params, tick + 1);
+            step.report = out;
+            sim::game_step(world, inputs, 2, dt, step);
         }
     };
     step_real(1, fire, &report);

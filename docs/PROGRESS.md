@@ -1287,3 +1287,32 @@ ALL GREEN (22 gates + bench, no skips)
 
 - 仍然没有 CI（审查建议的“PR 自动跑”）；现在只保证**本机一条命令不说谎**。
 - 下一个：**AUD-36**，把服务器 / solo / 预测 / 回放收拢到同一个 `game_step`。
+## S83 · 2026-11-01 · AUD-36：唯一 `game_step`
+
+### 1. 做了什么
+
+- `docs/decisions/0008-single-game-step.md`：先把**阶段顺序与所有权**写死，再写代码。
+  `game_step` 只做三件事：**movement → weapon → hitbox record**，tick 语义明确（武器用 `tick - 1`）。
+  重生仍留在服务器后置段（客户端不预测重生），快照发送与会话无关。
+- `sim/game/game_step.{h,cpp}` + 指针形式的 `World::step(inputs, count, ...)`（避免每 tick 建 vector）。
+- 三处调用点全部改走它：服务器 `NetServer::step`、客户端 `NetClient::advance_weapon`、solo 的桥。
+  **`update_weapon` 在生产代码里只剩 `game_step` 一个调用者。**
+- 客户端原来在 `game_step` 之外又记了一次 hitbox —— 删掉，记录统一在 `game_step` 里，
+  否则“谁在什么时候记帧”又会分裂成两份。
+
+### 2. 判据
+
+- `--test-damage` 的换弹/NaN/射击块改用 `game_step`（和服务器同一个入口），仍全绿；
+- `--test-net` 的 `[shotloss]`、`--selftest` 300 tick 确定性不变；
+- 服务器 200 tick 的 `state_hash` 与收拢前一致（行为不变，只换入口）——由既有 `--test-net` 的
+  预测/服务器偏差与 `--selftest` 覆盖。
+
+### 3. 失败与修正
+
+- `EventQueue` 在 `sim` 命名空间里，不在 `sim::core`——头文件里写 `core::EventQueue` 编译失败。
+  这类“命名空间凭印象写”的错误只有编译能抓。
+
+### 4. 边界 / 下一步
+
+- **demo 回放还没接** `game_step`：它需要自己的 hitbox 历史与战斗阶段，归 AUD-39。
+- 下一个：**AUD-37 事件合同**（回滚重复交付 / 远端事件 / overflow），它是 M7 音频的前置。

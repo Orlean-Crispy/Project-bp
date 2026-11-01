@@ -23,6 +23,8 @@ struct World {
     // events is optional: the simulation stays pure, and only a caller that owns
     // an EventQueue (bridge, future server broadcast) pays for emission.
     void step(const std::vector<MoveInput>& inputs, float dt, EventQueue* events = nullptr);
+    // Pointer form, so the per-tick callers never build a vector (iron law E).
+    void step(const MoveInput* inputs, int count, float dt, EventQueue* events = nullptr);
     // R6: the client predicts one player per tick. This is exactly step({input})
     // without building a one-element vector for every tick.
     void step_single(const MoveInput& input, float dt, EventQueue* events = nullptr);

@@ -56,9 +56,18 @@ void step_player(PlayerState& player, const MoveInput& input, const CollisionWor
 }  // namespace
 
 void World::step(const std::vector<MoveInput>& inputs, float dt, EventQueue* events) {
-    const size_t count = players.size() < inputs.size() ? players.size() : inputs.size();
-    for (size_t i = 0; i < count; ++i) {
-        step_player(players[i], inputs[i], collision, params, dt, tick, i, events);
+    step(inputs.data(), static_cast<int>(inputs.size()), dt, events);
+}
+
+void World::step(const MoveInput* inputs, int count, float dt, EventQueue* events) {
+    if (inputs == nullptr || count <= 0) {
+        ++tick;
+        return;
+    }
+    const int limit = static_cast<int>(players.size()) < count ? static_cast<int>(players.size()) : count;
+    for (int i = 0; i < limit; ++i) {
+        step_player(players[static_cast<size_t>(i)], inputs[i], collision, params, dt,
+                    tick, static_cast<size_t>(i), events);
     }
     ++tick;
 }

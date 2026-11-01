@@ -13,7 +13,7 @@
 - **lead**：M6 / M7 / 顺手，只表示排期，不是状态。状态与排期分两列，是为了能统计。
 - **verify**：一条命令 + 期望输出。**没有 verify 的条目不许进 open**（想法去 BACKLOG）。
 
-**当前计数**：未解决 **42** 条（P1 5 / P2 27 / P3 9）；关闭记录 **9** 条；设计待定与功能缺口见 BACKLOG。
+**当前计数**：未解决 **41** 条（P1 4 / P2 27 / P3 9）；关闭记录 **10** 条；设计待定与功能缺口见 BACKLOG。
 改表就要改这个数字——`tools/doc_check.py` 会核对它和实际行数。
 
 ---
@@ -52,7 +52,6 @@
 | DEBT-06 | P2 | 桥每帧新建 `std::vector<PlayerSnap>` + Dictionary | sim_bridge.cpp get_remote_players | 复用成员 vector；测量每帧 0 分配 | open | M7 |
 | DEBT-07 | P2 | 只有 template_debug DLL 与 editor/debug 键；没有 release 导出路径 | breakpoint.gdextension | 决定"v0.1 只跑编辑器"，或补 release 构建 + 导出验证 | open | M7 |
 | DEBT-24 | P2 | 地图专用闸门在 `--map` 指向别的图时给出误导性 FAIL：`--test-wall` 走的根本不是那堵 0.1 m 墙（S79 用 Blender 导出的 40×40 房实测 `penetrations=100`） | tests_move.cpp 的 wall/step/parkour 用例 | 传了显式 `--map` 且不是该用例绑定的图时打印 `SKIP` 并返回 3 | open | M7 |
-| AUD-36 | P1 | 没有唯一的权威 `game_step`：`World::step`、`session`、`bridge`、demo 各自拼接阶段顺序，reload 假绿就是这么来的 | world.cpp / session.cpp:362-368 / sim_bridge.cpp | 服务器、solo、预测、回放都调用同一个 `game_step`；`update_weapon` 只剩一个调用点 | open | M7 |
 | AUD-37 | P1 | 表现事件没有合同：回滚重放重复交付 Shot/Jump/Land，远端权威事件（别人开枪）没有到 Godot 的路，overflow 计数不暴露 | sim_bridge.cpp drain_events / net_gateway.cpp | 强制回滚后曳光与音效严格一次；双端互射能听到对方；`dropped` 增量可在 UI 读到 | open | M7 |
 | AUD-38 | P1 | 连接没有终态机：join 失败原因不出桥、UDP 黑洞可永久等待、没有 Retry/Leave、旧 epoch 的 FULL_STATE 会回退新会话 | net_gateway.h:34-43 / main.gd:223-246 | Idle→Signalling→Waiting→Joined→Silent/Failed(reason) 可读；加入有 deadline；旧 epoch 被拒 | open | M7 |
 | AUD-39 | P1 | hash/snapshot/demo 没有权威字段清单驱动：armor_type/ticks_since_damage/regen_accumulator 不在 hash，demo 缺战斗阶段且 EOF 当正常完成 | world.cpp:69-107 / demo.cpp | 字段登记表 + 三个永久 mutant（删 hash ammo、删 Weapon 组、删 Hit 组）必红；demo 录放战斗一致 | open | M7 |
@@ -96,6 +95,7 @@
 | 2026-10-23 | AUD-26 | UDP 源地址校验：`connect_peer` 规范化地址，`recv` 不匹配即丢并计数 | `[udpsrc] rejected 1 injection-drop 1 legit-after 1` |
 | 2026-10-23 | AUD-27 | 槽位释放：`NetServer::remove_client` 上报 client_id，网关 `MatchHost::release` | `[slots] first 1 full 1 reported 1 freed 1 cycles 3/1 anonymous 1` |
 | 2026-10-23 | DEBT-17 | GAPS.md 归档到 docs/archive/，主目录不再有会误导的过期文档 | `docs/archive/GAPS.md` 存在；doc_check 路径检查 0 失败 |
+| 2026-11-01 | AUD-36 | 唯一 `game_step`：movement → weapon → hitbox 写进一个函数（ADR 0008），服务器/客户端预测/solo 三处调用点全部改走它，`update_weapon` 在生产代码里只剩一个调用者；客户端重复记 hitbox 删掉 | `--test-damage` 用 `game_step` 跑换弹 3 条 + NaN 2 条仍全绿；`--test-net` 的 `[shotloss]` 与 `--selftest` 不变 |
 | 2026-11-01 | AUD-45 | 验收不再假绿：`smoke.ps1` 用统一 runner（退出码 + `FAIL` 标记双判），必需 Godot 项的 SKIP 直接失败（`-AllowGodotSkip` 才放行）；`Invoke-BpGodotHeadless` 改用 `System.Diagnostics.Process` 并检查 ExitCode——`Start-Process -PassThru` 在本机根本读不到 ExitCode | `smoke.ps1` 输出 `ALL GREEN (22 gates + bench, no skips)`；单次 `godot_check.ps1` 退出码 0 |
 | 2026-10-24 | AUD-16 | 伤害有了来源：`update_weapon` 走完命中→伤害；`godot_check` 的“damage reaches the other HUD”在房主打 30 后，客户端 HUD 打出 `hud hp=70`（快照链路，不只本地） | `godot_check.ps1`：`PASS: damage crossed the snapshot into the other HUD`（BACKLOG FEAT-03 随之完成） |
 

@@ -101,7 +101,7 @@ v0.1 定义：**两个人、局域网、1 张 40×40 图、对枪 10 分钟不�
 
 **只在 `docs/STATE.md` 有一份**（覆盖式更新，带命令与数字）。这里不复制，只给三句定位：
 
-- 里程碑：M0–M6 已关闭；**M7 打磨进行中**（S78 签约，下一个任务 M7.1 枪感旋钮）。
+- 里程碑：M0–M6 已关闭；**M7 进行中**，但先做 **M7.0 正确性硬化**（外部审查 S81：AUD-45/36 已关，下一个 AUD-37 事件合同）。
 - 宿主实际是 **Godot 4.5**（godot-cpp 上限；计划书目标 4.7 = DEBT-15，M7 前必须有结论）。
 - 闸门数量、p99、丢包回滚、协议版本一律看 STATE §3 / §0——那里的数字有命令可复现。
 
@@ -112,10 +112,10 @@ v0.1 定义：**两个人、局域网、1 张 40×40 图、对枪 10 分钟不�
 
 ## 3. 下一步（严格按计划书顺序，禁止跳步）
 
-1. **M7 打磨**（契约 `docs/contracts/M7.md`，已签）：M7.1 枪感旋钮 → M7.2 音频骨架 → M7.3 脚步声/楼层低通 →
-   M7.5 远端姿态 → M7.6 视角模型。**一次只做一个任务。**
+1. **M7.0 正确性硬化**：AUD-37 事件合同 → AUD-39 字段清单 mutant → AUD-40/41 网络硬化。**一次只做一个任务。**
+2. **M7 内容**：M7.1 枪感旋钮 → M7.2 音频 → M7.3 脚步/楼层低通 → M7.4 地图 → M7.5 远端姿态 → M7.6 视角模型。
 2. **M8**：爆破目标、比分、视角模型收尾。
-3. 未解决项与债只看 `docs/DEBT.md`（33 条）；设计待定与功能缺口看 `docs/BACKLOG.md`。
+3. 未解决项与债只看 `docs/DEBT.md`（41 条）；设计待定与功能缺口看 `docs/BACKLOG.md`。
 
 ---
 
@@ -140,7 +140,7 @@ v0.1 定义：**两个人、局域网、1 张 40×40 图、对枪 10 分钟不�
 
 ~~~powershell
 powershell -File tools\build.ps1        # 全量构建（-Werror）
-powershell -File tools\smoke.ps1        # 22 项闸门 + bench，退出码 0 才算过
+powershell -File tools\smoke.ps1        # 22 项闸门 + bench；SKIP 与“打印 FAIL 但退出 0”都算失败
 powershell -File tools\build_bridge.ps1 # GDExtension DLL（与 CMake 同一套标志）
 powershell -File tools\godot_check.ps1  # 只跑桥：--hud-check + 两进程重连（3 = SKIP）
 powershell -File tools\run_demo.ps1     # Godot demo
@@ -160,14 +160,14 @@ powershell -File tools\run_demo.ps1     # Godot demo
 | docs/contracts/M7.md | M7 里程碑契约（`active`）：音频 / 动画 / 视角模型 / 枪感净室 |
 | docs/budgets.md | 有限资源台账（协议位 / MTU / tick / 闸门 / 文档体积，80% 报警） |
 | docs/AGENTS.md | 铁律、判据清单、实现速查（§8）、环境事实、文件地图 |
-| docs/DEBT.md | **未解决问题与技术债的唯一入口**（33 条，状态四值 + verify 命令） |
+| docs/DEBT.md | **未解决问题与技术债的唯一入口**（41 条未解决 / 10 关闭，状态四值 + verify 命令） |
 | docs/BACKLOG.md | 设计待定与功能缺口（FEAT-01…16；FEAT-03 已完成，15/16 属 M7） |
 | docs/HANDOFF.md | 这一段工作的**叙事交接**（为什么这样做、坑在哪、怎么接手）；不写状态数字 |
 | docs/PROGRESS.md | 进度日志（S 短条目 + 末尾详细开发日志） |
 | docs/AUDIT.md | 审计**索引**（每轮一个文件，证据在 docs/audits/） |
 | docs/backup.md | GitHub / bundle / 恢复步骤 |
 | docs/pitfalls/ | 事故案例（6 篇，含 level-shot-headshot） |
-| docs/decisions/ | ADR 0003 护甲 · 0004 网络时间轴 · 0005 命名 · 0006 穿透/护甲结算/热重载 · 0007 许可与净室 |
+| docs/decisions/ | ADR 0003 护甲 · 0004 网络时间轴 · 0005 命名 · 0006 穿透/护甲结算/热重载 · 0007 许可与净室 · 0008 唯一 game_step |
 | docs/assets-licenses.md | 素材许可台账 + 「只读参考」（读过哪些 GPL 源、取了哪条事实） |
 | docs/keymap.md / docs/demo-format.md | 键位 / demo 格式 |
 | docs/map-authoring.md | 地图制作：Blender → `.map` 的导出器、单位/凸体/朝向三条约定、材质与标志位 |
