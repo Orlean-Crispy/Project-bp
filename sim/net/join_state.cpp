@@ -38,20 +38,4 @@ void JoinTracker::update(bool joined, uint32_t now_ms) {
     m_reason = was_joining ? "no full state" : "no server";
 }
 
-uint32_t JoinTracker::waited_ms(uint32_t now_ms) const {
-    if (m_phase == JoinPhase::Idle) return 0;
-    return static_cast<uint32_t>(now_ms - m_since);
-}
-
-const char* JoinTracker::name(JoinPhase phase) {
-    switch (phase) {
-        case JoinPhase::Idle: return "idle";
-        case JoinPhase::Signalling: return "signalling";
-        case JoinPhase::Joining: return "joining";
-        case JoinPhase::Connected: return "connected";
-        case JoinPhase::Failed: return "failed";
-    }
-    return "?";
-}
-
 }  // namespace sim

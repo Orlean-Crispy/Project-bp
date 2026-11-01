@@ -100,3 +100,33 @@ ALL GREEN (23 gates + bench, no skips)
 - 没有跑静态分析器（clang-tidy / cppcheck），只有 `-Wall -Wextra -Werror` 全量构建。
 - 没有模糊测试、没有 sanitizer（审查里「现在就上 CI/sanitizer」被我否决过，理由仍成立：先在 Linux 上把测试跑通）。
 - 没有逐行重读全部 3 万行；死代码是脚本扫的，结构是读文件与数体积得出的。
+## 7. 第二遍（S96，M7.0 收尾之后）
+
+对象是 S89–S95 新写的那批代码（`join_state`、`event_wire`、`catch_up` 预算、demo combat）。
+
+### 7.1 修掉
+
+| 项 | 说明 |
+|---|---|
+| `JoinTracker::waited_ms()` / `name()` | 声明 + 定义，**零调用者**，删。 |
+| `NetClient::budget_hits()` + `m_budget_hits` | 只写不读的计数器，删（收包上限本身保留）。留着就是“看起来有人管”的假象。 |
+| `kEventBytes` | 常量没人用；数字写在注释里就够了，删。 |
+
+### 7.2 记录下来的行为（不是 bug，但必须写清楚）
+
+- 快照包尾的事件块**每条包最多 4 条**，多出来的直接丢弃。这是分片预算的决定（4×36 B 让满编 954→1098 B，
+  仍不进分片），不是疏忽；丢弃的是曳光与火光，不承载权威数据。注释已写在 `session.h` 的 `m_drained` 上。
+- `EventDedup` 是 32 格的环：同一 `(tick, entity, type)` 若隔了 32 条以上事件才重复到达，会被当成新的。
+  现在的发包路径不会重发旧事件，所以这只是兜底，不是正确性依赖。
+
+### 7.3 扫描结果
+
+```
+sim/ bridge/ tools/ 里的 TODO/FIXME/MUTANT/DBG：0
+未引用方法：0（第一遍 1 处已删，本遍 3 处已删）
+smoke：ALL GREEN (23 gates + bench, no skips)
+```
+
+### 7.4 仍未做（和第一遍一样，不重复粉饰）
+
+静态分析器、sanitizer、fuzz 都没有；`tests_net.cpp` 仍然是最大的文件（58 KB）。

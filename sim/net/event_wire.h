@@ -22,7 +22,6 @@ struct SimEvent;
 // ten-player snapshot the packet stays at 1098 B - under the 1100 B fragmentation
 // threshold. Raising this cap is a fragmentation decision, not a cosmetic one.
 constexpr int kMaxEventsPerPacket = 4;
-constexpr std::size_t kEventBytes = 36;
 
 // Appends [u8 count][events...]. Events from `skip_entity` are omitted: the client
 // already predicted its own shots, and echoing them would draw every tracer twice.

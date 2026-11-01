@@ -652,7 +652,6 @@ void NetClient::receive() {
     uint32_t budget = kMaxPacketsPerReceive;
     while (budget > 0 && m_rx->recv(packet)) {
         --budget;
-        if (budget == 0) ++m_budget_hits;
         PacketHeader header;
         const uint8_t* payload = nullptr;
         size_t size = 0;

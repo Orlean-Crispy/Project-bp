@@ -239,6 +239,10 @@ private:
     std::function<void(const ClientId&)> m_on_departure;
     std::vector<HitboxHistory> m_hitboxes;
     // AUD-46: what happened this tick, drained into each client's snapshot packet.
+    // The ring is emptied every step so a stale event can never ride a later packet;
+    // only the first kMaxEventsPerPacket survivors reach the wire, because that cap
+    // is a fragmentation decision (4 x 36 B keeps a full snapshot under 1100 B).
+    // Dropping the excess is deliberate: these are tracers and flashes, not authority.
     EventQueue m_events;
     SimEvent m_drained[64];
     int m_drained_count = 0;
@@ -280,8 +284,6 @@ public:
     int catch_ups() const { return m_catch_ups; }
     // AUD-43: catch-ups that were too large to replay and re-anchored instead.
     int catch_up_skips() const { return m_catch_up_skips; }
-    // How many receives hit the packet cap (the rest wait for the next tick).
-    int budget_hits() const { return m_budget_hits; }
     // AUD-46: events that arrived for other players (tracers, muzzle flashes).
     int remote_events() const { return m_remote_events; }
     uint32_t max_behind() const { return m_behind_max; }
@@ -415,7 +417,6 @@ private:
     int m_clock_skips = 0;
     int m_catch_ups = 0;
     int m_catch_up_skips = 0;
-    int m_budget_hits = 0;
     int m_remote_events = 0;
     EventDedup m_event_dedup;
     uint32_t m_behind_max = 0;

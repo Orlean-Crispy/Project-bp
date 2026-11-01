@@ -32,8 +32,6 @@ public:
 
     JoinPhase phase() const { return m_phase; }
     const char* reason() const { return m_reason; }
-    uint32_t waited_ms(uint32_t now_ms) const;
-    static const char* name(JoinPhase phase);
 
 private:
     JoinPhase m_phase = JoinPhase::Idle;
